@@ -1,0 +1,732 @@
+/* SI-BONE Surgical Tray Tracker - Complete CSS */
+
+:root {
+    --sibone-blue: #1e3a8a;
+    --sibone-light: #3b82f6;
+    --sibone-accent: #06b6d4;
+}
+
+body {
+    background-color: #f8fafc;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Navigation Styles */
+.navbar-brand {
+    font-weight: bold;
+    color: var(--sibone-blue) !important;
+}
+
+.btn-primary {
+    background-color: var(--sibone-blue);
+    border-color: var(--sibone-blue);
+}
+
+.btn-primary:hover {
+    background-color: var(--sibone-light);
+    border-color: var(--sibone-light);
+}
+
+/* Card Styles */
+.card {
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Status Badges */
+.status-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+}
+
+.status-available {
+    background-color: #10b981;
+}
+
+.status-in-use {
+    background-color: #f59e0b;
+}
+
+.status-corporate {
+    background-color: #6366f1;
+}
+
+.status-trunk {
+    background-color: #8b5cf6;
+}
+
+/* Photo Preview */
+.photo-preview {
+    max-width: 100px;
+    max-height: 100px;
+    object-fit: cover;
+    border-radius: 4px;
+}
+
+/* Map Styles */
+#map {
+    height: 500px;
+    border-radius: 8px;
+}
+
+/* Demo Banner */
+.demo-banner {
+    background: linear-gradient(135deg, var(--sibone-blue), var(--sibone-accent));
+    color: white;
+    padding: 1rem;
+    text-align: center;
+    margin-bottom: 2rem;
+    border-radius: 8px;
+}
+
+/* Login Container */
+.login-container {
+    max-width: 400px;
+    margin: 2rem auto;
+}
+
+/* Team Member Cards */
+.team-member {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Loading State */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* History Items */
+.history-item {
+    border-left: 3px solid var(--sibone-blue);
+    padding-left: 1rem;
+    margin-bottom: 1rem;
+}
+
+/* Notification Badge */
+.notification-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background-color: #dc3545;
+    color: white;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Firebase Setup Banner */
+.firebase-setup {
+    background-color: #fef3c7;
+    border: 2px solid #f59e0b;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+}
+
+/* Camera Container */
+.camera-container {
+    position: relative;
+}
+
+#camera {
+    width: 100%;
+    max-width: 300px;
+    border-radius: 8px;
+}
+
+.capture-btn {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/* ========== TRAY MANAGEMENT STYLES ========== */
+
+/* Tray Card View */
+.tray-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.tray-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* Tray Horizontal Card List View */
+.tray-horizontal-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    padding: 1rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.tray-horizontal-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+    border-color: var(--sibone-light);
+}
+
+.tray-horizontal-card:last-child {
+    margin-bottom: 0;
+}
+
+.tray-horizontal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+}
+
+.tray-horizontal-title {
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+.tray-horizontal-title h6 {
+    margin: 0;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.tray-horizontal-title .tray-icon {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, var(--sibone-blue), var(--sibone-light));
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    margin-right: 0.75rem;
+    font-size: 1.1rem;
+}
+
+.tray-horizontal-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.tray-horizontal-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.tray-horizontal-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.tray-horizontal-field label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    margin-bottom: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.tray-horizontal-field span {
+    font-size: 0.875rem;
+    color: #1f2937;
+    font-weight: 500;
+}
+
+.tray-horizontal-field .empty-value {
+    color: #9ca3af;
+    font-style: italic;
+}
+
+.tray-horizontal-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding-top: 0.75rem;
+    border-top: 1px solid #f3f4f6;
+    gap: 0.5rem;
+}
+
+.tray-horizontal-actions .btn {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+/* ========== USER MANAGEMENT STYLES ========== */
+
+/* User Card View */
+.user-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.user-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.user-avatar {
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(135deg, var(--sibone-blue), var(--sibone-light));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.2rem;
+}
+
+/* User Horizontal Card List View */
+.user-horizontal-card {
+    background: white;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    padding: 1rem;
+    transition: all 0.2s ease;
+    min-height: 120px; /* Force minimum height for debugging */
+    /* Temporary debugging styles */
+    background-color: #fee2e2 !important;
+    border-color: #dc2626 !important;
+}
+
+#userHorizontalCards {
+    /* Temporary debugging styles */
+    background-color: #fef3c7 !important;
+    min-height: 200px !important;
+    border: 3px dashed #f59e0b !important;
+    padding: 10px !important;
+}
+
+.user-horizontal-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+    border-color: var(--sibone-light);
+}
+
+.user-horizontal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+}
+
+.user-horizontal-title {
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+.user-avatar-horizontal {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, var(--sibone-blue), var(--sibone-light));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    margin-right: 0.75rem;
+}
+
+.user-horizontal-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.user-horizontal-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.user-horizontal-field label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    margin-bottom: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.user-horizontal-field span {
+    font-size: 0.875rem;
+    color: #1f2937;
+    font-weight: 500;
+}
+
+.user-horizontal-field .empty-value {
+    color: #9ca3af;
+    font-style: italic;
+}
+
+.user-horizontal-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding-top: 0.75rem;
+    border-top: 1px solid #f3f4f6;
+    gap: 0.5rem;
+}
+
+/* ========== LOCATION MANAGEMENT STYLES ========== */
+
+/* Location Card View */
+.location-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.location-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.location-icon {
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(135deg, var(--sibone-accent), var(--sibone-light));
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.2rem;
+}
+
+/* Location Horizontal Card List View */
+.location-horizontal-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    padding: 1rem;
+    transition: all 0.2s ease;
+}
+
+.location-horizontal-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+    border-color: var(--sibone-light);
+}
+
+.location-horizontal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+}
+
+.location-horizontal-title {
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+.location-icon-horizontal {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, var(--sibone-accent), var(--sibone-light));
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    margin-right: 0.75rem;
+}
+
+.location-horizontal-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.location-horizontal-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.location-horizontal-field label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    margin-bottom: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.location-horizontal-field span {
+    font-size: 0.875rem;
+    color: #1f2937;
+    font-weight: 500;
+}
+
+.location-horizontal-field .empty-value {
+    color: #9ca3af;
+    font-style: italic;
+}
+
+.location-horizontal-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding-top: 0.75rem;
+    border-top: 1px solid #f3f4f6;
+    gap: 0.5rem;
+}
+
+/* ========== VIEW TOGGLE STYLES ========== */
+
+.btn-group .btn.active {
+    background-color: var(--sibone-blue) !important;
+    color: white !important;
+    border-color: var(--sibone-blue) !important;
+}
+
+/* ========== RESPONSIVE STYLES ========== */
+
+/* Mobile responsive for horizontal cards */
+@media (max-width: 768px) {
+    .tray-horizontal-body,
+    .user-horizontal-body,
+    .location-horizontal-body {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+    }
+
+    .tray-horizontal-header,
+    .user-horizontal-header,
+    .location-horizontal-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .tray-horizontal-status,
+    .user-horizontal-status,
+    .location-horizontal-status {
+        align-self: flex-end;
+    }
+
+    .tray-horizontal-actions,
+    .user-horizontal-actions,
+    .location-horizontal-actions {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.25rem;
+    }
+
+    .tray-horizontal-actions .btn,
+    .user-horizontal-actions .btn,
+    .location-horizontal-actions .btn {
+        flex: 1;
+        min-width: auto;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .tray-horizontal-body,
+    .user-horizontal-body,
+    .location-horizontal-body {
+        grid-template-columns: 1fr;
+    }
+
+    .tray-horizontal-field,
+    .user-horizontal-field,
+    .location-horizontal-field {
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #f3f4f6;
+    }
+
+    .tray-horizontal-field:last-child,
+    .user-horizontal-field:last-child,
+    .location-horizontal-field:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+
+    /* Stack action buttons vertically on very small screens */
+    .tray-horizontal-actions,
+    .user-horizontal-actions,
+    .location-horizontal-actions {
+        flex-direction: column;
+    }
+
+    .tray-horizontal-actions .btn,
+    .user-horizontal-actions .btn,
+    .location-horizontal-actions .btn {
+        width: 100%;
+        margin-bottom: 0.25rem;
+    }
+
+    .tray-horizontal-actions .btn:last-child,
+    .user-horizontal-actions .btn:last-child,
+    .location-horizontal-actions .btn:last-child {
+        margin-bottom: 0;
+    }
+}
+
+/* ========== TABLE STYLES (if needed for future use) ========== */
+
+.table th {
+    border-top: none;
+    font-weight: 600;
+    color: var(--sibone-blue);
+    background-color: #f8f9fa;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.table-responsive {
+    border-radius: 8px;
+}
+
+/* ========== UTILITY CLASSES ========== */
+
+.text-sibone {
+    color: var(--sibone-blue);
+}
+
+.bg-sibone {
+    background-color: var(--sibone-blue);
+}
+
+.border-sibone {
+    border-color: var(--sibone-blue);
+}
+
+.hover-lift {
+    transition: transform 0.2s ease;
+}
+
+.hover-lift:hover {
+    transform: translateY(-2px);
+}
+
+/* ========== ANIMATIONS ========== */
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* ========== MODAL ENHANCEMENTS ========== */
+
+.modal-content {
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+}
+
+.modal-header {
+    border-bottom: 1px solid #f1f5f9;
+    padding: 1.5rem;
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+.modal-footer {
+    border-top: 1px solid #f1f5f9;
+    padding: 1rem 1.5rem;
+}
+
+/* ========== FORM ENHANCEMENTS ========== */
+
+.form-control:focus {
+    border-color: var(--sibone-light);
+    box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+.form-select:focus {
+    border-color: var(--sibone-light);
+    box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+/* ========== LOADING STATES ========== */
+
+.spinner-border-sibone {
+    color: var(--sibone-blue);
+}
+
+/* ========== ACCESSIBILITY IMPROVEMENTS ========== */
+
+.btn:focus,
+.btn-group .btn:focus {
+    box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25);
+}
+
+/* ========== PRINT STYLES ========== */
+
+@media print {
+    .navbar,
+    .btn,
+    .modal {
+        display: none !important;
+    }
+
+    .card {
+        box-shadow: none;
+        border: 1px solid #dee2e6;
+    }
+}
+
+/* Force dropdown to stay within viewport */
+.navbar .dropdown-menu {
+    right: 0 !important;
+    left: auto !important;
+    transform: none !important;
+    min-width: 200px;
+    margin-top: 0.5rem;
+}
+
+/* Ensure dropdown doesn't go off-screen on mobile */
+@media (max-width: 768px) {
+    .navbar .dropdown-menu {
+        position: absolute !important;
+        right: 15px !important;
+        left: auto !important;
+        width: auto !important;
+        min-width: 180px !important;
+    }
+}
+
+/* Additional safety for very small screens */
+@media (max-width: 576px) {
+    .navbar .dropdown-menu {
+        right: 10px !important;
+        min-width: 160px !important;
+    }
+}
