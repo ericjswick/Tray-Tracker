@@ -7,3 +7,4 @@ docker-compose -p traytracker ps
 
 updated design
 
+deploy
