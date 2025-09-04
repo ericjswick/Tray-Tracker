@@ -1,4 +1,4 @@
-// js/LocationManager.js
+// js/LocationManager.js - Updated for Tray Tracker
 import { collection, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, addDoc, getDocs, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 
 export class LocationManager {
@@ -10,7 +10,7 @@ export class LocationManager {
     }
 
     getStoredViewMode() {
-        return localStorage.getItem('locationViewMode') || 'list';
+        return localStorage.getItem('locationViewMode') || 'card';
     }
 
     setViewMode(mode) {
@@ -20,16 +20,27 @@ export class LocationManager {
         const cardBtn = document.getElementById('locationCardViewBtn');
         const listBtn = document.getElementById('locationListViewBtn');
 
-        if (mode === 'card') {
-            cardBtn?.classList.add('active');
-            listBtn?.classList.remove('active');
-            document.getElementById('locationCardView')?.classList.remove('d-none');
-            document.getElementById('locationListView')?.classList.add('d-none');
-        } else {
-            listBtn?.classList.add('active');
-            cardBtn?.classList.remove('active');
-            document.getElementById('locationCardView')?.classList.add('d-none');
-            document.getElementById('locationListView')?.classList.remove('d-none');
+        if (cardBtn && listBtn) {
+            if (mode === 'card') {
+                cardBtn.classList.add('active');
+                listBtn.classList.remove('active');
+            } else {
+                listBtn.classList.add('active');
+                cardBtn.classList.remove('active');
+            }
+        }
+
+        const cardView = document.getElementById('locationCardView');
+        const listView = document.getElementById('locationListView');
+
+        if (cardView && listView) {
+            if (mode === 'card') {
+                cardView.classList.remove('d-none');
+                listView.classList.add('d-none');
+            } else {
+                cardView.classList.add('d-none');
+                listView.classList.remove('d-none');
+            }
         }
 
         this.renderLocations(this.currentLocations);
@@ -38,8 +49,6 @@ export class LocationManager {
     initializeViewMode() {
         this.setViewMode(this.viewMode);
         this.setupRealtimeListeners();
-
-        // Show loading state initially
         this.showLoadingState();
     }
 
@@ -49,10 +58,8 @@ export class LocationManager {
 
         if (locationCardView) {
             locationCardView.innerHTML = `
-                <div class="col-12 text-center">
-                    <div class="spinner-border" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
+                <div class="loading-state">
+                    <div class="spinner-border" role="status"></div>
                     <p class="mt-2">Loading locations...</p>
                 </div>
             `;
@@ -62,10 +69,8 @@ export class LocationManager {
             const locationHorizontalCards = document.getElementById('locationHorizontalCards');
             if (locationHorizontalCards) {
                 locationHorizontalCards.innerHTML = `
-                    <div class="text-center text-muted py-5">
-                        <div class="spinner-border" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
+                    <div class="loading-state">
+                        <div class="spinner-border" role="status"></div>
                         <p class="mt-2">Loading locations...</p>
                     </div>
                 `;
@@ -115,10 +120,10 @@ export class LocationManager {
             bootstrap.Modal.getInstance(document.getElementById('addLocationModal')).hide();
             document.getElementById('addLocationForm').reset();
 
-            alert('Location added successfully!');
+            this.showSuccessNotification('Location added successfully!');
         } catch (error) {
             console.error('Error adding location:', error);
-            alert('Error adding location: ' + error.message);
+            this.showErrorNotification('Error adding location: ' + error.message);
         }
     }
 
@@ -147,11 +152,10 @@ export class LocationManager {
             await updateDoc(doc(this.db, 'locations', locationId), updates);
 
             bootstrap.Modal.getInstance(document.getElementById('editLocationModal')).hide();
-
-            alert('Location updated successfully!');
+            this.showSuccessNotification('Location updated successfully!');
         } catch (error) {
             console.error('Error updating location:', error);
-            alert('Error updating location: ' + error.message);
+            this.showErrorNotification('Error updating location: ' + error.message);
         }
     }
 
@@ -162,10 +166,10 @@ export class LocationManager {
 
         try {
             await deleteDoc(doc(this.db, 'locations', locationId));
-            alert('Location deleted successfully!');
+            this.showSuccessNotification('Location deleted successfully!');
         } catch (error) {
             console.error('Error deleting location:', error);
-            alert('Error deleting location: ' + error.message);
+            this.showErrorNotification('Error deleting location: ' + error.message);
         }
     }
 
@@ -194,11 +198,13 @@ export class LocationManager {
 
     renderCardView(locations) {
         const locationCardView = document.getElementById('locationCardView');
+        if (!locationCardView) return;
 
         if (locations.length === 0) {
             locationCardView.innerHTML = `
-                <div class="col-12 text-center">
-                    <p class="text-muted">No locations found. Add a new location to get started.</p>
+                <div class="loading-state">
+                    <i class="fas fa-map-marker-alt fa-3x mb-3" style="color: var(--gray-300);"></i>
+                    <p>No locations found. Add a new location to get started.</p>
                 </div>
             `;
             return;
@@ -213,12 +219,13 @@ export class LocationManager {
 
     renderListView(locations) {
         const locationHorizontalCards = document.getElementById('locationHorizontalCards');
+        if (!locationHorizontalCards) return;
 
         if (locations.length === 0) {
             locationHorizontalCards.innerHTML = `
-                <div class="text-center text-muted py-5">
-                    <i class="fas fa-map-marker-alt fa-3x mb-3 opacity-50"></i>
-                    <p class="mb-0">No locations found. Add a new location to get started.</p>
+                <div class="loading-state">
+                    <i class="fas fa-map-marker-alt fa-3x mb-3" style="color: var(--gray-300);"></i>
+                    <p>No locations found. Add a new location to get started.</p>
                 </div>
             `;
             return;
@@ -232,66 +239,72 @@ export class LocationManager {
     }
 
     createLocationCard(location) {
-        const col = document.createElement('div');
-        col.className = 'col-md-6 col-lg-4 mb-3';
+        const card = document.createElement('div');
+        card.className = 'location-card';
 
-        const typeClass = this.getTypeClass(location.type);
-        const statusClass = location.active ? 'text-success' : 'text-danger';
-        const statusText = location.active ? 'Active' : 'Inactive';
         const typeIcon = this.getTypeIcon(location.type);
+        const statusText = location.active ? 'Active' : 'Inactive';
+        const statusClass = location.active ? 'status-available' : 'status-in-use';
 
-        col.innerHTML = `
-            <div class="card location-card h-100">
-                <div class="card-body">
-                    <div class="d-flex align-items-start mb-3">
-                        <div class="location-icon me-3">
-                            <i class="${typeIcon}"></i>
-                        </div>
-                        <div class="flex-grow-1">
-                            <h6 class="card-title mb-1">${location.name}</h6>
-                            <p class="card-text text-muted mb-1">${this.getTypeText(location.type)}</p>
-                            <small class="${statusClass}">
-                                <i class="fas fa-circle"></i> ${statusText}
-                            </small>
-                        </div>
+        card.innerHTML = `
+            <div class="location-card-header">
+                <div class="location-card-title">
+                    <div class="location-type-icon">
+                        <i class="${typeIcon}"></i>
                     </div>
-                    <div class="location-details">
-                        <p class="mb-1">
-                            <small class="text-muted">
-                                <i class="fas fa-map-marker-alt me-2"></i>${location.city}, ${location.state}
-                            </small>
-                        </p>
-                        ${location.phone ? `<p class="mb-1">
-                            <small class="text-muted">
-                                <i class="fas fa-phone me-2"></i>${location.phone}
-                            </small>
-                        </p>` : ''}
-                        ${location.contact ? `<p class="mb-1">
-                            <small class="text-muted">
-                                <i class="fas fa-user me-2"></i>${location.contact}
-                            </small>
-                        </p>` : ''}
-                        ${location.region ? `<p class="mb-2">
-                            <small class="text-muted">
-                                <i class="fas fa-globe me-2"></i>${location.region}
-                            </small>
-                        </p>` : ''}
-                    </div>
-                    <div class="mt-auto">
-                        <div class="btn-group w-100" role="group">
-                            <button class="btn btn-sm btn-outline-primary" onclick="app.modalManager.showEditLocationModal('${location.id}')">
-                                <i class="fas fa-edit"></i> Edit
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="app.locationManager.deleteLocation('${location.id}', '${location.name}')">
-                                <i class="fas fa-trash"></i> Delete
-                            </button>
-                        </div>
-                    </div>
+                    ${location.name}
                 </div>
+                <span class="tray-status-badge ${statusClass}">${statusText}</span>
+            </div>
+            <div class="location-card-content">
+                <div class="location-detail">
+                    <i class="fas fa-building"></i>
+                    <span class="location-detail-value">${this.getTypeText(location.type)}</span>
+                </div>
+                <div class="location-detail">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span class="location-detail-value">${location.city}, ${location.state}</span>
+                </div>
+                ${location.phone ? `
+                    <div class="location-detail">
+                        <i class="fas fa-phone"></i>
+                        <span class="location-detail-value">${location.phone}</span>
+                    </div>
+                ` : `
+                    <div class="location-detail">
+                        <i class="fas fa-phone"></i>
+                        <span class="location-detail-empty">No phone</span>
+                    </div>
+                `}
+                ${location.contact ? `
+                    <div class="location-detail">
+                        <i class="fas fa-user"></i>
+                        <span class="location-detail-value">${location.contact}</span>
+                    </div>
+                ` : `
+                    <div class="location-detail">
+                        <i class="fas fa-user"></i>
+                        <span class="location-detail-empty">No contact</span>
+                    </div>
+                `}
+                ${location.region ? `
+                    <div class="location-detail">
+                        <i class="fas fa-globe"></i>
+                        <span class="location-detail-value">${location.region}</span>
+                    </div>
+                ` : ''}
+            </div>
+            <div class="location-card-actions">
+                <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditLocationModal('${location.id}')">
+                    <i class="fas fa-edit"></i> Edit
+                </button>
+                <button class="btn-danger-custom btn-sm" onclick="app.locationManager.deleteLocation('${location.id}', '${location.name}')">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
             </div>
         `;
 
-        return col;
+        return card;
     }
 
     createHorizontalLocationCard(location) {
@@ -299,12 +312,13 @@ export class LocationManager {
         card.className = 'location-horizontal-card';
 
         const statusText = location.active ? 'Active' : 'Inactive';
+        const statusClass = location.active ? 'status-available' : 'status-in-use';
         const typeIcon = this.getTypeIcon(location.type);
 
         card.innerHTML = `
             <div class="location-horizontal-header">
                 <div class="location-horizontal-title">
-                    <div class="location-icon-horizontal">
+                    <div class="location-type-icon">
                         <i class="${typeIcon}"></i>
                     </div>
                     <div>
@@ -313,7 +327,7 @@ export class LocationManager {
                     </div>
                 </div>
                 <div class="location-horizontal-status">
-                    <span class="badge ${location.active ? 'bg-success' : 'bg-danger'}">${statusText}</span>
+                    <span class="tray-status-badge ${statusClass}">${statusText}</span>
                 </div>
             </div>
             
@@ -337,10 +351,10 @@ export class LocationManager {
             </div>
             
             <div class="location-horizontal-actions">
-                <button class="btn btn-sm btn-outline-primary" onclick="app.modalManager.showEditLocationModal('${location.id}')">
+                <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditLocationModal('${location.id}')">
                     <i class="fas fa-edit"></i> Edit
                 </button>
-                <button class="btn btn-sm btn-outline-danger" onclick="app.locationManager.deleteLocation('${location.id}', '${location.name}')">
+                <button class="btn-danger-custom btn-sm" onclick="app.locationManager.deleteLocation('${location.id}', '${location.name}')">
                     <i class="fas fa-trash"></i> Delete
                 </button>
             </div>
@@ -369,16 +383,6 @@ export class LocationManager {
         return typeTexts[type] || type;
     }
 
-    getTypeClass(type) {
-        const typeClasses = {
-            'medical_facility': 'bg-primary',
-            'corporate': 'bg-success',
-            'warehouse': 'bg-warning',
-            'rep_office': 'bg-info'
-        };
-        return typeClasses[type] || 'bg-secondary';
-    }
-
     updateStats(locations) {
         const stats = {
             total: locations.length,
@@ -386,9 +390,78 @@ export class LocationManager {
             corporate: locations.filter(l => l.type === 'corporate').length
         };
 
-        document.getElementById('totalLocationsCount').textContent = stats.total;
-        document.getElementById('facilitiesCount').textContent = stats.facilities;
-        document.getElementById('corporateLocationsCount').textContent = stats.corporate;
+        const totalElement = document.getElementById('totalLocationsCount');
+        const facilitiesElement = document.getElementById('facilitiesCount');
+        const corporateElement = document.getElementById('corporateLocationsCount');
+
+        if (totalElement) totalElement.textContent = stats.total;
+        if (facilitiesElement) facilitiesElement.textContent = stats.facilities;
+        if (corporateElement) corporateElement.textContent = stats.corporate;
+    }
+
+    showSuccessNotification(message) {
+        this.showNotification(message, 'success');
+    }
+
+    showErrorNotification(message) {
+        this.showNotification(message, 'error');
+    }
+
+    showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 400px;
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            color: white;
+            font-weight: 500;
+            box-shadow: var(--shadow-lg);
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        `;
+
+        switch (type) {
+            case 'success':
+                notification.style.background = 'var(--success-green)';
+                break;
+            case 'error':
+                notification.style.background = 'var(--danger-red)';
+                break;
+            default:
+                notification.style.background = 'var(--primary-blue)';
+        }
+
+        notification.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+                <span>${message}</span>
+                <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: white; margin-left: auto; cursor: pointer;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+            notification.style.transform = 'translateX(0)';
+        }, 100);
+
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.style.transform = 'translateX(100%)';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.remove();
+                    }
+                }, 300);
+            }
+        }, 5000);
     }
 
     cleanup() {

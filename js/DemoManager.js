@@ -20,10 +20,40 @@ export class DemoManager {
             // Check if locations exist
             const locationsExist = await this.checkLocationsExist();
 
-            // If no users, trays, or locations exist, initialize demo data
-            if (!usersExist || !traysExist || !locationsExist) {
-                console.log('No demo data found, initializing...');
-                await this.initializeDemoDataSilently();
+            // NEW: Check if surgeons exist
+            const surgeonsExist = await this.checkSurgeonsExist();
+
+            const caseTypesExist = await this.checkCaseTypesExist();
+
+            // If no data exists, initialize demo data
+            if (!usersExist) {
+                console.log('No User data found, initializing...');
+                await this.createDemoUsers();
+                // Wait a moment for users to be created
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            if (!traysExist) {
+                console.log('No Tray data found, initializing...');
+                // Then create demo trays
+                await this.createDemoTrays();
+            }
+            if (!locationsExist) {
+                console.log('No Location data found, initializing...');
+                // Create demo locations
+                await this.createDemoLocations();
+            }
+            // NEW: Initialize surgeons if they don't exist
+            if (!surgeonsExist) {
+                console.log('No Surgeon data found, initializing...');
+                await this.createDemoSurgeons();
+            }
+
+            if (!caseTypesExist) {
+                console.log('No Case Types data found, initializing...');
+                await this.createDemoCaseTypes();
+            }
+
+            if (!usersExist || !traysExist || !locationsExist || !surgeonsExist || !caseTypesExist) {
                 return true;
             }
 
@@ -52,6 +82,17 @@ export class DemoManager {
         }
     }
 
+    async checkCaseTypesExist() {
+        try {
+            const caseTypesQuery = query(collection(this.db, 'casetypes'), limit(1));
+            const caseTypesSnapshot = await getDocs(caseTypesQuery);
+            return !caseTypesSnapshot.empty;
+        } catch (error) {
+            console.error('Error checking case types:', error);
+            return false;
+        }
+    }
+
     async checkTraysExist() {
         try {
             const traysQuery = query(collection(this.db, 'trays'), limit(1));
@@ -74,6 +115,18 @@ export class DemoManager {
         }
     }
 
+    // NEW: Check if surgeons exist
+    async checkSurgeonsExist() {
+        try {
+            const surgeonsQuery = query(collection(this.db, 'surgeons'), limit(1));
+            const surgeonsSnapshot = await getDocs(surgeonsQuery);
+            return !surgeonsSnapshot.empty;
+        } catch (error) {
+            console.error('Error checking surgeons:', error);
+            return false;
+        }
+    }
+
     async initializeDemoDataSilently() {
         try {
             // Create demo users first
@@ -84,6 +137,11 @@ export class DemoManager {
 
             // Create demo locations
             await this.createDemoLocations();
+
+            await this.createDemoCaseTypes();
+
+            // NEW: Create demo surgeons
+            await this.createDemoSurgeons();
 
             // Then create demo trays
             await this.createDemoTrays();
@@ -161,6 +219,16 @@ export class DemoManager {
     }
 
     async createDemoTrays() {
+        // Wait for surgeons to be created and available
+        let attempts = 0;
+        while ((!window.app.surgeonManager?.currentSurgeons || window.app.surgeonManager.currentSurgeons.length === 0) && attempts < 10) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            attempts++;
+        }
+
+        // Get available surgeon IDs for demo trays
+        const availableSurgeons = window.app.surgeonManager?.currentSurgeons || [];
+
         const demoTrays = [
             {
                 name: 'Fusion Set Alpha',
@@ -169,7 +237,7 @@ export class DemoManager {
                 location: 'trunk',
                 facility: '',
                 caseDate: '',
-                surgeon: '',
+                surgeonId: '', // No surgeon assigned yet
                 notes: 'Demo tray - Fusion instrumentation set',
                 isDemoTray: true
             },
@@ -180,7 +248,7 @@ export class DemoManager {
                 location: 'facility',
                 facility: 'Froedtert Hospital',
                 caseDate: this.getDateString(1), // Tomorrow
-                surgeon: 'Dr. Max Ots',
+                surgeonId: availableSurgeons.find(s => s.name === 'Dr. Max Ots')?.id || '', // Assign Dr. Max Ots if available
                 notes: 'Demo tray - Scheduled for revision surgery',
                 isDemoTray: true
             },
@@ -191,7 +259,7 @@ export class DemoManager {
                 location: 'corporate',
                 facility: '',
                 caseDate: '',
-                surgeon: '',
+                surgeonId: '', // No surgeon assigned yet
                 notes: 'Demo tray - Minimally invasive tools',
                 isDemoTray: true
             },
@@ -202,7 +270,7 @@ export class DemoManager {
                 location: 'facility',
                 facility: 'Aurora Medical Center - Summit',
                 caseDate: this.getDateString(-1), // Yesterday
-                surgeon: 'Dr. Branko Prpa',
+                surgeonId: availableSurgeons.find(s => s.name === 'Dr. Branko Prpa')?.id || '', // Assign Dr. Branko Prpa if available
                 notes: 'Demo tray - Complete surgical system',
                 isDemoTray: true
             },
@@ -213,18 +281,18 @@ export class DemoManager {
                 location: 'trunk',
                 facility: '',
                 caseDate: '',
-                surgeon: '',
+                surgeonId: '', // No surgeon assigned yet
                 notes: 'Demo tray - Professional fusion set',
                 isDemoTray: true
             },
             {
                 name: 'Emergency Revision Set',
                 type: 'revision',
-                status: 'available',
-                location: 'corporate',
-                facility: '',
-                caseDate: '',
-                surgeon: '',
+                status: 'in-use',
+                location: 'facility',
+                facility: 'Aurora Medical Center - Grafton',
+                caseDate: this.getDateString(2), // Day after tomorrow
+                surgeonId: availableSurgeons.find(s => s.name === 'Dr. Syed Mehdi')?.id || '', // Assign Dr. Syed Mehdi if available
                 notes: 'Demo tray - Emergency backup set',
                 isDemoTray: true
             }
@@ -238,15 +306,23 @@ export class DemoManager {
                 tray.assignedTo = currentUserId;
                 const savedTray = await this.dataManager.saveTray(tray);
 
-                // Add initial history entry
+                // Add initial history entry with surgeon name if assigned
+                let historyDetails = `Demo tray initialized at ${tray.location}`;
+                if (tray.surgeonId) {
+                    const surgeon = availableSurgeons.find(s => s.id === tray.surgeonId);
+                    if (surgeon) {
+                        historyDetails += ` with surgeon ${surgeon.name}`;
+                    }
+                }
+
                 await this.dataManager.addHistoryEntry(
                     savedTray.id,
                     'created',
-                    `Demo tray initialized at ${tray.location}`,
+                    historyDetails,
                     null
                 );
 
-                console.log(`Created demo tray: ${tray.name}`);
+                console.log(`Created demo tray: ${tray.name}${tray.surgeonId ? ' with surgeon assigned' : ''}`);
             } catch (error) {
                 console.error(`Error creating demo tray ${tray.name}:`, error);
                 // Continue with other trays even if one fails
@@ -368,8 +444,180 @@ export class DemoManager {
         }
     }
 
+    // NEW: Create demo surgeons
+    async createDemoSurgeons() {
+
+        let attempts = 0;
+        while ((!window.app.caseTypeManager?.currentCaseTypes || window.app.caseTypeManager.currentCaseTypes.length === 0) && attempts < 10) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            attempts++;
+        }
+
+        const availableCaseTypes = window.app.caseTypeManager?.currentCaseTypes || [];
+
+
+        const demoSurgeons = [
+            {
+                name: 'Dr. Max Ots',
+                specialty: 'Orthopedic Spine Surgery',
+                hospital: 'Froedtert Hospital',
+                phone: '+1-414-805-3100',
+                email: 'max.ots@froedtert.com',
+                region: 'Wisconsin East',
+                yearsExperience: 15,
+                notes: 'Specialized in complex spinal deformity and SI joint fusion',
+                preferredCases: this.getCaseTypeIds(['SI Joint Fusion', 'TLIF', 'Posterior Fusion'], availableCaseTypes).join(','),
+                active: true,
+                isDemoSurgeon: true
+            },
+            {
+                name: 'Dr. Branko Prpa',
+                specialty: 'Neurosurgery',
+                hospital: 'Aurora Medical Center - Summit',
+                phone: '+1-262-434-1050',
+                email: 'branko.prpa@aurora.org',
+                region: 'Wisconsin East',
+                yearsExperience: 12,
+                notes: 'Focus on minimally invasive spine surgery and SI joint procedures',
+                preferredCases: this.getCaseTypeIds(['Minimally Invasive', 'SI Joint Fusion', 'Lateral Fusion'], availableCaseTypes).join(','),
+                active: true,
+                isDemoSurgeon: true
+            },
+            {
+                name: 'Dr. Syed Mehdi',
+                specialty: 'Orthopedic Surgery',
+                hospital: 'Aurora Medical Center - Grafton',
+                phone: '+1-262-329-1050',
+                email: 'syed.mehdi@aurora.org',
+                region: 'Wisconsin East',
+                yearsExperience: 18,
+                notes: 'Extensive experience with SI joint pathology and fusion techniques',
+                preferredCases: this.getCaseTypeIds(['Minimally Invasive', 'SI Joint Fusion', 'Lateral Fusion'], availableCaseTypes).join(','),
+                active: true,
+                isDemoSurgeon: true
+            },
+            {
+                name: 'Dr. Jennifer Smith',
+                specialty: 'Orthopedic Spine Surgery',
+                hospital: 'Children\'s Hospital of Wisconsin',
+                phone: '+1-414-266-2000',
+                email: 'jennifer.smith@chw.org',
+                region: 'Wisconsin East',
+                yearsExperience: 8,
+                notes: 'Pediatric and adult spine surgery, SI joint specialist',
+                preferredCases: this.getCaseTypeIds(['Minimally Invasive', 'SI Joint Fusion', 'Lateral Fusion'], availableCaseTypes).join(','),
+                active: true,
+                isDemoSurgeon: true
+            },
+            {
+                name: 'Dr. Michael Johnson',
+                specialty: 'Pain Management',
+                hospital: 'Medical College of Wisconsin',
+                phone: '+1-414-955-8000',
+                email: 'michael.johnson@mcw.edu',
+                region: 'Wisconsin East',
+                yearsExperience: 20,
+                notes: 'SI joint injections and minimally invasive fusion procedures',
+                preferredCases: this.getCaseTypeIds(['Minimally Invasive', 'SI Joint Fusion', 'Lateral Fusion'], availableCaseTypes).join(','),
+                active: true,
+                isDemoSurgeon: true
+            },
+            {
+                name: 'Dr. Sarah Williams',
+                specialty: 'Orthopedic Surgery',
+                hospital: 'ProHealth Waukesha Memorial Hospital',
+                phone: '+1-262-928-1000',
+                email: 'sarah.williams@prohealth.com',
+                region: 'Wisconsin West',
+                yearsExperience: 10,
+                notes: 'SI joint dysfunction and fusion, sports medicine',
+                preferredCases: this.getCaseTypeIds(['Minimally Invasive', 'SI Joint Fusion', 'Lateral Fusion'], availableCaseTypes).join(','),
+                active: true,
+                isDemoSurgeon: true
+            }
+        ];
+
+        for (const surgeon of demoSurgeons) {
+            try {
+                surgeon.createdAt = serverTimestamp();
+                surgeon.createdBy = window.app?.authManager?.getCurrentUser()?.uid || 'demo-user';
+
+                await addDoc(collection(this.db, 'surgeons'), surgeon);
+                console.log(`Created demo surgeon: ${surgeon.name}`);
+            } catch (error) {
+                console.error(`Error creating demo surgeon ${surgeon.name}:`, error);
+                // Continue with other surgeons even if one fails
+            }
+        }
+    }
+
+    async createDemoCaseTypes() {
+        const demoCaseTypes = [
+            {
+                name: 'SI Joint Fusion',
+                description: 'Sacroiliac joint fusion procedures using minimally invasive techniques',
+                active: true,
+                isDemoCaseType: true
+            },
+            {
+                name: 'Lateral Fusion',
+                description: 'Lateral lumbar interbody fusion procedures',
+                active: true,
+                isDemoCaseType: true
+            },
+            {
+                name: 'TLIF',
+                description: 'Transforaminal lumbar interbody fusion',
+                active: true,
+                isDemoCaseType: true
+            },
+            {
+                name: 'ALIF',
+                description: 'Anterior lumbar interbody fusion',
+                active: true,
+                isDemoCaseType: true
+            },
+            {
+                name: 'Posterior Fusion',
+                description: 'Posterior spinal fusion procedures',
+                active: true,
+                isDemoCaseType: true
+            },
+            {
+                name: 'Revision Surgery',
+                description: 'Revision procedures for failed prior surgeries',
+                active: true,
+                isDemoCaseType: true
+            },
+            {
+                name: 'Minimally Invasive',
+                description: 'General minimally invasive spinal procedures',
+                active: true,
+                isDemoCaseType: true
+            },
+            {
+                name: 'Pain Management',
+                description: 'Pain management and injection procedures',
+                active: true,
+                isDemoCaseType: true
+            }
+        ];
+
+        for (const caseType of demoCaseTypes) {
+            try {
+                caseType.createdAt = serverTimestamp();
+                caseType.createdBy = window.app?.authManager?.getCurrentUser()?.uid || 'demo-user';
+
+                await addDoc(collection(this.db, 'casetypes'), caseType);
+                console.log(`Created demo case type: ${caseType.name}`);
+            } catch (error) {
+                console.error(`Error creating demo case type ${caseType.name}:`, error);
+            }
+        }
+    }
+
     async initializeDemoData() {
-        if (!confirm('This will create demo trays and user accounts. Continue?')) {
+        if (!confirm('This will create demo trays, users, locations, and surgeons. Continue?')) {
             return;
         }
 
@@ -401,5 +649,14 @@ export class DemoManager {
             console.error('Error clearing demo data:', error);
             alert('Error clearing demo data: ' + error.message);
         }
+    }
+
+    getCaseTypeIds(caseTypeNames, availableCaseTypes) {
+        return caseTypeNames
+            .map(name => {
+                const caseType = availableCaseTypes.find(ct => ct.name === name);
+                return caseType ? caseType.id : null;
+            })
+            .filter(id => id !== null);
     }
 }

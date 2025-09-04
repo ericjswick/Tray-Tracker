@@ -1,7 +1,14 @@
-// js/ViewManager.js
+// js/ViewManager.js - Updated for Tray Tracker
 export class ViewManager {
+    constructor() {
+        this.currentView = 'dashboard';
+    }
+
     showView(viewName) {
         console.log('Switching to view:', viewName);
+
+        // Update navigation active state
+        this.updateNavigationState(viewName);
 
         // Hide all views
         document.querySelectorAll('.view').forEach(view => {
@@ -12,109 +19,700 @@ export class ViewManager {
         const targetView = document.getElementById(`${viewName}View`);
         if (targetView) {
             targetView.classList.remove('d-none');
+            this.currentView = viewName;
             console.log('View shown:', viewName);
         } else {
             console.error('View not found:', `${viewName}View`);
         }
 
         // Initialize specific view logic
-        if (viewName === 'map') {
-            setTimeout(() => {
-                if (window.app.mapManager) {
-                    window.app.mapManager.initializeMap();
-                    if (window.app.trayManager.currentTrays) {
-                        window.app.mapManager.updateMap(window.app.trayManager.currentTrays);
-                    }
-                }
-            }, 100);
-        } else if (viewName === 'team') {
-            this.renderTeamView();
-        } else if (viewName === 'users') {
-            console.log('Initializing users view');
-            if (window.app.userManager) {
-                setTimeout(() => {
-                    try {
-                        window.app.userManager.initializeViewMode();
-                        // Force render users if data is available
-                        if (window.app.dataManager.users && window.app.dataManager.users.size > 0) {
-                            window.app.userManager.handleUsersUpdate(window.app.dataManager.users);
-                        } else {
-                            // If no users data yet, show loading and wait for data
-                            window.app.userManager.showLoadingState();
-                        }
-                        console.log('Users view initialized');
-                    } catch (error) {
-                        console.error('Error initializing users view:', error);
-                    }
-                }, 100);
-            } else {
-                console.error('UserManager not found');
-            }
-        } else if (viewName === 'locations') {
-            console.log('Initializing locations view');
-            if (window.app.locationManager) {
-                setTimeout(() => {
-                    try {
-                        window.app.locationManager.initializeViewMode();
-                        // Force render if data is available, otherwise the real-time listener will handle it
-                        console.log('Locations view initialized');
-                    } catch (error) {
-                        console.error('Error initializing locations view:', error);
-                    }
-                }, 100);
-            } else {
-                console.error('LocationManager not found');
-            }
+        this.initializeViewLogic(viewName);
+    }
+
+    updateNavigationState(activeView) {
+        // Remove active class from all nav items
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.classList.remove('active');
+        });
+
+        // Add active class to current nav item
+        const activeNavItem = document.getElementById(`nav-${activeView}`);
+        if (activeNavItem) {
+            activeNavItem.classList.add('active');
         }
     }
 
-    renderTeamView() {
-        const teamList = document.getElementById('teamList');
-        const users = window.app.dataManager.getUsers();
+    initializeViewLogic(viewName) {
+        switch (viewName) {
+            case 'dashboard':
+                this.initializeDashboard();
+                break;
+            case 'team':
+                this.initializeTeamView();
+                break;
+            case 'locations':
+                this.initializeLocationsView();
+                break;
+            case 'trays':
+                this.initializeTraysView();
+                break;
+            case 'users':
+                this.initializeUsersView();
+                break;
+            case 'locationadmin':
+                this.initializeLocationAdminView();
+                break;
+            case 'surgeons':
+                this.initializeSurgeonsView();
+                break;
+            case 'map':
+                this.initializeMapView();
+                break;
+            case 'casetypes':
+                this.initializeCaseTypesView();
+                break;
+        }
+    }
 
-        if (users.size === 0) {
-            teamList.innerHTML = '<p class="text-muted">Loading team members...</p>';
+    initializeCaseTypesView() {
+        console.log('Initializing case types view');
+        setTimeout(() => {
+            if (window.app.caseTypeManager) {
+                try {
+                    window.app.caseTypeManager.initializeViewMode();
+                    console.log('Case types view initialized');
+                } catch (error) {
+                    console.error('Error initializing case types view:', error);
+                }
+            } else {
+                console.error('CaseTypeManager not found');
+            }
+        }, 100);
+    }
+
+    initializeDashboard() {
+        // Dashboard shows a subset of trays in the main content area
+        // The existing tray manager will handle rendering
+        setTimeout(() => {
+            if (window.app.trayManager) {
+                window.app.trayManager.initializeViewMode();
+                // Render trays in dashboard container
+                if (window.app.trayManager.currentTrays) {
+                    this.renderDashboardTrays(window.app.trayManager.currentTrays);
+                }
+            }
+        }, 100);
+    }
+
+    initializeTeamView() {
+        setTimeout(() => {
+            if (window.app.dataManager && window.app.dataManager.getUsers) {
+                const users = window.app.dataManager.getUsers();
+                this.renderTeamMembers(users);
+            }
+        }, 100);
+    }
+
+    initializeLocationsView() {
+        setTimeout(() => {
+            if (window.app.mapManager) {
+                window.app.mapManager.initializeMap();
+                if (window.app.trayManager.currentTrays) {
+                    window.app.mapManager.updateMap(window.app.trayManager.currentTrays);
+                }
+            }
+        }, 100);
+    }
+
+    initializeTraysView() {
+        setTimeout(() => {
+            if (window.app.trayManager) {
+                window.app.trayManager.initializeViewMode();
+                if (window.app.trayManager.currentTrays) {
+                    window.app.trayManager.renderTrays(window.app.trayManager.currentTrays);
+                }
+            }
+        }, 100);
+    }
+
+    initializeUsersView() {
+        console.log('Initializing users view');
+        setTimeout(() => {
+            if (window.app.userManager) {
+                try {
+                    window.app.userManager.initializeViewMode();
+
+                    // Force check for users data after a delay
+                    setTimeout(() => {
+                        if (window.app.dataManager.users && window.app.dataManager.users.size > 0) {
+                            console.log('Force updating users in view:', window.app.dataManager.users.size);
+                            window.app.userManager.handleUsersUpdate(window.app.dataManager.users);
+                        } else {
+                            console.log('No users data available in DataManager');
+                        }
+                    }, 1000);
+
+                    console.log('Users view initialized');
+                } catch (error) {
+                    console.error('Error initializing users view:', error);
+                }
+            } else {
+                console.error('UserManager not found');
+            }
+        }, 100);
+    }
+
+    initializeLocationAdminView() {
+        console.log('Initializing location admin view');
+        setTimeout(() => {
+            if (window.app.locationManager) {
+                try {
+                    window.app.locationManager.initializeViewMode();
+                    console.log('Location admin view initialized');
+                } catch (error) {
+                    console.error('Error initializing location admin view:', error);
+                }
+            } else {
+                console.error('LocationManager not found');
+            }
+        }, 100);
+    }
+
+    initializeSurgeonsView() {
+        console.log('Initializing surgeons view');
+        setTimeout(() => {
+            if (window.app.surgeonManager) {
+                try {
+                    window.app.surgeonManager.initializeViewMode();
+                    console.log('Surgeons view initialized');
+                } catch (error) {
+                    console.error('Error initializing surgeons view:', error);
+                }
+            } else {
+                console.error('SurgeonManager not found');
+            }
+        }, 100);
+    }
+
+    initializeMapView() {
+        setTimeout(() => {
+            if (window.app.mapManager) {
+                window.app.mapManager.initializeMap();
+                if (window.app.trayManager.currentTrays) {
+                    window.app.mapManager.updateMap(window.app.trayManager.currentTrays);
+                }
+            }
+        }, 100);
+    }
+
+    renderDashboardTrays(trays) {
+        const container = document.getElementById('dashboardTraysContent');
+        if (!container) return;
+
+        if (trays.length === 0) {
+            container.innerHTML = `
+                <div class="loading-state">
+                    <i class="fas fa-box fa-3x mb-3" style="color: var(--gray-300);"></i>
+                    <p>No trays found. Add a new tray to get started.</p>
+                </div>
+            `;
             return;
         }
 
-        teamList.innerHTML = '';
-        users.forEach((user) => {
-            const memberDiv = document.createElement('div');
-            memberDiv.className = 'team-member';
-            memberDiv.innerHTML = `
-                <div class="flex-grow-1">
-                    <h6 class="mb-1">${user.name}</h6>
-                    <p class="mb-1 text-muted">${user.role}</p>
-                    <small class="text-muted">
-                        <i class="fas fa-envelope"></i> ${user.email}
-                        ${user.phone ? ` | <i class="fas fa-phone"></i> ${user.phone}` : ''}
-                    </small>
-                </div>
-            `;
-            teamList.appendChild(memberDiv);
+        // Show recent trays (limit to 6 for dashboard)
+        const recentTrays = trays.slice(0, 6);
+        container.innerHTML = '';
+
+        recentTrays.forEach(tray => {
+            const trayCard = this.createDashboardTrayCard(tray);
+            container.appendChild(trayCard);
         });
 
-        // Populate notification recipients
-        const recipientsDiv = document.getElementById('notificationRecipients');
-        recipientsDiv.innerHTML = '';
-        users.forEach((user, id) => {
-            const checkDiv = document.createElement('div');
-            checkDiv.className = 'form-check';
-            checkDiv.innerHTML = `
-                <input class="form-check-input" type="checkbox" id="notify-${id}" value="${id}">
-                <label class="form-check-label" for="notify-${id}">
-                    ${user.name}
-                </label>
+        // Add "View All" card if there are more trays
+        if (trays.length > 6) {
+            const viewAllCard = this.createViewAllCard(trays.length - 6);
+            container.appendChild(viewAllCard);
+        }
+    }
+
+    createDashboardTrayCard(tray) {
+        const card = document.createElement('div');
+        card.className = 'tray-card';
+
+        const statusClass = this.getStatusClass(tray.status);
+        const typeIcon = this.getTrayTypeIcon(tray.type);
+        const locationText = this.getLocationText(tray.location);
+
+        card.innerHTML = `
+            <div class="tray-card-header">
+                <div class="tray-card-title">
+                    <div class="tray-type-icon">
+                        <i class="${typeIcon}"></i>
+                    </div>
+                    ${tray.name}
+                </div>
+                <span class="tray-status-badge ${statusClass}">${tray.status}</span>
+            </div>
+            <div class="tray-card-content">
+                <div class="tray-detail">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span class="tray-detail-value">${locationText}</span>
+                </div>
+                ${tray.caseDate ? `
+                    <div class="tray-detail">
+                        <i class="fas fa-calendar"></i>
+                        <span class="tray-detail-value">${tray.caseDate}</span>
+                    </div>
+                ` : ''}
+                ${tray.assignedTo ? `
+                    <div class="tray-detail">
+                        <i class="fas fa-user"></i>
+                        <span class="tray-detail-value">Assigned: ${this.getUserName(tray.assignedTo)}</span>
+                    </div>
+                ` : ''}
+                ${tray.surgeon ? `
+                    <div class="tray-detail">
+                        <i class="fas fa-user-md"></i>
+                        <span class="tray-detail-value">${this.getSurgeonName(tray.surgeon)}</span>
+                    </div>
+                ` : ''}
+            </div>
+            <div class="tray-card-actions">
+                ${this.getTrayActions(tray)}
+            </div>
+        `;
+
+        return card;
+    }
+
+    createViewAllCard(remainingCount) {
+        const card = document.createElement('div');
+        card.className = 'tray-card';
+        card.style.cursor = 'pointer';
+        card.onclick = () => this.showView('trays');
+
+        card.innerHTML = `
+            <div class="tray-card-content" style="text-align: center; padding: 2rem 1rem;">
+                <i class="fas fa-plus-circle fa-3x mb-3" style="color: var(--primary-blue);"></i>
+                <h5 style="color: var(--primary-blue); margin-bottom: 0.5rem;">View All Trays</h5>
+                <p class="text-muted">See ${remainingCount} more trays</p>
+            </div>
+        `;
+
+        return card;
+    }
+
+    renderTeamMembers(users) {
+        const container = document.getElementById('teamMembersGrid');
+        if (!container) return;
+
+        if (users.size === 0) {
+            container.innerHTML = `
+                <div class="loading-state">
+                    <i class="fas fa-users fa-3x mb-3" style="color: var(--gray-300);"></i>
+                    <p>No team members found.</p>
+                </div>
             `;
-            recipientsDiv.appendChild(checkDiv);
+            return;
+        }
+
+        container.innerHTML = '';
+        users.forEach((user) => {
+            const memberCard = this.createTeamMemberCard(user);
+            container.appendChild(memberCard);
         });
+    }
+
+    createTeamMemberCard(user) {
+        const card = document.createElement('div');
+        card.className = 'team-card';
+
+        const initials = this.getInitials(user.name);
+        const roleClass = this.getRoleClass(user.role);
+
+        card.innerHTML = `
+            <div class="team-card-header">
+                <div class="team-avatar">${initials}</div>
+                <div class="team-info">
+                    <h4>${user.name}</h4>
+                    <span class="team-role ${roleClass}">${user.role}</span>
+                </div>
+            </div>
+            
+            <div class="team-contact">
+                <div class="team-contact-item">
+                    <i class="fas fa-phone"></i>
+                    <span>${user.phone || 'Not provided'}</span>
+                </div>
+                <div class="team-contact-item">
+                    <i class="fas fa-envelope"></i>
+                    <span>${user.email}</span>
+                </div>
+                <div class="team-contact-item">
+                    <i class="fab fa-linkedin"></i>
+                    <span>LinkedIn</span>
+                </div>
+                <div class="team-contact-item">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span>${user.region || 'Not specified'}</span>
+                </div>
+            </div>
+
+            <div class="team-physicians">
+                <h6>Treating Physicians:</h6>
+                <span class="physician-badge lead">Dr. Johnson (Lead Rep)</span>
+                <span class="physician-badge coverage">Dr. Smith (Coverage)</span>
+            </div>
+
+            <div class="team-notifications">
+                <div class="notification-methods">
+                    <span class="notification-badge active">
+                        <i class="fas fa-envelope"></i>
+                        Email
+                    </span>
+                    <span class="notification-badge active">
+                        <i class="fas fa-sms"></i>
+                        Text
+                    </span>
+                </div>
+                <small class="text-muted">Physicians: Dr. Johnson, Dr. Smith</small>
+            </div>
+        `;
+
+        return card;
+    }
+
+    createUserCard(user) {
+        const card = document.createElement('div');
+        card.className = 'user-card';
+
+        const initials = this.getInitials(user.name);
+        const roleClass = this.getRoleClass(user.role);
+        const statusClass = user.active !== false ? 'text-success' : 'text-muted';
+        const statusText = user.active !== false ? 'Active' : 'Inactive';
+
+        card.innerHTML = `
+            <div class="user-card-header">
+                <div class="user-avatar">${initials}</div>
+                <div class="user-info">
+                    <h5 class="user-name">${user.name || user.email || 'Unknown User'}</h5>
+                    <span class="user-role ${roleClass}">${user.role || 'No Role'}</span>
+                    <div class="user-status ${statusClass}">
+                        <i class="fas fa-circle"></i>
+                        <span>${statusText}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="user-details">
+                <div class="user-detail">
+                    <i class="fas fa-envelope"></i>
+                    <span>${user.email || 'Not provided'}</span>
+                </div>
+                ${user.phone ? `
+                    <div class="user-detail">
+                        <i class="fas fa-phone"></i>
+                        <span>${user.phone}</span>
+                    </div>
+                ` : `
+                    <div class="user-detail">
+                        <i class="fas fa-phone"></i>
+                        <span class="empty-value">Not provided</span>
+                    </div>
+                `}
+                ${user.region ? `
+                    <div class="user-detail">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span>${user.region}</span>
+                    </div>
+                ` : `
+                    <div class="user-detail">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span class="empty-value">Not assigned</span>
+                    </div>
+                `}
+            </div>
+
+            <div class="user-actions">
+                <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditUserModal('${user.id}')">
+                    <i class="fas fa-edit"></i> Edit
+                </button>
+                <button class="btn-danger-custom btn-sm" onclick="app.userManager.deleteUser('${user.id}', '${user.name || user.email}')">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </div>
+        `;
+
+        return card;
+    }
+
+    // Utility methods
+    getStatusClass(status) {
+        switch (status) {
+            case 'available': return 'status-available';
+            case 'in-use': return 'status-in-use';
+            case 'corporate': return 'status-corporate';
+            case 'trunk': return 'status-trunk';
+            default: return 'status-available';
+        }
+    }
+
+    getTrayTypeIcon(type) {
+        const icons = {
+            'fusion': 'fas fa-link',
+            'revision': 'fas fa-tools',
+            'mi': 'fas fa-microscope',
+            'complete': 'fas fa-briefcase-medical'
+        };
+        return icons[type] || 'fas fa-medical-bag';
+    }
+
+    getLocationText(locationId) {
+        // Get location from Firebase collection using the ID
+        if (window.app.locationManager && window.app.locationManager.currentLocations) {
+            const location = window.app.locationManager.currentLocations.find(
+                loc => loc.id === locationId
+            );
+            if (location) {
+                return location.name || 'Unknown';
+            }
+        }
+
+        // Fallback for old static locations
+        const staticLocations = {
+            'trunk': 'Rep Trunk',
+            'facility': 'Medical Facility',
+            'corporate': 'SI-BONE Corporate'
+        };
+
+        return staticLocations[locationId] || locationId || 'Unknown Location';
+    }
+
+    getUserName(userId) {
+        // Check if users are loaded
+        if (window.app?.dataManager?.users && window.app.dataManager.users.size > 0) {
+            const user = window.app.dataManager.users.get(userId);
+            if (user) {
+                return user.name || user.email || 'Unknown User';
+            }
+            // User ID not found in the map
+            return `User ${userId}`;
+        }
+
+        // Users not loaded yet
+        return 'Loading user...';
+    }
+
+    getSurgeonName(surgeonId) {
+        // If it's already a name (legacy data), return as is
+        if (!surgeonId || typeof surgeonId !== 'string') return 'Unknown Surgeon';
+
+        // Check if it looks like an ID (Firebase IDs are longer)
+        if (surgeonId.length < 15) {
+            // Probably a legacy name, return as is
+            return surgeonId;
+        }
+
+        // Try to find surgeon by ID
+        if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons) {
+            const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === surgeonId);
+            if (surgeon) {
+                return `${surgeon.title || 'Dr.'} ${surgeon.name}`;
+            }
+        }
+
+        // Fallback: if surgeon not found, return the ID (shouldn't happen in normal use)
+        return surgeonId;
+    }
+
+    // Add this method to ViewManager class if it doesn't exist
+    getSurgeonPreferredCasesText(preferredCases) {
+        if (!preferredCases) return 'Any';
+
+        // If it's comma-separated IDs
+        if (preferredCases.includes(',') || preferredCases.length > 15) {
+            const caseTypeIds = preferredCases.split(',').map(id => id.trim()).filter(id => id);
+            const caseTypeNames = [];
+
+            if (window.app.dataManager && window.app.dataManager.caseTypes) {
+                caseTypeIds.forEach(id => {
+                    const caseType = window.app.dataManager.caseTypes.find(ct => ct.id === id);
+                    if (caseType) {
+                        caseTypeNames.push(caseType.name);
+                    }
+                });
+            }
+
+            return caseTypeNames.length > 0 ? caseTypeNames.join(', ') : 'Loading...';
+        }
+
+        // Legacy text format
+        return preferredCases;
+    }
+
+    getTrayActions(tray) {
+        let actions = '';
+
+        if (tray.status === 'available') {
+            actions += `
+                <button class="btn-primary-custom btn-sm" onclick="app.modalManager.showCheckinModal('${tray.id}')">
+                    <i class="fas fa-sign-in-alt"></i> Check-in
+                </button>
+            `;
+        }
+
+        if (tray.status === 'in-use') {
+            actions += `
+                <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
+                    <i class="fas fa-hand-paper"></i> Pickup
+                </button>
+                <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showTurnoverModal('${tray.id}')">
+                    <i class="fas fa-exchange-alt"></i> Turnover
+                </button>
+            `;
+        }
+
+        actions += `
+            <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showHistoryModal('${tray.id}')">
+                <i class="fas fa-history"></i> History
+            </button>
+        `;
+
+        return actions;
+    }
+
+    getInitials(name) {
+        if (!name) return '??';
+        return name.split(' ')
+            .map(word => word.charAt(0))
+            .join('')
+            .substring(0, 2)
+            .toUpperCase();
+    }
+
+    getRoleClass(role) {
+        // Role classes for different badge colors
+        const roleClasses = {
+            'Territory Manager': 'admin',
+            'Sales Rep': 'rep',
+            'Clinical Specialist': 'specialist',
+            'Manager': 'manager',
+            'Admin': 'admin'
+        };
+        return roleClasses[role] || 'rep';
     }
 
     handleUsersUpdate(users) {
         // Re-render team view if it's currently visible
-        const teamView = document.getElementById('teamView');
-        if (!teamView.classList.contains('d-none')) {
-            this.renderTeamView();
+        if (this.currentView === 'team') {
+            this.renderTeamMembers(users);
         }
+    }
+
+    updateTrayStats(trays) {
+        const stats = {
+            active: trays.length,
+            available: trays.filter(t => t.status === 'available').length,
+            inUse: trays.filter(t => t.status === 'in-use').length,
+            corporate: trays.filter(t => t.location === 'corporate').length
+        };
+
+        // Update dashboard metrics
+        const activeTrayCount = document.getElementById('activeTrayCount');
+        const availableCount = document.getElementById('availableCount');
+        const inUseCount = document.getElementById('inUseCount');
+        const corporateCount = document.getElementById('corporateCount');
+
+        if (activeTrayCount) activeTrayCount.textContent = stats.active;
+        if (availableCount) availableCount.textContent = stats.available;
+        if (inUseCount) inUseCount.textContent = stats.inUse;
+        if (corporateCount) corporateCount.textContent = stats.corporate;
+    }
+
+    updateRecentActivity(activities) {
+        const container = document.getElementById('recentActivity');
+        if (!container) return;
+
+        if (!activities || activities.length === 0) {
+            container.innerHTML = `
+                <div class="activity-item">
+                    <div class="activity-icon move">
+                        <i class="fas fa-info"></i>
+                    </div>
+                    <div class="activity-content">
+                        <div class="activity-text">No recent activity</div>
+                        <div class="activity-time">System ready</div>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = '';
+        activities.slice(0, 5).forEach(activity => {
+            const activityItem = this.createActivityItem(activity);
+            container.appendChild(activityItem);
+        });
+    }
+
+    createActivityItem(activity) {
+        const item = document.createElement('div');
+        item.className = 'activity-item';
+
+        const iconClass = this.getActivityIconClass(activity.type);
+        const timeAgo = this.getTimeAgo(activity.timestamp);
+
+        item.innerHTML = `
+            <div class="activity-icon ${iconClass}">
+                <i class="${this.getActivityIcon(activity.type)}"></i>
+            </div>
+            <div class="activity-content">
+                <div class="activity-text">${activity.description}</div>
+                <div class="activity-time">${timeAgo}</div>
+            </div>
+        `;
+
+        return item;
+    }
+
+    getActivityIconClass(type) {
+        const classes = {
+            'move': 'move',
+            'assign': 'assign',
+            'schedule': 'schedule',
+            'checkin': 'move',
+            'pickup': 'assign',
+            'created': 'schedule'
+        };
+        return classes[type] || 'move';
+    }
+
+    getActivityIcon(type) {
+        const icons = {
+            'move': 'fas fa-arrow-right',
+            'assign': 'fas fa-user',
+            'schedule': 'fas fa-calendar',
+            'checkin': 'fas fa-sign-in-alt',
+            'pickup': 'fas fa-hand-paper',
+            'created': 'fas fa-plus'
+        };
+        return icons[type] || 'fas fa-info';
+    }
+
+    getTimeAgo(timestamp) {
+        if (!timestamp) return 'Unknown time';
+
+        const now = new Date();
+        const time = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+        const diffMs = now - time;
+
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+        if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+        return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
     }
 }

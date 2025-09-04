@@ -1,4 +1,4 @@
-// js/UserManager.js
+// js/UserManager.js - Updated for Tray Tracker
 import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
 import { doc, setDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 
@@ -12,7 +12,7 @@ export class UserManager {
     }
 
     getStoredViewMode() {
-        return localStorage.getItem('userViewMode') || 'list';
+        return localStorage.getItem('userViewMode') || 'card';
     }
 
     setViewMode(mode) {
@@ -22,16 +22,27 @@ export class UserManager {
         const cardBtn = document.getElementById('userCardViewBtn');
         const listBtn = document.getElementById('userListViewBtn');
 
-        if (mode === 'card') {
-            cardBtn?.classList.add('active');
-            listBtn?.classList.remove('active');
-            document.getElementById('userCardView')?.classList.remove('d-none');
-            document.getElementById('userListView')?.classList.add('d-none');
-        } else {
-            listBtn?.classList.add('active');
-            cardBtn?.classList.remove('active');
-            document.getElementById('userCardView')?.classList.add('d-none');
-            document.getElementById('userListView')?.classList.remove('d-none');
+        if (cardBtn && listBtn) {
+            if (mode === 'card') {
+                cardBtn.classList.add('active');
+                listBtn.classList.remove('active');
+            } else {
+                listBtn.classList.add('active');
+                cardBtn.classList.remove('active');
+            }
+        }
+
+        const cardView = document.getElementById('userCardView');
+        const listView = document.getElementById('userListView');
+
+        if (cardView && listView) {
+            if (mode === 'card') {
+                cardView.classList.remove('d-none');
+                listView.classList.add('d-none');
+            } else {
+                cardView.classList.add('d-none');
+                listView.classList.remove('d-none');
+            }
         }
 
         this.renderUsers(this.currentUsers);
@@ -39,13 +50,72 @@ export class UserManager {
 
     initializeViewMode() {
         this.setViewMode(this.viewMode);
-
-        // Show loading state initially
         this.showLoadingState();
 
-        // Get existing users data from DataManager if available
+        // Try to get users immediately if available
         if (window.app.dataManager && window.app.dataManager.users) {
-            this.handleUsersUpdate(window.app.dataManager.users);
+            // Wait a moment for DataManager to initialize
+            setTimeout(() => {
+                const users = window.app.dataManager.getUsers();
+                if (users && users.size > 0) {
+                    this.handleUsersUpdate(users);
+                } else {
+                    // If still no users, wait longer and try again
+                    setTimeout(() => {
+                        const retryUsers = window.app.dataManager.getUsers();
+                        if (retryUsers && retryUsers.size > 0) {
+                            this.handleUsersUpdate(retryUsers);
+                        } else {
+                            console.log('No users found after retry');
+                            this.showNoUsersState();
+                        }
+                    }, 2000);
+                }
+            }, 500);
+        } else {
+            // Wait for DataManager to initialize
+            setTimeout(() => {
+                if (window.app.dataManager) {
+                    const users = window.app.dataManager.getUsers();
+                    if (users && users.size > 0) {
+                        this.handleUsersUpdate(users);
+                    } else {
+                        this.showNoUsersState();
+                    }
+                }
+            }, 2000);
+        }
+    }
+
+    showNoUsersState() {
+        const userCardView = document.getElementById('userCardView');
+        const userListView = document.getElementById('userListView');
+
+        if (userCardView) {
+            userCardView.innerHTML = `
+            <div class="loading-state">
+                <i class="fas fa-users fa-3x mb-3" style="color: var(--gray-300);"></i>
+                <p>No users found. Add a new user to get started.</p>
+                <button class="btn-primary-custom mt-3" onclick="app.modalManager.showAddUserModal()">
+                    <i class="fas fa-user-plus"></i> Add First User
+                </button>
+            </div>
+        `;
+        }
+
+        if (userListView) {
+            const userHorizontalCards = document.getElementById('userHorizontalCards');
+            if (userHorizontalCards) {
+                userHorizontalCards.innerHTML = `
+                <div class="loading-state">
+                    <i class="fas fa-users fa-3x mb-3" style="color: var(--gray-300);"></i>
+                    <p>No users found. Add a new user to get started.</p>
+                    <button class="btn-primary-custom mt-3" onclick="app.modalManager.showAddUserModal()">
+                        <i class="fas fa-user-plus"></i> Add First User
+                    </button>
+                </div>
+            `;
+            }
         }
     }
 
@@ -55,10 +125,8 @@ export class UserManager {
 
         if (userCardView) {
             userCardView.innerHTML = `
-                <div class="col-12 text-center">
-                    <div class="spinner-border" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
+                <div class="loading-state">
+                    <div class="spinner-border" role="status"></div>
                     <p class="mt-2">Loading users...</p>
                 </div>
             `;
@@ -68,10 +136,8 @@ export class UserManager {
             const userHorizontalCards = document.getElementById('userHorizontalCards');
             if (userHorizontalCards) {
                 userHorizontalCards.innerHTML = `
-                    <div class="text-center text-muted py-5">
-                        <div class="spinner-border" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
+                    <div class="loading-state">
+                        <div class="spinner-border" role="status"></div>
                         <p class="mt-2">Loading users...</p>
                     </div>
                 `;
@@ -89,11 +155,9 @@ export class UserManager {
             const region = document.getElementById('userRegion').value;
             const active = document.getElementById('userActive').checked;
 
-            // Create user account in Firebase Auth
             const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
             const user = userCredential.user;
 
-            // Create user profile in Firestore
             await setDoc(doc(this.db, 'users', user.uid), {
                 name,
                 email,
@@ -109,10 +173,10 @@ export class UserManager {
             bootstrap.Modal.getInstance(document.getElementById('addUserModal')).hide();
             document.getElementById('addUserForm').reset();
 
-            alert('User created successfully!');
+            this.showSuccessNotification('User created successfully!');
         } catch (error) {
             console.error('Error adding user:', error);
-            alert('Error adding user: ' + error.message);
+            this.showErrorNotification('Error adding user: ' + error.message);
         }
     }
 
@@ -136,11 +200,10 @@ export class UserManager {
             });
 
             bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
-
-            alert('User updated successfully!');
+            this.showSuccessNotification('User updated successfully!');
         } catch (error) {
             console.error('Error updating user:', error);
-            alert('Error updating user: ' + error.message);
+            this.showErrorNotification('Error updating user: ' + error.message);
         }
     }
 
@@ -151,10 +214,10 @@ export class UserManager {
 
         try {
             await deleteDoc(doc(this.db, 'users', userId));
-            alert('User deleted successfully!');
+            this.showSuccessNotification('User deleted successfully!');
         } catch (error) {
             console.error('Error deleting user:', error);
-            alert('Error deleting user: ' + error.message);
+            this.showErrorNotification('Error deleting user: ' + error.message);
         }
     }
 
@@ -186,19 +249,14 @@ export class UserManager {
     }
 
     renderCardView(users) {
-        console.log('Rendering users card view with', users.length, 'users');
         const userCardView = document.getElementById('userCardView');
-        console.log('userCardView element found:', !!userCardView);
-
-        if (!userCardView) {
-            console.error('userCardView element not found!');
-            return;
-        }
+        if (!userCardView) return;
 
         if (users.length === 0) {
             userCardView.innerHTML = `
-                <div class="col-12 text-center">
-                    <p class="text-muted">No users found. Add a new user to get started.</p>
+                <div class="loading-state">
+                    <i class="fas fa-users fa-3x mb-3" style="color: var(--gray-300);"></i>
+                    <p>No users found. Add a new user to get started.</p>
                 </div>
             `;
             return;
@@ -206,28 +264,20 @@ export class UserManager {
 
         userCardView.innerHTML = '';
         users.forEach((user, index) => {
-            console.log('Creating card for user:', user.name || user.email, 'Index:', index);
             const userCard = this.createUserCard(user);
             userCardView.appendChild(userCard);
         });
-        console.log('Card view rendering complete');
     }
 
     renderListView(users) {
-        console.log('Rendering users list view with', users.length, 'users');
         const userHorizontalCards = document.getElementById('userHorizontalCards');
-        console.log('userHorizontalCards element found:', !!userHorizontalCards);
-
-        if (!userHorizontalCards) {
-            console.error('userHorizontalCards element not found!');
-            return;
-        }
+        if (!userHorizontalCards) return;
 
         if (users.length === 0) {
             userHorizontalCards.innerHTML = `
-                <div class="text-center text-muted py-5">
-                    <i class="fas fa-users fa-3x mb-3 opacity-50"></i>
-                    <p class="mb-0">No users found. Add a new user to get started.</p>
+                <div class="loading-state">
+                    <i class="fas fa-users fa-3x mb-3" style="color: var(--gray-300);"></i>
+                    <p>No users found. Add a new user to get started.</p>
                 </div>
             `;
             return;
@@ -235,96 +285,94 @@ export class UserManager {
 
         userHorizontalCards.innerHTML = '';
         users.forEach((user, index) => {
-            console.log('Creating horizontal card for user:', user.name || user.email, 'Index:', index);
             const userCard = this.createHorizontalUserCard(user);
             userHorizontalCards.appendChild(userCard);
-            console.log('Card appended, container children count:', userHorizontalCards.children.length);
         });
-        console.log('List view rendering complete. Final container HTML length:', userHorizontalCards.innerHTML.length);
-        console.log('Container visible height:', userHorizontalCards.offsetHeight);
-        console.log('Container content preview:', userHorizontalCards.innerHTML.substring(0, 200) + '...');
     }
 
     createUserCard(user) {
-        const col = document.createElement('div');
-        col.className = 'col-md-6 col-lg-4 mb-3';
+        const card = document.createElement('div');
+        card.className = 'user-card';
 
+        const initials = this.getInitials(user.name);
         const roleClass = this.getRoleClass(user.role);
-        const statusClass = user.active ? 'text-success' : 'text-danger';
-        const statusText = user.active ? 'Active' : 'Inactive';
+        const statusClass = user.active !== false ? 'text-success' : 'text-muted';
+        const statusText = user.active !== false ? 'Active' : 'Inactive';
 
-        col.innerHTML = `
-            <div class="card user-card h-100">
-                <div class="card-body">
-                    <div class="d-flex align-items-start mb-3">
-                        <div class="user-avatar me-3">
-                            <i class="fas fa-user"></i>
-                        </div>
-                        <div class="flex-grow-1">
-                            <h6 class="card-title mb-1">${user.name}</h6>
-                            <p class="card-text text-muted mb-1">${user.role}</p>
-                            <small class="${statusClass}">
-                                <i class="fas fa-circle"></i> ${statusText}
-                            </small>
-                        </div>
-                    </div>
-                    <div class="user-details">
-                        <p class="mb-1">
-                            <small class="text-muted">
-                                <i class="fas fa-envelope me-2"></i>${user.email}
-                            </small>
-                        </p>
-                        ${user.phone ? `<p class="mb-1">
-                            <small class="text-muted">
-                                <i class="fas fa-phone me-2"></i>${user.phone}
-                            </small>
-                        </p>` : ''}
-                        ${user.region ? `<p class="mb-2">
-                            <small class="text-muted">
-                                <i class="fas fa-map-marker-alt me-2"></i>${user.region}
-                            </small>
-                        </p>` : ''}
-                    </div>
-                    <div class="mt-auto">
-                        <div class="btn-group w-100" role="group">
-                            <button class="btn btn-sm btn-outline-primary" onclick="app.modalManager.showEditUserModal('${user.id}')">
-                                <i class="fas fa-edit"></i> Edit
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="app.userManager.deleteUser('${user.id}', '${user.name}')">
-                                <i class="fas fa-trash"></i> Delete
-                            </button>
-                        </div>
+        card.innerHTML = `
+            <div class="user-card-header">
+                <div class="user-avatar">${initials}</div>
+                <div class="user-info">
+                    <h5 class="user-name">${user.name || user.email || 'Unknown User'}</h5>
+                    <span class="user-role ${roleClass}">${user.role || 'No Role'}</span>
+                    <div class="user-status ${statusClass}">
+                        <i class="fas fa-circle"></i>
+                        <span>${statusText}</span>
                     </div>
                 </div>
             </div>
+            
+            <div class="user-details">
+                <div class="user-detail">
+                    <i class="fas fa-envelope"></i>
+                    <span>${user.email || 'Not provided'}</span>
+                </div>
+                ${user.phone ? `
+                    <div class="user-detail">
+                        <i class="fas fa-phone"></i>
+                        <span>${user.phone}</span>
+                    </div>
+                ` : `
+                    <div class="user-detail">
+                        <i class="fas fa-phone"></i>
+                        <span class="empty-value">Not provided</span>
+                    </div>
+                `}
+                ${user.region ? `
+                    <div class="user-detail">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span>${user.region}</span>
+                    </div>
+                ` : `
+                    <div class="user-detail">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span class="empty-value">Not assigned</span>
+                    </div>
+                `}
+            </div>
+
+            <div class="user-actions">
+                <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditUserModal('${user.id}')">
+                    <i class="fas fa-edit"></i> Edit
+                </button>
+                <button class="btn-danger-custom btn-sm" onclick="app.userManager.deleteUser('${user.id}', '${user.name || user.email}')">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </div>
         `;
 
-        return col;
+        return card;
     }
 
     createHorizontalUserCard(user) {
         const card = document.createElement('div');
         card.className = 'user-horizontal-card';
 
-        const roleClass = this.getRoleClass(user.role);
-        const statusClass = user.active !== false ? 'text-success' : 'text-danger';
+        const initials = this.getInitials(user.name);
         const statusText = user.active !== false ? 'Active' : 'Inactive';
-
-        console.log('Creating card HTML for user:', user.name || user.email);
+        const statusClass = user.active !== false ? 'status-available' : 'status-in-use';
 
         card.innerHTML = `
             <div class="user-horizontal-header">
                 <div class="user-horizontal-title">
-                    <div class="user-avatar-horizontal">
-                        <i class="fas fa-user"></i>
-                    </div>
+                    <div class="user-avatar">${initials}</div>
                     <div>
                         <h6>${user.name || user.email || 'Unknown User'}</h6>
                         <small class="text-muted">${user.role || 'No Role'}</small>
                     </div>
                 </div>
                 <div class="user-horizontal-status">
-                    <span class="badge ${user.active !== false ? 'bg-success' : 'bg-danger'}">${statusText}</span>
+                    <span class="tray-status-badge ${statusClass}">${statusText}</span>
                 </div>
             </div>
             
@@ -342,47 +390,131 @@ export class UserManager {
                     <span class="${!user.region ? 'empty-value' : ''}">${user.region || 'Not assigned'}</span>
                 </div>
                 <div class="user-horizontal-field">
-                    <label>Last Login</label>
-                    <span class="empty-value">Not tracked</span>
+                    <label>Created</label>
+                    <span class="empty-value">${this.formatDate(user.createdAt) || 'Unknown'}</span>
                 </div>
             </div>
             
             <div class="user-horizontal-actions">
-                <button class="btn btn-sm btn-outline-primary" onclick="app.modalManager.showEditUserModal('${user.id}')">
+                <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditUserModal('${user.id}')">
                     <i class="fas fa-edit"></i> Edit
                 </button>
-                <button class="btn btn-sm btn-outline-danger" onclick="app.userManager.deleteUser('${user.id}', '${user.name || user.email}')">
+                <button class="btn-danger-custom btn-sm" onclick="app.userManager.deleteUser('${user.id}', '${user.name || user.email}')">
                     <i class="fas fa-trash"></i> Delete
                 </button>
             </div>
         `;
 
-        console.log('Card HTML created, height:', card.offsetHeight);
         return card;
+    }
+
+    getInitials(name) {
+        if (!name) return '??';
+        return name.split(' ')
+            .map(word => word.charAt(0))
+            .join('')
+            .substring(0, 2)
+            .toUpperCase();
     }
 
     getRoleClass(role) {
         const roleClasses = {
-            'Territory Manager': 'bg-primary',
-            'Sales Rep': 'bg-success',
-            'Clinical Specialist': 'bg-info',
-            'Manager': 'bg-warning',
-            'Admin': 'bg-danger'
+            'Territory Manager': 'role-manager',
+            'Sales Rep': 'role-rep',
+            'Clinical Specialist': 'role-specialist',
+            'Manager': 'role-manager',
+            'Admin': 'role-admin'
         };
-        return roleClasses[role] || 'bg-secondary';
+        return roleClasses[role] || 'role-rep';
+    }
+
+    formatDate(timestamp) {
+        if (!timestamp) return null;
+        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+        return date.toLocaleDateString();
     }
 
     updateStats(users) {
         const stats = {
             total: users.length,
-            active: users.filter(u => u.active).length,
+            active: users.filter(u => u.active !== false).length,
             managers: users.filter(u => u.role === 'Territory Manager' || u.role === 'Manager').length,
             reps: users.filter(u => u.role === 'Sales Rep').length
         };
 
-        document.getElementById('totalUsersCount').textContent = stats.total;
-        document.getElementById('activeUsersCount').textContent = stats.active;
-        document.getElementById('managersCount').textContent = stats.managers;
-        document.getElementById('repsCount').textContent = stats.reps;
+        const totalElement = document.getElementById('totalUsersCount');
+        const activeElement = document.getElementById('activeUsersCount');
+        const managersElement = document.getElementById('managersCount');
+        const repsElement = document.getElementById('repsCount');
+
+        if (totalElement) totalElement.textContent = stats.total;
+        if (activeElement) activeElement.textContent = stats.active;
+        if (managersElement) managersElement.textContent = stats.managers;
+        if (repsElement) repsElement.textContent = stats.reps;
+    }
+
+    showSuccessNotification(message) {
+        this.showNotification(message, 'success');
+    }
+
+    showErrorNotification(message) {
+        this.showNotification(message, 'error');
+    }
+
+    showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 400px;
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            color: white;
+            font-weight: 500;
+            box-shadow: var(--shadow-lg);
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        `;
+
+        switch (type) {
+            case 'success':
+                notification.style.background = 'var(--success-green)';
+                break;
+            case 'error':
+                notification.style.background = 'var(--danger-red)';
+                break;
+            default:
+                notification.style.background = 'var(--primary-blue)';
+        }
+
+        notification.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+                <span>${message}</span>
+                <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: white; margin-left: auto; cursor: pointer;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+            notification.style.transform = 'translateX(0)';
+        }, 100);
+
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.style.transform = 'translateX(100%)';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.remove();
+                    }
+                }, 300);
+            }
+        }, 5000);
     }
 }

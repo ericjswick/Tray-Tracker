@@ -60,17 +60,27 @@ export class MapManager {
                 const marker = L.marker(position).addTo(this.map);
 
                 const statusClass = `status-${tray.status === 'in-use' ? 'in-use' : tray.status}`;
+
+                // Get surgeon name for display (handle both old and new format)
+                let surgeonName = '';
+                if (tray.surgeonId && window.app.surgeonManager) {
+                    const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === tray.surgeonId);
+                    surgeonName = surgeon ? surgeon.name : 'Unknown Surgeon';
+                } else if (tray.surgeon) {
+                    surgeonName = tray.surgeon; // Legacy format
+                }
+
                 const popupContent = `
-                    <div class="p-2">
-                        <h6>${tray.name}</h6>
-                        <p class="mb-1"><span class="badge ${statusClass}">${tray.status}</span></p>
-                        <p class="mb-1"><strong>Type:</strong> ${tray.type}</p>
-                        <p class="mb-1"><strong>Location:</strong> ${this.getLocationText(tray)}</p>
-                        ${tray.facility ? `<p class="mb-1"><strong>Facility:</strong> ${tray.facility}</p>` : ''}
-                        ${tray.caseDate ? `<p class="mb-1"><strong>Case Date:</strong> ${tray.caseDate}</p>` : ''}
-                        ${tray.surgeon ? `<p class="mb-0"><strong>Surgeon:</strong> ${tray.surgeon}</p>` : ''}
-                    </div>
-                `;
+                <div class="p-2">
+                    <h6>${tray.name}</h6>
+                    <p class="mb-1"><span class="badge ${statusClass}">${tray.status}</span></p>
+                    <p class="mb-1"><strong>Type:</strong> ${tray.type}</p>
+                    <p class="mb-1"><strong>Location:</strong> ${window.app.trayManager.getLocationText(tray.location)}</p>
+                    ${tray.facility ? `<p class="mb-1"><strong>Facility:</strong> ${tray.facility}</p>` : ''}
+                    ${tray.caseDate ? `<p class="mb-1"><strong>Case Date:</strong> ${tray.caseDate}</p>` : ''}
+                    ${surgeonName ? `<p class="mb-0"><strong>Surgeon:</strong> ${surgeonName}</p>` : ''}
+                </div>
+            `;
 
                 marker.bindPopup(popupContent);
                 this.markers.push(marker);
@@ -78,17 +88,6 @@ export class MapManager {
         });
     }
 
-    getLocationText(tray) {
-        if (tray.location === 'facility' && tray.facility) {
-            return tray.facility;
-        }
-        const locationTexts = {
-            'trunk': 'Rep Trunk',
-            'facility': 'Medical Facility',
-            'corporate': 'SI-BONE Corporate'
-        };
-        return locationTexts[tray.location] || 'Unknown';
-    }
 
     updateFilters() {
         if (window.app && window.app.trayManager && window.app.trayManager.currentTrays) {

@@ -1,36 +1,45 @@
-// js/TrayManager.js
+// js/TrayManager.js - Updated for Tray Tracker
 export class TrayManager {
     constructor(dataManager) {
         this.dataManager = dataManager;
         this.currentTrays = [];
-        this.viewMode = this.getStoredViewMode(); // Load user preference
+        this.viewMode = this.getStoredViewMode();
     }
 
     getStoredViewMode() {
-        // Get stored view preference, default to 'list'
-        return localStorage.getItem('trayViewMode') || 'list';
+        return localStorage.getItem('trayViewMode') || 'card';
     }
 
     setViewMode(mode) {
         this.viewMode = mode;
-
-        // Store user preference
         localStorage.setItem('trayViewMode', mode);
 
         // Update button states
         const cardBtn = document.getElementById('cardViewBtn');
         const listBtn = document.getElementById('listViewBtn');
 
-        if (mode === 'card') {
-            cardBtn.classList.add('active');
-            listBtn.classList.remove('active');
-            document.getElementById('trayCardView').classList.remove('d-none');
-            document.getElementById('trayListView').classList.add('d-none');
-        } else {
-            listBtn.classList.add('active');
-            cardBtn.classList.remove('active');
-            document.getElementById('trayCardView').classList.add('d-none');
-            document.getElementById('trayListView').classList.remove('d-none');
+        if (cardBtn && listBtn) {
+            if (mode === 'card') {
+                cardBtn.classList.add('active');
+                listBtn.classList.remove('active');
+            } else {
+                listBtn.classList.add('active');
+                cardBtn.classList.remove('active');
+            }
+        }
+
+        // Update view containers
+        const cardView = document.getElementById('trayCardView');
+        const listView = document.getElementById('trayListView');
+
+        if (cardView && listView) {
+            if (mode === 'card') {
+                cardView.classList.remove('d-none');
+                listView.classList.add('d-none');
+            } else {
+                cardView.classList.add('d-none');
+                listView.classList.remove('d-none');
+            }
         }
 
         // Re-render trays in the new view mode
@@ -38,36 +47,42 @@ export class TrayManager {
     }
 
     initializeViewMode() {
-        // Set initial view mode based on stored preference
         this.setViewMode(this.viewMode);
     }
 
     async addTray() {
         try {
-            const form = document.getElementById('addTrayForm');
+            const locationValue = document.getElementById('initialLocation').value;
 
-            const tray = {
+            if (!locationValue) {
+                this.showErrorNotification('Please select an initial location');
+                return;
+            }
+
+            const trayData = {
                 name: document.getElementById('trayName').value,
                 type: document.getElementById('trayType').value,
-                status: 'available',
-                location: document.getElementById('initialLocation').value,
+                status: locationValue === 'facility' ? 'in-use' : 'available',
+                location: locationValue,
                 facility: '',
                 caseDate: '',
                 surgeon: '',
-                assignedTo: window.app.authManager.getCurrentUser().uid,
+                assignedTo: window.app.authManager.getCurrentUser()?.uid || '',
                 notes: ''
             };
 
-            await this.dataManager.saveTray(tray);
-            await this.dataManager.addHistoryEntry(tray.id, 'created', `Tray created at ${tray.location}`);
+            const savedTray = await this.dataManager.saveTray(trayData);
+            if (savedTray && savedTray.id) {
+                await this.dataManager.addHistoryEntry(savedTray.id, 'created', `Tray created at ${this.getLocationText(trayData.location)}`);
+            }
 
             bootstrap.Modal.getInstance(document.getElementById('addTrayModal')).hide();
-            form.reset();
+            document.getElementById('addTrayForm').reset();
 
-            alert('Tray added successfully!');
+            this.showSuccessNotification('Tray added successfully!');
         } catch (error) {
             console.error('Error adding tray:', error);
-            alert('Error adding tray: ' + error.message);
+            this.showErrorNotification('Error adding tray: ' + error.message);
         }
     }
 
@@ -87,8 +102,7 @@ export class TrayManager {
 
             const updates = {
                 status: 'in-use',
-                location: 'facility',
-                facility: facility,
+                location: facility,
                 caseDate: caseDate,
                 surgeon: surgeon,
                 notes: notes,
@@ -99,15 +113,15 @@ export class TrayManager {
             await this.dataManager.addHistoryEntry(
                 trayId,
                 'checked-in',
-                `Checked in to ${facility} for case on ${caseDate}${surgeon ? ` with ${surgeon}` : ''}`,
+                `Checked in to ${this.getLocationText(facility)} for case on ${caseDate}${surgeon ? ` with ${surgeon}` : ''}`,
                 photoUrl
             );
 
             bootstrap.Modal.getInstance(document.getElementById('checkinModal')).hide();
-            alert('Tray checked in successfully!');
+            this.showSuccessNotification('Tray checked in successfully!');
         } catch (error) {
             console.error('Error checking in tray:', error);
-            alert('Error checking in tray: ' + error.message);
+            this.showErrorNotification('Error checking in tray: ' + error.message);
         }
     }
 
@@ -141,10 +155,10 @@ export class TrayManager {
             );
 
             bootstrap.Modal.getInstance(document.getElementById('pickupModal')).hide();
-            alert('Tray picked up successfully!');
+            this.showSuccessNotification('Tray picked up successfully!');
         } catch (error) {
             console.error('Error picking up tray:', error);
-            alert('Error picking up tray: ' + error.message);
+            this.showErrorNotification('Error picking up tray: ' + error.message);
         }
     }
 
@@ -213,10 +227,33 @@ export class TrayManager {
             }
 
             bootstrap.Modal.getInstance(document.getElementById('turnoverModal')).hide();
-            alert('Turnover processed successfully!');
+            this.showSuccessNotification('Turnover processed successfully!');
         } catch (error) {
             console.error('Error processing turnover:', error);
-            alert('Error processing turnover: ' + error.message);
+            this.showErrorNotification('Error processing turnover: ' + error.message);
+        }
+    }
+
+    scheduleUserNameUpdate() {
+        if (!this.userUpdateScheduled) {
+            this.userUpdateScheduled = true;
+
+            const checkForUsers = () => {
+                if (window.app.dataManager && window.app.dataManager.users && window.app.dataManager.users.size > 0) {
+                    console.log('Users loaded, re-rendering trays...');
+                    this.userUpdateScheduled = false;
+                    this.renderTrays(this.currentTrays);
+
+                    // Also update dashboard if it's current view
+                    if (window.app.viewManager && window.app.viewManager.currentView === 'dashboard') {
+                        window.app.viewManager.renderDashboardTrays(this.currentTrays);
+                    }
+                } else {
+                    setTimeout(checkForUsers, 1000);
+                }
+            };
+
+            setTimeout(checkForUsers, 1000);
         }
     }
 
@@ -224,8 +261,21 @@ export class TrayManager {
         this.currentTrays = trays;
         this.renderTrays(trays);
         this.updateStats(trays);
+
+        // Update dashboard if currently viewing dashboard
+        if (window.app.viewManager && window.app.viewManager.currentView === 'dashboard') {
+            window.app.viewManager.renderDashboardTrays(trays);
+            window.app.viewManager.updateTrayStats(trays);
+        }
+
+        // Update map if available
         if (window.app.mapManager) {
             window.app.mapManager.updateMap(trays);
+        }
+
+        // If users are not loaded yet, schedule a re-render when they are
+        if (window.app.dataManager && window.app.dataManager.users && window.app.dataManager.users.size === 0) {
+            this.scheduleUserNameUpdate();
         }
     }
 
@@ -239,11 +289,13 @@ export class TrayManager {
 
     renderCardView(trays) {
         const trayCardView = document.getElementById('trayCardView');
+        if (!trayCardView) return;
 
         if (trays.length === 0) {
             trayCardView.innerHTML = `
-                <div class="col-12 text-center">
-                    <p class="text-muted">No trays found. Add a new tray to get started.</p>
+                <div class="loading-state">
+                    <i class="fas fa-box fa-3x mb-3" style="color: var(--gray-300);"></i>
+                    <p>No trays found. Add a new tray to get started.</p>
                 </div>
             `;
             return;
@@ -258,12 +310,13 @@ export class TrayManager {
 
     renderListView(trays) {
         const trayHorizontalCards = document.getElementById('trayHorizontalCards');
+        if (!trayHorizontalCards) return;
 
         if (trays.length === 0) {
             trayHorizontalCards.innerHTML = `
-                <div class="text-center text-muted py-5">
-                    <i class="fas fa-medical-bag fa-3x mb-3 opacity-50"></i>
-                    <p class="mb-0">No trays found. Add a new tray to get started.</p>
+                <div class="loading-state">
+                    <i class="fas fa-box fa-3x mb-3" style="color: var(--gray-300);"></i>
+                    <p>No trays found. Add a new tray to get started.</p>
                 </div>
             `;
             return;
@@ -276,18 +329,82 @@ export class TrayManager {
         });
     }
 
+    createTrayCard(tray) {
+        const card = document.createElement('div');
+        card.className = 'tray-card';
+
+        const statusClass = this.getStatusClass(tray.status);
+        const typeIcon = this.getTrayTypeIcon(tray.type);
+        const locationText = this.getLocationText(tray.location);
+
+        card.innerHTML = `
+            <div class="tray-card-header">
+                <div class="tray-card-title">
+                    <div class="tray-type-icon">
+                        <i class="${typeIcon}"></i>
+                    </div>
+                    ${tray.name}
+                </div>
+                <span class="tray-status-badge ${statusClass}">${tray.status}</span>
+            </div>
+            <div class="tray-card-content">
+                <div class="tray-detail">
+                    <i class="fas fa-layer-group"></i>
+                    <span class="tray-detail-value">${this.getTrayTypeText(tray.type)}</span>
+                </div>
+                <div class="tray-detail">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span class="tray-detail-value">${locationText}</span>
+                </div>
+                ${tray.caseDate ? `
+                    <div class="tray-detail">
+                        <i class="fas fa-calendar"></i>
+                        <span class="tray-detail-value">${tray.caseDate}</span>
+                    </div>
+                ` : `
+                    <div class="tray-detail">
+                        <i class="fas fa-calendar"></i>
+                        <span class="tray-detail-empty">Not scheduled</span>
+                    </div>
+                `}
+                ${tray.surgeon ? `
+                    <div class="tray-detail">
+                        <i class="fas fa-user-md"></i>
+                        <span class="tray-detail-value">${this.getSurgeonName(tray.surgeon)}</span>
+                    </div>
+                ` : `
+                    <div class="tray-detail">
+                        <i class="fas fa-user-md"></i>
+                        <span class="tray-detail-empty">Not assigned</span>
+                    </div>
+                `}
+                ${tray.assignedTo ? `
+                    <div class="tray-detail">
+                        <i class="fas fa-user"></i>
+                        <span class="tray-detail-value">Assigned to: ${this.getUserName(tray.assignedTo)}</span>
+                    </div>
+                ` : ''}
+            </div>
+            <div class="tray-card-actions">
+                ${this.getTrayActions(tray)}
+            </div>
+        `;
+
+        return card;
+    }
+
     createHorizontalTrayCard(tray) {
         const card = document.createElement('div');
         card.className = 'tray-horizontal-card';
 
-        const statusClass = `status-${tray.status === 'in-use' ? 'in-use' : tray.status}`;
+        const statusClass = this.getStatusClass(tray.status);
         const locationIcon = this.getLocationIcon(tray.location);
         const trayTypeIcon = this.getTrayTypeIcon(tray.type);
 
         card.innerHTML = `
             <div class="tray-horizontal-header">
                 <div class="tray-horizontal-title">
-                    <div class="tray-icon">
+                    <div class="tray-type-icon">
                         <i class="${trayTypeIcon}"></i>
                     </div>
                     <div>
@@ -296,7 +413,7 @@ export class TrayManager {
                     </div>
                 </div>
                 <div class="tray-horizontal-status">
-                    <span class="badge ${statusClass} status-badge">${tray.status}</span>
+                    <span class="tray-status-badge ${statusClass}">${tray.status}</span>
                 </div>
             </div>
             
@@ -305,12 +422,8 @@ export class TrayManager {
                     <label>Location</label>
                     <span>
                         <i class="${locationIcon} me-2"></i>
-                        ${this.getLocationText(tray)}
+                        ${this.getLocationText(tray.location)}
                     </span>
-                </div>
-                <div class="tray-horizontal-field">
-                    <label>Facility</label>
-                    <span class="${!tray.facility ? 'empty-value' : ''}">${tray.facility || 'Not assigned'}</span>
                 </div>
                 <div class="tray-horizontal-field">
                     <label>Case Date</label>
@@ -318,7 +431,11 @@ export class TrayManager {
                 </div>
                 <div class="tray-horizontal-field">
                     <label>Surgeon</label>
-                    <span class="${!tray.surgeon ? 'empty-value' : ''}">${tray.surgeon || 'Not assigned'}</span>
+                    <span class="${!tray.surgeon ? 'empty-value' : ''}">${tray.surgeon ? this.getSurgeonName(tray.surgeon) : 'Not assigned'}</span>
+                </div>
+                <div class="tray-horizontal-field">
+                    <label>Assigned To</label>
+                    <span class="${!tray.assignedTo ? 'empty-value' : ''}">${tray.assignedTo ? this.getUserName(tray.assignedTo) : 'Not assigned'}</span>
                 </div>
             </div>
             
@@ -328,6 +445,16 @@ export class TrayManager {
         `;
 
         return card;
+    }
+
+    getStatusClass(status) {
+        switch (status) {
+            case 'available': return 'status-available';
+            case 'in-use': return 'status-in-use';
+            case 'corporate': return 'status-corporate';
+            case 'trunk': return 'status-trunk';
+            default: return 'status-available';
+        }
     }
 
     getTrayTypeIcon(type) {
@@ -350,40 +477,6 @@ export class TrayManager {
         return typeTexts[type] || type;
     }
 
-    createTrayCard(tray) {
-        const col = document.createElement('div');
-        col.className = 'col-md-6 col-lg-4 mb-3';
-
-        const statusClass = `status-${tray.status === 'in-use' ? 'in-use' : tray.status}`;
-        const locationIcon = this.getLocationIcon(tray.location);
-
-        col.innerHTML = `
-            <div class="card tray-card h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <h6 class="card-title">${tray.name}</h6>
-                        <span class="badge ${statusClass} status-badge">${tray.status}</span>
-                    </div>
-                    <p class="card-text">
-                        <small class="text-muted">
-                            <i class="${locationIcon}"></i> ${this.getLocationText(tray)}
-                        </small>
-                    </p>
-                    ${tray.facility ? `<p class="card-text"><small><strong>Facility:</strong> ${tray.facility}</small></p>` : ''}
-                    ${tray.caseDate ? `<p class="card-text"><small><strong>Case Date:</strong> ${tray.caseDate}</small></p>` : ''}
-                    ${tray.surgeon ? `<p class="card-text"><small><strong>Surgeon:</strong> ${tray.surgeon}</small></p>` : ''}
-                    <div class="mt-auto">
-                        <div class="btn-group w-100" role="group">
-                            ${this.getTrayActions(tray)}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        return col;
-    }
-
     getLocationIcon(location) {
         const icons = {
             'trunk': 'fas fa-car',
@@ -393,40 +486,88 @@ export class TrayManager {
         return icons[location] || 'fas fa-map-marker-alt';
     }
 
-    getLocationText(tray) {
-        if (tray.location === 'facility' && tray.facility) {
-            return tray.facility;
+    getLocationText(locationId) {
+        // Get location from Firebase collection using the ID
+        if (window.app.locationManager && window.app.locationManager.currentLocations) {
+            const location = window.app.locationManager.currentLocations.find(
+                loc => loc.id === locationId
+            );
+            if (location) {
+                return location.name || 'Unknown';
+            }
         }
-        const locationTexts = {
+
+        // Fallback for old static locations
+        const staticLocations = {
             'trunk': 'Rep Trunk',
             'facility': 'Medical Facility',
             'corporate': 'SI-BONE Corporate'
         };
-        return locationTexts[tray.location] || 'Unknown';
+
+        return staticLocations[locationId] || locationId || 'Unknown Location';
+    }
+
+    getUserName(userId) {
+        if (window.app?.dataManager?.users && window.app.dataManager.users.size > 0) {
+            const user = window.app.dataManager.users.get(userId);
+            if (user) {
+                return user.name || user.email || 'Unknown User';
+            }
+            return userId;
+        }
+
+        return 'Loading user...';
+    }
+
+    getSurgeonName(surgeonId) {
+        // If it's already a name (legacy data), return as is
+        if (!surgeonId || typeof surgeonId !== 'string') return 'Unknown Surgeon';
+
+        // Check if it looks like an ID (Firebase IDs are longer)
+        if (surgeonId.length < 15) {
+            // Probably a legacy name, return as is
+            return surgeonId;
+        }
+
+        // Try to find surgeon by ID
+        if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons) {
+            const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === surgeonId);
+            if (surgeon) {
+                return `${surgeon.title || 'Dr.'} ${surgeon.name}`;
+            }
+        }
+
+        // Fallback: if surgeon not found, return the ID (shouldn't happen in normal use)
+        return surgeonId;
     }
 
     getTrayActions(tray) {
         let actions = '';
 
-        //if (tray.status === 'available' && tray.location === 'trunk') {
         if (tray.status === 'available') {
-            actions += `<button class="btn btn-sm btn-primary" onclick="app.modalManager.showCheckinModal('${tray.id}')">
-                <i class="fas fa-sign-in-alt"></i> Check-in
-            </button>`;
+            actions += `
+                <button class="btn-primary-custom btn-sm" onclick="app.modalManager.showCheckinModal('${tray.id}')">
+                    <i class="fas fa-sign-in-alt"></i> Check-in
+                </button>
+            `;
         }
 
-        if (tray.status === 'in-use' && tray.location === 'facility') {
-            actions += `<button class="btn btn-sm btn-warning" onclick="app.modalManager.showPickupModal('${tray.id}')">
-                <i class="fas fa-hand-paper"></i> Pickup
-            </button>`;
-            actions += `<button class="btn btn-sm btn-info" onclick="app.modalManager.showTurnoverModal('${tray.id}')">
-                <i class="fas fa-exchange-alt"></i> Turnover
-            </button>`;
+        if (tray.status === 'in-use') {
+            actions += `
+                <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
+                    <i class="fas fa-hand-paper"></i> Pickup
+                </button>
+                <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showTurnoverModal('${tray.id}')">
+                    <i class="fas fa-exchange-alt"></i> Turnover
+                </button>
+            `;
         }
 
-        actions += `<button class="btn btn-sm btn-outline-secondary" onclick="app.modalManager.showHistoryModal('${tray.id}')">
-            <i class="fas fa-history"></i> History
-        </button>`;
+        actions += `
+            <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showHistoryModal('${tray.id}')">
+                <i class="fas fa-history"></i> History
+            </button>
+        `;
 
         return actions;
     }
@@ -439,9 +580,84 @@ export class TrayManager {
             trunk: trays.filter(t => t.location === 'trunk').length
         };
 
-        document.getElementById('availableCount').textContent = stats.available;
-        document.getElementById('inUseCount').textContent = stats.inUse;
-        document.getElementById('corporateCount').textContent = stats.corporate;
-        document.getElementById('trunkCount').textContent = stats.trunk;
+        // Update stats in the trays view if elements exist
+        const availableElement = document.getElementById('availableCount');
+        const inUseElement = document.getElementById('inUseCount');
+        const corporateElement = document.getElementById('corporateCount');
+        const trunkElement = document.getElementById('trunkCount');
+
+        if (availableElement) availableElement.textContent = stats.available;
+        if (inUseElement) inUseElement.textContent = stats.inUse;
+        if (corporateElement) corporateElement.textContent = stats.corporate;
+        if (trunkElement) trunkElement.textContent = stats.trunk;
+    }
+
+    showSuccessNotification(message) {
+        this.showNotification(message, 'success');
+    }
+
+    showErrorNotification(message) {
+        this.showNotification(message, 'error');
+    }
+
+    showNotification(message, type = 'info') {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 400px;
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            color: white;
+            font-weight: 500;
+            box-shadow: var(--shadow-lg);
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        `;
+
+        // Set background color based on type
+        switch (type) {
+            case 'success':
+                notification.style.background = 'var(--success-green)';
+                break;
+            case 'error':
+                notification.style.background = 'var(--danger-red)';
+                break;
+            default:
+                notification.style.background = 'var(--primary-blue)';
+        }
+
+        notification.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+                <span>${message}</span>
+                <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: white; margin-left: auto; cursor: pointer;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+
+        document.body.appendChild(notification);
+
+        // Animate in
+        setTimeout(() => {
+            notification.style.transform = 'translateX(0)';
+        }, 100);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.style.transform = 'translateX(100%)';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.remove();
+                    }
+                }, 300);
+            }
+        }, 5000);
     }
 }
