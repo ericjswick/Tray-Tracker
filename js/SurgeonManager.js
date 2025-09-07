@@ -105,19 +105,30 @@ export class SurgeonManager {
     }
 
     setupRealtimeListeners() {
-        if (!this.db) return;
+        if (!this.db) {
+            console.error('Database not initialized in SurgeonManager');
+            this.handleSurgeonsUpdate([]);
+            return;
+        }
 
-        const surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('createdAt', 'desc'));
-        this.surgeonsUnsubscribe = onSnapshot(surgeonsQuery, (snapshot) => {
-            const surgeons = [];
-            snapshot.forEach((doc) => {
-                surgeons.push({ id: doc.id, ...doc.data() });
+        try {
+            const surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('createdAt', 'desc'));
+            this.surgeonsUnsubscribe = onSnapshot(surgeonsQuery, (snapshot) => {
+                const surgeons = [];
+                snapshot.forEach((doc) => {
+                    surgeons.push({ id: doc.id, ...doc.data() });
+                });
+
+                this.handleSurgeonsUpdate(surgeons);
+            }, (error) => {
+                console.error('Error listening to surgeons:', error);
+                this.showErrorNotification('Error loading physicians: ' + error.message);
+                this.handleSurgeonsUpdate([]);
             });
-
-            this.handleSurgeonsUpdate(surgeons);
-        }, (error) => {
-            console.error('Error listening to surgeons:', error);
-        });
+        } catch (error) {
+            console.error('Error setting up surgeons listener:', error);
+            this.handleSurgeonsUpdate([]);
+        }
     }
 
     async addSurgeon() {
