@@ -75,9 +75,9 @@ export class SurgeonManager {
         this.renderSurgeons(this.currentSurgeons);
     }
 
-    initializeViewMode() {
+    async initializeViewMode() {
         this.setViewMode(this.viewMode);
-        this.setupRealtimeListeners();
+        await this.setupRealtimeListeners();
         this.showLoadingState();
     }
 
@@ -125,7 +125,7 @@ export class SurgeonManager {
         }
     }
 
-    setupRealtimeListeners() {
+    async setupRealtimeListeners() {
         console.log('Setting up realtime listeners for physicians...');
         
         if (!this.db) {
