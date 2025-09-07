@@ -16,7 +16,7 @@ services:
       - TRAY_TRACKER_ENV=docker
       - CLEAN_URLS_ENABLED=true
       # Configuration environment variable (uncomment to use specific config)
-      # - ENVIRONMENT_VARIABLE_FILE=dino-dev-1
+      - ENVIRONMENT_VARIABLE_FILE=dino-dev-1
     depends_on:
       - api-server
     networks:

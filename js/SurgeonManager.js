@@ -1,5 +1,5 @@
 // js/SurgeonManager.js - Surgeon Management for Tray Tracker
-import { collection, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, addDoc, getDocs, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+import { collection, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, addDoc, getDocs, onSnapshot, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 
 export class SurgeonManager {
     constructor(db) {
@@ -7,6 +7,32 @@ export class SurgeonManager {
         this.currentSurgeons = [];
         this.viewMode = this.getStoredViewMode();
         this.surgeonsUnsubscribe = null;
+        
+        // Initialize PhysicianPreferenceService for managing tray preferences
+        // Note: Using direct Firestore operations due to CommonJS/ES6 module compatibility issues
+        this.physicianPreferenceService = null;
+        
+        // Storage for current surgeon's preferences during editing
+        this.currentSurgeonPreferences = [];
+        
+        // Log initialization immediately
+        this.logToAPI('SurgeonManager initialized', { 
+            timestamp: new Date().toISOString(),
+            hasDb: !!db
+        }, 'surgeon-init');
+    }
+
+    async initializePreferenceService() {
+        try {
+            console.log('Attempting to initialize PhysicianPreferenceService...');
+            const { PhysicianPreferenceService } = await import('../shared_backend/services/PhysicianPreferenceService.js');
+            console.log('PhysicianPreferenceService imported successfully:', PhysicianPreferenceService);
+            this.physicianPreferenceService = new PhysicianPreferenceService(this.db);
+            console.log('PhysicianPreferenceService initialized successfully:', this.physicianPreferenceService);
+        } catch (error) {
+            console.error('Error initializing PhysicianPreferenceService:', error);
+            console.error('Error stack:', error.stack);
+        }
     }
 
     getStoredViewMode() {
@@ -81,7 +107,7 @@ export class SurgeonManager {
     setupRealtimeListeners() {
         if (!this.db) return;
 
-        const surgeonsQuery = query(collection(this.db, 'surgeons'), orderBy('createdAt', 'desc'));
+        const surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('createdAt', 'desc'));
         this.surgeonsUnsubscribe = onSnapshot(surgeonsQuery, (snapshot) => {
             const surgeons = [];
             snapshot.forEach((doc) => {
@@ -97,10 +123,8 @@ export class SurgeonManager {
     async addSurgeon() {
         try {
 
-            // Get selected case type IDs from multi-select
-            const preferredCasesSelect = document.getElementById('surgeonPreferredCases');
-            const selectedCaseTypes = Array.from(preferredCasesSelect.selectedOptions).map(option => option.value);
-            const preferredCasesString = selectedCaseTypes.join(',');
+            // Preferred cases functionality removed - set to empty string
+            const preferredCasesString = '';
 
             const surgeon = {
                 name: document.getElementById('surgeonName').value,
@@ -117,7 +141,7 @@ export class SurgeonManager {
                 isDemoSurgeon: false
             };
 
-            await addDoc(collection(this.db, 'surgeons'), surgeon);
+            await addDoc(collection(this.db, 'physicians'), surgeon);
 
             bootstrap.Modal.getInstance(document.getElementById('addSurgeonModal')).hide();
             document.getElementById('addSurgeonForm').reset();
@@ -133,10 +157,8 @@ export class SurgeonManager {
         try {
             const surgeonId = document.getElementById('editSurgeonId').value;
 
-            // Get selected case type IDs from multi-select
-            const preferredCasesSelect = document.getElementById('editSurgeonPreferredCases');
-            const selectedCaseTypes = Array.from(preferredCasesSelect.selectedOptions).map(option => option.value);
-            const preferredCasesString = selectedCaseTypes.join(',');
+            // Preferred cases functionality removed - set to empty string
+            const preferredCasesString = '';
 
             const updates = {
                 name: document.getElementById('editSurgeonName').value,
@@ -152,7 +174,7 @@ export class SurgeonManager {
                 modifiedBy: window.app.authManager.getCurrentUser()?.uid
             };
 
-            await updateDoc(doc(this.db, 'surgeons', surgeonId), updates);
+            await updateDoc(doc(this.db, 'physicians', surgeonId), updates);
 
             bootstrap.Modal.getInstance(document.getElementById('editSurgeonModal')).hide();
             this.showSuccessNotification('Surgeon updated successfully!');
@@ -168,7 +190,7 @@ export class SurgeonManager {
         }
 
         try {
-            await deleteDoc(doc(this.db, 'surgeons', surgeonId));
+            await deleteDoc(doc(this.db, 'physicians', surgeonId));
             this.showSuccessNotification('Surgeon deleted successfully!');
         } catch (error) {
             console.error('Error deleting surgeon:', error);
@@ -513,6 +535,891 @@ export class SurgeonManager {
                 }, 300);
             }
         }, 5000);
+    }
+
+    // Tray Preferences Management Methods
+    async loadSurgeonTrayPreferences(surgeonId) {
+        console.log('loadSurgeonTrayPreferences called with surgeonId:', surgeonId);
+        try {
+            if (!surgeonId) {
+                console.log('No surgeonId provided');
+                this.currentSurgeonPreferences = [];
+                await this.renderTrayPreferencesAccordion();
+                await this.populateCaseTypeDropdown();
+                return;
+            }
+
+            // Use direct Firestore operations (bypassing service due to module compatibility issues)
+            console.log('Using direct Firestore operations for preferences');
+            await this.loadSurgeonTrayPreferencesDirectly(surgeonId);
+            
+            // Check if tray ID dropdown exists before populating case types
+            const trayDropdown = document.getElementById('surgeonPreferenceTrayIdDropdown');
+            console.log('🔥 INITIAL CHECK: Tray ID dropdown exists on modal load:', !!trayDropdown);
+            console.log('🔥 INITIAL CHECK: Tray ID dropdown element:', trayDropdown);
+            
+            // Populate case type dropdown and render preferences
+            await this.renderTrayPreferencesAccordion();
+            await this.populateCaseTypeDropdown();
+            
+            // Also populate tray dropdown with all trays initially
+            await this.logToAPI('Initial tray dropdown population in loadSurgeonTrayPreferences');
+            await this.populateTrayIdDropdown();
+        } catch (error) {
+            console.error('Error loading surgeon tray preferences:', error);
+            this.currentSurgeonPreferences = [];
+            
+            // Still populate case type dropdown on error
+            await this.renderTrayPreferencesAccordion();
+            await this.populateCaseTypeDropdown();
+            
+            // Also populate tray dropdown even on error
+            await this.logToAPI('Error case: Initial tray dropdown population in loadSurgeonTrayPreferences');
+            await this.populateTrayIdDropdown();
+        }
+    }
+
+    async renderTrayPreferencesAccordion() {
+        const accordion = document.getElementById('surgeonTrayPreferencesAccordion');
+        if (!accordion) return;
+
+        // Group preferences by case type
+        const groupedPrefs = {};
+        this.currentSurgeonPreferences.forEach(pref => {
+            if (!groupedPrefs[pref.case_type]) {
+                groupedPrefs[pref.case_type] = [];
+            }
+            groupedPrefs[pref.case_type].push(pref);
+        });
+
+        if (Object.keys(groupedPrefs).length === 0) {
+            accordion.innerHTML = '<p class="text-muted">No tray preferences set for this surgeon.</p>';
+            return;
+        }
+
+        // Get all trays to resolve names
+        const allTrays = await this.getAllTrays();
+        const trayMap = {};
+        allTrays.forEach(tray => {
+            trayMap[tray.id] = tray.tray_name || tray.name || tray.id;
+        });
+
+        let html = '';
+        Object.entries(groupedPrefs).forEach(([caseType, prefs], index) => {
+            const accordionId = `preference-${index}`;
+            const isFirst = index === 0;
+            
+            html += `
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button ${isFirst ? '' : 'collapsed'}" type="button" 
+                                data-bs-toggle="collapse" data-bs-target="#${accordionId}">
+                            ${caseType} <span class="badge bg-secondary ms-2">${prefs.length} preferences</span>
+                        </button>
+                    </h2>
+                    <div id="${accordionId}" class="accordion-collapse collapse ${isFirst ? 'show' : ''}" 
+                         data-bs-parent="#surgeonTrayPreferencesAccordion">
+                        <div class="accordion-body">
+                            ${prefs.map(pref => {
+                                const trayName = trayMap[pref.tray_id] || pref.tray_name || pref.tray_id;
+                                const requirementBadgeClass = pref.requirement_type === 'required' ? 'danger' : 
+                                                              pref.requirement_type === 'preferred' ? 'warning' : 'secondary';
+                                return `
+                                <div class="preference-item p-2 mb-2 bg-light border rounded" data-pref-id="${pref.id}">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div class="flex-grow-1">
+                                            <strong>${trayName}</strong>
+                                            <span class="badge bg-${requirementBadgeClass} ms-2">
+                                                ${pref.requirement_type}
+                                            </span>
+                                            <span class="badge bg-info text-dark ms-2">
+                                                Qty: ${pref.quantity || 1}
+                                            </span>
+                                            ${pref.notes ? `<br><small class="text-muted">${pref.notes}</small>` : ''}
+                                        </div>
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-outline-danger" 
+                                                    onclick="app.surgeonManager.removeTrayPreference('${pref.id}')">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                            }).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        accordion.innerHTML = html;
+    }
+
+    async populateCaseTypeDropdown() {
+        const dropdown = document.getElementById('surgeonPrefCaseType');
+        console.log('populateCaseTypeDropdown called, dropdown element:', dropdown);
+        
+        if (!dropdown) {
+            console.error('surgeonPrefCaseType dropdown not found in DOM');
+            return;
+        }
+
+        dropdown.innerHTML = '<option value="">Loading...</option>';
+
+        try {
+            // Debug logging
+            console.log('window.app:', window.app);
+            console.log('window.app.dataManager:', window.app?.dataManager);
+            console.log('window.app.dataManager.caseTypes:', window.app?.dataManager?.caseTypes);
+
+            // Ensure case types are loaded
+            let caseTypes = [];
+            if (window.app.dataManager && window.app.dataManager.caseTypes) {
+                caseTypes = window.app.dataManager.caseTypes;
+                console.log('Using cached case types:', caseTypes);
+            } else if (window.app.dataManager) {
+                console.log('Loading case types from dataManager...');
+                caseTypes = await window.app.dataManager.getAllCaseTypes();
+                console.log('Loaded case types:', caseTypes);
+            }
+
+            // If still no case types, use hardcoded MyRepData case type names as fallback
+            if (!caseTypes || caseTypes.length === 0) {
+                console.log('Using hardcoded case type names as fallback');
+                const hardcodedCaseTypes = [
+                    'SI fusion – lateral',
+                    'SI fusion – Intra–articular', 
+                    'Spine fusion – Short Construct',
+                    'Spine fusion – Long Construct',
+                    'Revision Surgery – Spine fusion',
+                    'Revision Surgery – SI fusion',
+                    'Minimally Invasive Spine fusion'
+                ];
+                caseTypes = hardcodedCaseTypes.map(name => ({ name: name, active: true }));
+            }
+
+            dropdown.innerHTML = '<option value="">Select Case Type...</option>';
+            
+            if (caseTypes && caseTypes.length > 0) {
+                const activeCaseTypes = caseTypes.filter(caseType => caseType.active !== false);
+                console.log('Active case types:', activeCaseTypes);
+                
+                activeCaseTypes
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .forEach(caseType => {
+                        dropdown.innerHTML += `<option value="${caseType.name}">${caseType.name}</option>`;
+                    });
+                console.log('Populated dropdown with', activeCaseTypes.length, 'case types');
+            } else {
+                console.log('No case types available');
+                dropdown.innerHTML = '<option value="">No case types available</option>';
+            }
+
+            // Add event listener for case type selection change
+            console.log('Adding event listener to case type dropdown:', dropdown);
+            
+            // Remove any existing listeners first
+            dropdown.onchange = null;
+            
+            // Add the event listener using arrow function to preserve 'this' context
+            dropdown.addEventListener('change', async (event) => {
+                console.log('CHANGE EVENT TRIGGERED! Event:', event);
+                console.log('Selected value:', event.target.value);
+                await this.logToAPI('CHANGE EVENT TRIGGERED', { 
+                    selectedValue: event.target.value,
+                    dropdownId: event.target.id,
+                    timestamp: new Date().toISOString()
+                }, 'dropdown-events');
+                this.handleCaseTypeChange(event);
+            });
+            
+            // Remove the onchange backup since it's causing duplicate calls
+            console.log('Event listener added successfully. Current dropdown value:', dropdown.value);
+            console.log('🔍 Case type dropdown setup complete. Element:', dropdown);
+            console.log('🔍 Dropdown ID:', dropdown.id);
+            console.log('🔍 Dropdown is enabled:', !dropdown.disabled);
+            
+            // Log setup completion to API
+            await this.logToAPI('Case type dropdown setup completed', {
+                dropdownId: dropdown.id,
+                optionsCount: dropdown.options.length,
+                currentValue: dropdown.value,
+                isEnabled: !dropdown.disabled,
+                timestamp: new Date().toISOString()
+            }, 'dropdown-setup');
+            
+            // Add a click handler to test if the element is responsive
+            dropdown.addEventListener('click', async () => {
+                console.log('🔍 Case type dropdown clicked!');
+                await this.logToAPI('Case type dropdown clicked', {
+                    dropdownId: dropdown.id,
+                    currentValue: dropdown.value,
+                    timestamp: new Date().toISOString()
+                }, 'dropdown-events');
+            });
+            
+            // Test that the dropdown is interactive
+            console.log('Dropdown options:', dropdown.options.length);
+            for (let i = 0; i < dropdown.options.length; i++) {
+                console.log(`Option ${i}: value="${dropdown.options[i].value}", text="${dropdown.options[i].text}"`);
+            }
+            
+            // Add a global test function for debugging
+            window.testCaseTypeChange = () => {
+                console.log('Manual test: Triggering case type change for first available option');
+                if (dropdown.options.length > 1) {
+                    dropdown.value = dropdown.options[1].value;
+                    dropdown.dispatchEvent(new Event('change'));
+                } else {
+                    console.log('No options available to test');
+                }
+            };
+            console.log('Test function available: window.testCaseTypeChange()');
+            
+            // Also add direct click listener as backup
+            dropdown.addEventListener('click', () => {
+                console.log('Case type dropdown clicked, current value:', dropdown.value);
+            });
+        } catch (error) {
+            console.error('Error loading case types for dropdown:', error);
+            dropdown.innerHTML = '<option value="">Error loading case types</option>';
+        }
+    }
+
+    async handleCaseTypeChange(event) {
+        const selectedCaseType = event.target.value;
+        const callId = Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+        
+        console.log(`🔍 [${callId}] Case type change triggered:`, { 
+            selectedCaseType, 
+            eventTargetId: event.target.id,
+            timestamp: new Date().toISOString()
+        });
+        
+        await this.logToAPI('handleCaseTypeChange triggered', { 
+            callId,
+            selectedCaseType, 
+            eventTargetId: event.target.id,
+            eventTargetValue: event.target.value,
+            timestamp: new Date().toISOString()
+        }, 'case-type-change');
+        
+        // Populate tray dropdown filtered by selected case type
+        console.log(`🔍 [${callId}] About to call populateTrayIdDropdown`);
+        await this.logToAPI('Calling populateTrayIdDropdown with case type filter', { 
+            callId,
+            selectedCaseType 
+        }, 'case-type-change');
+        
+        await this.populateTrayIdDropdown(selectedCaseType, callId);
+        
+        console.log(`🔍 [${callId}] Finished populateTrayIdDropdown`);
+        await this.logToAPI('Finished populateTrayIdDropdown call', { 
+            callId,
+            selectedCaseType 
+        }, 'case-type-change');
+    }
+
+    async logToAPI(message, data = null, context = 'tray-dropdown-debug') {
+        // Check global API logging toggle
+        if (!window.is_enable_api_logging) {
+            return; // Skip logging if disabled
+        }
+        
+        try {
+            await fetch('https://traytracker-dev.serverdatahost.com/api/debug/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    level: 'info',
+                    message: `🔥 ${message}`,
+                    data: data,
+                    context: context
+                })
+            });
+        } catch (error) {
+            console.log('Failed to log to API:', error);
+            // Fallback to console.log if API endpoint fails
+            console.log(`🔥 ${message}`, data);
+        }
+    }
+
+    async populateTrayIdDropdown(caseType = null, callId = null) {
+        const localCallId = callId || Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+        console.log(`🔍 [${localCallId}] populateTrayIdDropdown called with:`, { caseType, filterByCaseType: !!caseType });
+        await this.logToAPI('populateTrayIdDropdown called', { 
+            callId: localCallId,
+            caseType, 
+            filterByCaseType: !!caseType 
+        });
+        
+        // Check if element exists in DOM
+        const dropdown = document.getElementById('surgeonPreferenceTrayIdDropdown');
+        await this.logToAPI(`Tray ID dropdown element found: ${!!dropdown}`, { exists: !!dropdown, elementId: dropdown?.id });
+        
+        if (!dropdown) {
+            await this.logToAPI('ERROR: surgeonPreferenceTrayIdDropdown not found in DOM');
+            return;
+        }
+
+        dropdown.innerHTML = '<option value="">Loading...</option>';
+
+        try {
+            let trays = [];
+            
+            if (caseType && caseType.trim() !== '') {
+                // Get trays filtered by case type compatibility
+                await this.logToAPI('Getting trays filtered by case type', { caseType });
+                const allTrays = await window.app.dataManager.getAllTrays();
+                await this.logToAPI('All trays before filtering', { 
+                    count: allTrays.length,
+                    trays: allTrays.map(t => ({ id: t.id, tray_id: t.tray_id, name: t.name }))
+                });
+                
+                // Filter trays by case_type_compatibility
+                const filteredTrays = allTrays.filter(tray => {
+                    const compatible = tray.case_type_compatibility && 
+                                     Array.isArray(tray.case_type_compatibility) && 
+                                     tray.case_type_compatibility.includes(caseType);
+                    return compatible;
+                });
+                
+                await this.logToAPI('After case type filtering', {
+                    caseType,
+                    originalCount: allTrays.length,
+                    filteredCount: filteredTrays.length,
+                    filteredTrays: filteredTrays.map(t => ({ 
+                        id: t.id, 
+                        tray_id: t.tray_id, 
+                        name: t.name,
+                        case_type_compatibility: t.case_type_compatibility
+                    }))
+                });
+                
+                // Remove duplicates based on tray ID
+                trays = await this.removeDuplicateTrays(filteredTrays);
+                
+                await this.logToAPI('Filtered and deduplicated trays for case type', { caseType, filteredTrays: trays, length: trays?.length });
+            } else {
+                // Get all trays if no case type specified (initial load or when clearing selection)
+                await this.logToAPI('Getting all trays (no case type filter)');
+                const allTrays = await window.app.dataManager.getAllTrays();
+                await this.logToAPI('All trays (unfiltered)', { 
+                    count: allTrays.length,
+                    trays: allTrays.map(t => ({ id: t.id, tray_id: t.tray_id, name: t.name }))
+                });
+                
+                // Use trays directly but remove duplicates
+                trays = await this.removeDuplicateTrays(allTrays);
+            }
+            
+            await this.logToAPI('Final trays before dropdown population', {
+                count: trays?.length,
+                trays: trays?.map(t => ({ id: t.id, tray_id: t.tray_id, name: t.name }))
+            });
+            
+            dropdown.innerHTML = '<option value="">Select Tray ID...</option>';
+            
+            if (trays && trays.length > 0) {
+                await this.logToAPI(`Populating dropdown with ${trays.length} trays`, { count: trays.length, trays });
+                trays.forEach((tray, index) => {
+                    // Use MyRepData-compatible tray_id field, fallback to Firebase id
+                    const trayId = tray.tray_id || tray.id;
+                    const trayName = tray.name || trayId;
+                    console.log(`Adding tray ${index}: ID="${trayId}", Name="${trayName}"`, tray);
+                    dropdown.innerHTML += `<option value="${trayId}">${trayName}</option>`;
+                });
+                
+                // Log final dropdown population to API
+                await this.logToAPI('Dropdown population completed', {
+                    callId: localCallId,
+                    caseType,
+                    finalOptionCount: dropdown.options.length,
+                    traysAdded: trays.length,
+                    finalHTML: dropdown.innerHTML.substring(0, 500) + '...', // Truncate for logging
+                    timestamp: new Date().toISOString()
+                }, 'dropdown-population');
+                await this.logToAPI('Final dropdown populated', { 
+                    innerHTMLLength: dropdown.innerHTML.length,
+                    optionsCount: dropdown.options.length,
+                    firstOption: dropdown.options[1]?.text || 'none',
+                    finalHTML: dropdown.innerHTML
+                });
+            } else {
+                console.log('❌ NO TRAYS FOUND', { trays, caseType, traysLength: trays?.length });
+                await this.logToAPI('No trays found for case type, showing no trays message', { trays, caseType });
+                dropdown.innerHTML = caseType ? 
+                    `<option value="">No trays available for ${caseType}</option>` :
+                    '<option value="">No trays available</option>';
+            }
+        } catch (error) {
+            await this.logToAPI('Error loading trays', { error: error.message, stack: error.stack });
+            dropdown.innerHTML = '<option value="">Error loading trays</option>';
+        }
+    }
+
+    async getAllTrays() {
+        await this.logToAPI('getAllTrays called - fetching all trays from Firestore');
+        
+        try {
+            if (!this.db) {
+                await this.logToAPI('ERROR: this.db is null/undefined!');
+                return [];
+            }
+
+            // Query all trays from the trays collection (matching DataManager pattern)
+            await this.logToAPI('Querying trays collection directly from Firebase');
+            const traysQuery = query(collection(this.db, 'tray_tracking'));
+            const querySnapshot = await getDocs(traysQuery);
+            
+            await this.logToAPI('Trays query snapshot size', { size: querySnapshot.size });
+            
+            const trays = [];
+            const docDetails = [];
+            querySnapshot.forEach((doc) => {
+                const trayData = doc.data();
+                trays.push({
+                    id: doc.id,
+                    tray_name: trayData.tray_name || trayData.name || doc.id,
+                    ...trayData
+                });
+                
+                docDetails.push({ 
+                    docId: doc.id, 
+                    trayName: trayData.tray_name || trayData.name,
+                    hasData: !!trayData
+                });
+            });
+            
+            await this.logToAPI('Processing tray documents', { docDetails, count: docDetails.length });
+            
+            await this.logToAPI('Processed trays from Firebase', { trays, count: trays.length });
+            
+            // Sort by tray name
+            trays.sort((a, b) => (a.tray_name || '').localeCompare(b.tray_name || ''));
+            
+            return trays;
+            
+        } catch (error) {
+            await this.logToAPI('Error getting all trays from Firebase', { error: error.message, stack: error.stack });
+            return [];
+        }
+    }
+
+    async getTrayIdsByCaseType(caseType) {
+        await this.logToAPI('getTrayIdsByCaseType called', { caseType, caseTypeType: typeof caseType, value: JSON.stringify(caseType) });
+        
+        try {
+            // Query tray_requirements collection for the specified case type
+            await this.logToAPI('Querying tray_requirements collection', { case_type: caseType });
+            
+            if (!this.db) {
+                await this.logToAPI('ERROR: this.db is null/undefined!');
+                return this.getDefaultTrayIdsByCaseType(caseType);
+            }
+            
+            const q = query(
+                collection(this.db, 'tray_requirements'), 
+                where('case_type', '==', caseType),
+                where('deletedAt', '==', null)
+            );
+            
+            await this.logToAPI('Query created, executing getDocs...');
+            const querySnapshot = await getDocs(q);
+            const trayIds = [];
+            
+            await this.logToAPI('Query snapshot size', { size: querySnapshot.size });
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                trayIds.push({
+                    tray_id: data.tray_id,
+                    tray_name: data.tray_name || data.tray_id
+                });
+            });
+
+            await this.logToAPI('Raw trayIds from Firebase', { trayIds, count: trayIds.length });
+
+            // Remove duplicates based on tray_id
+            const uniqueTrayIds = trayIds.reduce((acc, current) => {
+                const exists = acc.find(item => item.tray_id === current.tray_id);
+                if (!exists) {
+                    acc.push(current);
+                }
+                return acc;
+            }, []);
+
+            // Sort by tray_id
+            uniqueTrayIds.sort((a, b) => a.tray_id.localeCompare(b.tray_id));
+
+            await this.logToAPI('Processed uniqueTrayIds from Firebase', { uniqueTrayIds, count: uniqueTrayIds.length });
+            
+            // If no data from database, use fallback
+            if (uniqueTrayIds.length === 0) {
+                await this.logToAPI('No tray IDs found in Firebase, using fallback data');
+                const fallbackIds = this.getDefaultTrayIdsByCaseType(caseType);
+                await this.logToAPI('Fallback returned', { fallbackIds, count: fallbackIds.length });
+                return fallbackIds;
+            }
+            
+            return uniqueTrayIds;
+        } catch (error) {
+            await this.logToAPI('Error getting tray IDs by case type from Firebase', { error: error.message, stack: error.stack });
+            
+            // Final fallback: return default tray IDs based on case type
+            const fallbackIds = this.getDefaultTrayIdsByCaseType(caseType);
+            await this.logToAPI('Error fallback returned', { fallbackIds, count: fallbackIds.length });
+            return fallbackIds;
+        }
+    }
+
+    getDefaultTrayIdsByCaseType(caseType) {
+        console.log('getDefaultTrayIdsByCaseType called with:', caseType);
+        
+        // Fallback tray IDs mapped to your actual database case types
+        const defaultTrayIds = {
+            // Your database case types mapped to appropriate tray IDs
+            'ALIF': [
+                { tray_id: 'alif_primary_tray', tray_name: 'ALIF Primary Tray' },
+                { tray_id: 'alif_instrumentation', tray_name: 'ALIF Instrumentation' }
+            ],
+            'Lateral Fusion': [
+                { tray_id: 'lateral_fusion_primary', tray_name: 'Lateral Fusion Primary Tray' },
+                { tray_id: 'lateral_fusion_backup', tray_name: 'Lateral Fusion Backup Tray' }
+            ],
+            'Minimally Invasive': [
+                { tray_id: 'mis_primary_tray', tray_name: 'MIS Primary Tray' },
+                { tray_id: 'mis_specialized_tools', tray_name: 'MIS Specialized Tools' }
+            ],
+            'Pain Management': [
+                { tray_id: 'pain_mgmt_basic', tray_name: 'Pain Management Basic Kit' },
+                { tray_id: 'pain_mgmt_injection', tray_name: 'Pain Management Injection Kit' }
+            ],
+            'Posterior Fusion': [
+                { tray_id: 'posterior_fusion_primary', tray_name: 'Posterior Fusion Primary Tray' },
+                { tray_id: 'posterior_fusion_instrumentation', tray_name: 'Posterior Fusion Instrumentation' }
+            ],
+            'Revision Surgery': [
+                { tray_id: 'revision_primary_kit', tray_name: 'Revision Surgery Primary Kit' },
+                { tray_id: 'revision_extraction_tools', tray_name: 'Revision Extraction Tools' }
+            ],
+            'SI Joint Fusion': [
+                { tray_id: 'si_joint_primary', tray_name: 'SI Joint Fusion Primary Tray' },
+                { tray_id: 'si_joint_instrumentation', tray_name: 'SI Joint Instrumentation' }
+            ],
+            'TLIF': [
+                { tray_id: 'tlif_primary_tray', tray_name: 'TLIF Primary Tray' },
+                { tray_id: 'tlif_cage_insertion', tray_name: 'TLIF Cage Insertion Tools' }
+            ]
+        };
+
+        const result = defaultTrayIds[caseType] || [];
+        console.log('Returning default tray IDs for', caseType, ':', result);
+        return result;
+    }
+
+    async addTrayPreference() {
+        try {
+            // Ensure case type dropdown is populated
+            const dropdown = document.getElementById('surgeonPrefCaseType');
+            if (dropdown && dropdown.children.length <= 1) {
+                await this.populateCaseTypeDropdown();
+            }
+
+            const caseType = document.getElementById('surgeonPrefCaseType').value.trim();
+            const trayId = document.getElementById('surgeonPreferenceTrayIdDropdown').value.trim();
+            const requirementType = document.getElementById('surgeonPrefRequirementType').value;
+            const quantity = parseInt(document.getElementById('surgeonPrefQuantity').value) || 1;
+            const notes = document.getElementById('surgeonPrefNotes').value.trim();
+            const surgeonId = document.getElementById('editSurgeonId').value;
+
+            if (!caseType || !trayId || !surgeonId) {
+                alert('Please fill in all required fields (Case Type and Tray ID are required)');
+                return;
+            }
+
+            // Check if we're in editing mode
+            if (this.editingPreferenceId) {
+                console.log('Updating existing preference:', this.editingPreferenceId);
+                await this.updateTrayPreferenceDirectly(this.editingPreferenceId, surgeonId, caseType, trayId, requirementType, quantity, notes);
+                
+                // Reset editing mode
+                this.editingPreferenceId = null;
+                const addButton = document.getElementById('addTrayPreferenceBtn');
+                if (addButton) {
+                    addButton.textContent = 'Add Preference';
+                    addButton.classList.remove('btn-warning');
+                    addButton.classList.add('btn-primary');
+                }
+            } else {
+                // Always use direct Firestore operations for new preferences
+                console.log('Using direct Firestore operations for adding preference');
+                await this.addTrayPreferenceDirectly(surgeonId, caseType, trayId, requirementType, quantity, notes);
+            }
+            return;
+
+            const preferenceData = {
+                physician_id: surgeonId,
+                case_type: caseType,
+                tray_id: trayId,
+                tray_name: trayId, // Use tray_id as tray_name for now
+                requirement_type: requirementType,
+                quantity: quantity,
+                priority: requirementType === 'required' ? 1 : requirementType === 'preferred' ? 2 : 3,
+                notes: notes
+            };
+
+            const userId = window.app.authManager.getCurrentUser()?.uid;
+            const created = await this.physicianPreferenceService.createPhysicianPreference(preferenceData, userId);
+
+            // Refresh preferences display
+            await this.loadSurgeonTrayPreferences(surgeonId);
+
+            // Clear form
+            document.getElementById('surgeonPrefCaseType').value = '';
+            document.getElementById('surgeonPreferenceTrayIdDropdown').innerHTML = '<option value="">Select Tray ID...</option>';
+            document.getElementById('surgeonPrefRequirementType').value = 'preferred';
+            document.getElementById('surgeonPrefQuantity').value = '1';
+            document.getElementById('surgeonPrefNotes').value = '';
+
+            this.showSuccessNotification('Tray preference added successfully!');
+        } catch (error) {
+            console.error('Error adding tray preference:', error);
+            this.showErrorNotification('Error adding tray preference: ' + error.message);
+        }
+    }
+
+    async editTrayPreference(preferenceId) {
+        try {
+            const preference = this.currentSurgeonPreferences.find(p => p.id === preferenceId);
+            if (!preference) {
+                this.showErrorNotification('Preference not found');
+                return;
+            }
+
+            // Populate the form with current values for editing
+            document.getElementById('surgeonPrefCaseType').value = preference.case_type;
+            document.getElementById('surgeonPrefRequirementType').value = preference.requirement_type || 'preferred';
+            document.getElementById('surgeonPrefQuantity').value = preference.quantity || '1';
+            document.getElementById('surgeonPrefNotes').value = preference.notes || '';
+
+            // Populate tray dropdown filtered by case type and select the current tray
+            await this.populateTrayIdDropdown(preference.case_type);
+            setTimeout(() => {
+                document.getElementById('surgeonPreferenceTrayIdDropdown').value = preference.tray_id;
+            }, 100);
+
+            // Store the preference ID for updating instead of creating new
+            this.editingPreferenceId = preferenceId;
+
+            // Update the button text to show it's editing
+            const addButton = document.getElementById('addTrayPreferenceBtn');
+            if (addButton) {
+                addButton.textContent = 'Update Preference';
+                addButton.classList.remove('btn-primary');
+                addButton.classList.add('btn-warning');
+            }
+
+            this.showSuccessNotification('Preference loaded for editing. Update the values and click "Update Preference".');
+        } catch (error) {
+            console.error('Error loading preference for edit:', error);
+            this.showErrorNotification('Error loading preference: ' + error.message);
+        }
+    }
+
+    async removeTrayPreference(preferenceId) {
+        try {
+            const userId = window.app.authManager.getCurrentUser()?.uid;
+            
+            if (this.physicianPreferenceService) {
+                // Use service if available
+                await this.physicianPreferenceService.deletePhysicianPreference(preferenceId, userId);
+            } else {
+                // Fallback: Direct Firestore operation
+                await this.deleteTrayPreferenceDirectly(preferenceId);
+            }
+
+            const surgeonId = document.getElementById('editSurgeonId').value;
+            await this.loadSurgeonTrayPreferences(surgeonId);
+
+            this.showSuccessNotification('Tray preference removed successfully!');
+        } catch (error) {
+            console.error('Error removing tray preference:', error);
+            this.showErrorNotification('Error removing tray preference: ' + error.message);
+        }
+    }
+
+    // Direct Firestore fallback methods (when service isn't available)
+    async updateTrayPreferenceDirectly(preferenceId, surgeonId, caseType, trayId, requirementType, quantity, notes) {
+        try {
+            const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+            
+            const updateData = {
+                case_type: caseType,
+                tray_id: trayId,
+                tray_name: trayId,
+                requirement_type: requirementType,
+                quantity: quantity,
+                priority: requirementType === 'required' ? 1 : requirementType === 'preferred' ? 2 : 3,
+                notes: notes,
+                updated_at: serverTimestamp(),
+                modifiedBy: window.app.authManager.getCurrentUser()?.uid
+            };
+
+            await updateDoc(doc(this.db, 'physician_preferences', preferenceId), updateData);
+
+            // Refresh preferences display
+            await this.loadSurgeonTrayPreferences(surgeonId);
+
+            // Clear form
+            document.getElementById('surgeonPrefCaseType').value = '';
+            document.getElementById('surgeonPreferenceTrayIdDropdown').innerHTML = '<option value="">Select Tray ID...</option>';
+            document.getElementById('surgeonPrefRequirementType').value = 'preferred';
+            document.getElementById('surgeonPrefQuantity').value = '1';
+            document.getElementById('surgeonPrefNotes').value = '';
+
+            this.showSuccessNotification('Tray preference updated successfully!');
+        } catch (error) {
+            console.error('Error updating tray preference directly:', error);
+            this.showErrorNotification('Error updating tray preference: ' + error.message);
+        }
+    }
+
+    async addTrayPreferenceDirectly(surgeonId, caseType, trayId, requirementType, quantity, notes) {
+        try {
+            const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+            
+            const preferenceData = {
+                physician_id: surgeonId,
+                case_type: caseType,
+                tray_id: trayId,
+                tray_name: trayId,
+                requirement_type: requirementType,
+                quantity: quantity,
+                priority: requirementType === 'required' ? 1 : requirementType === 'preferred' ? 2 : 3,
+                notes: notes,
+                created_at: serverTimestamp(),
+                updated_at: serverTimestamp(),
+                createdBy: window.app.authManager.getCurrentUser()?.uid,
+                modifiedBy: window.app.authManager.getCurrentUser()?.uid,
+                deletedAt: null
+            };
+
+            await addDoc(collection(this.db, 'physician_preferences'), preferenceData);
+
+            // Refresh preferences display
+            await this.loadSurgeonTrayPreferences(surgeonId);
+
+            // Clear form
+            document.getElementById('surgeonPrefCaseType').value = '';
+            document.getElementById('surgeonPreferenceTrayIdDropdown').innerHTML = '<option value="">Select Tray ID...</option>';
+            document.getElementById('surgeonPrefRequirementType').value = 'preferred';
+            document.getElementById('surgeonPrefQuantity').value = '1';
+            document.getElementById('surgeonPrefNotes').value = '';
+
+            this.showSuccessNotification('Tray preference added successfully!');
+        } catch (error) {
+            console.error('Error adding tray preference directly:', error);
+            this.showErrorNotification('Error adding tray preference: ' + error.message);
+        }
+    }
+
+    async deleteTrayPreferenceDirectly(preferenceId) {
+        try {
+            const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+            
+            await deleteDoc(doc(this.db, 'physician_preferences', preferenceId));
+            
+            console.log('Tray preference deleted directly:', preferenceId);
+        } catch (error) {
+            console.error('Error deleting tray preference directly:', error);
+            throw error;
+        }
+    }
+
+    async loadSurgeonTrayPreferencesDirectly(surgeonId) {
+        try {
+            const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+            
+            const q = query(
+                collection(this.db, 'physician_preferences'), 
+                where('physician_id', '==', surgeonId),
+                where('deletedAt', '==', null)
+            );
+            
+            const querySnapshot = await getDocs(q);
+            const preferences = [];
+            
+            querySnapshot.forEach((doc) => {
+                preferences.push({
+                    id: doc.id,
+                    ...doc.data()
+                });
+            });
+            
+            this.currentSurgeonPreferences = preferences;
+            console.log('Loaded preferences directly:', preferences);
+            
+            return preferences;
+        } catch (error) {
+            console.error('Error loading preferences directly:', error);
+            this.currentSurgeonPreferences = [];
+            return [];
+        }
+    }
+
+    async removeDuplicateTrays(trays) {
+        if (!trays || !Array.isArray(trays)) return trays;
+        
+        const inputData = { 
+            inputCount: trays.length,
+            inputTrays: trays.map(t => ({ id: t.id, tray_id: t.tray_id, name: t.name }))
+        };
+        
+        console.log('🔍 Starting deduplication:', inputData);
+        await this.logToAPI('Starting deduplication', inputData);
+        
+        const seen = new Set();
+        const uniqueTrays = [];
+        const duplicatesFound = [];
+        
+        trays.forEach((tray, index) => {
+            // Use MyRepData-compatible tray_id field, fallback to Firebase id
+            const trayId = tray.tray_id || tray.id;
+            if (!seen.has(trayId)) {
+                seen.add(trayId);
+                uniqueTrays.push(tray);
+                this.logToAPI(`Keeping tray ${index}`, { 
+                    trayId, 
+                    name: tray.name, 
+                    id: tray.id, 
+                    tray_id: tray.tray_id 
+                });
+            } else {
+                duplicatesFound.push({ 
+                    index, 
+                    trayId, 
+                    name: tray.name, 
+                    id: tray.id, 
+                    tray_id: tray.tray_id 
+                });
+                this.logToAPI(`Removing duplicate tray ${index}`, { 
+                    trayId, 
+                    name: tray.name, 
+                    id: tray.id, 
+                    tray_id: tray.tray_id 
+                });
+            }
+        });
+        
+        await this.logToAPI('Deduplication complete', {
+            inputCount: trays.length,
+            outputCount: uniqueTrays.length,
+            duplicatesRemoved: duplicatesFound.length,
+            duplicates: duplicatesFound
+        });
+        
+        return uniqueTrays;
     }
 
     cleanup() {

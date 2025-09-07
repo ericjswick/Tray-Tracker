@@ -1,9 +1,29 @@
 // js/CasesManager.js - Cases Management for Tray Tracker
+import { CASE_STATUS, CASE_STATUS_OPTIONS, DEFAULT_CASE_STATUS, getCaseStatusClass, isValidCaseStatus } from './constants/CaseStatus.js';
+
 export class CasesManager {
     constructor(dataManager) {
         this.dataManager = dataManager;
         this.currentCases = [];
         this.viewMode = this.getStoredViewMode();
+        
+        // Note: Services moved to backend API - frontend uses direct API calls
+    }
+
+    async getCaseById(caseId) {
+        let cases = this.currentCases;
+        
+        // If no cases loaded, try to get them from dataManager
+        if (!cases || cases.length === 0) {
+            try {
+                cases = await this.dataManager.getAllCases();
+            } catch (error) {
+                console.error('Error loading cases for getCaseById:', error);
+                return null;
+            }
+        }
+        
+        return cases.find(caseItem => caseItem.id === caseId);
     }
 
     getStoredViewMode() {
@@ -121,33 +141,47 @@ export class CasesManager {
     async addCase() {
         try {
             // Check authentication first
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.debug('Attempting to add case', {
                     isAuthenticated: !!window.app?.authManager?.currentUser,
                     currentUser: window.app?.authManager?.currentUser?.email || 'None'
                 }, 'case-add-auth');
             }
+
+            const caseTypeId = document.getElementById('addCaseCaseType').value;
+            const physician_id = document.getElementById('addCasePhysician').value;
             
+            // Get case type name for tray requirements lookup
+            const caseType = this.dataManager.caseTypes.find(ct => ct.id === caseTypeId);
+            const caseTypeName = caseType?.name;
+            
+            const scheduledDate = document.getElementById('scheduledDate').value;
+            const scheduledTime = document.getElementById('scheduledTime').value;
+
             const caseData = {
                 patientName: document.getElementById('patientName').value,
-                surgeonId: document.getElementById('addCaseSurgeon').value,
-                facilityId: document.getElementById('addCaseFacility').value,
-                caseTypeId: document.getElementById('addCaseCaseType').value,
-                scheduledDate: document.getElementById('scheduledDate').value,
-                scheduledTime: document.getElementById('scheduledTime').value,
+                physician_id: physician_id,
+                facility_id: document.getElementById('addCaseFacility').value,
+                caseTypeId: caseTypeId,
+                case_type: caseTypeName, // MyRepData compatibility
+                scheduledDate: scheduledDate, // Store date (assume CDT)
+                scheduledTime: scheduledTime, // Store time (assume CDT)
                 estimatedDuration: parseInt(document.getElementById('estimatedDuration').value) || 60,
-                tray_requirements: this.getSelectedTrayRequirements(),
-                status: 'scheduled',
+                status: DEFAULT_CASE_STATUS,
                 notes: document.getElementById('caseNotes').value,
                 priority: document.getElementById('casePriority').value || 'normal'
             };
 
+            // Get merged tray requirements using MyRepData logic
+            const trayRequirements = await this.getMergedTrayRequirements(caseTypeName, physician_id);
+            caseData.tray_requirements = trayRequirements;
+
             // Log the case data before attempting to save
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.debug('Case data collected', {
                     patientName: caseData.patientName,
-                    surgeonId: caseData.surgeonId,
-                    facilityId: caseData.facilityId,
+                    physician_id: caseData.physician_id,
+                    facility_id: caseData.facility_id,
                     caseTypeId: caseData.caseTypeId,
                     scheduledDate: caseData.scheduledDate,
                     scheduledTime: caseData.scheduledTime,
@@ -158,8 +192,8 @@ export class CasesManager {
                     hasNotes: !!caseData.notes,
                     dataValid: {
                         hasPatientName: !!caseData.patientName,
-                        hasSurgeon: !!caseData.surgeonId,
-                        hasFacility: !!caseData.facilityId,
+                        hasSurgeon: !!caseData.physician_id,
+                        hasFacility: !!caseData.facility_id,
                         hasCaseType: !!caseData.caseTypeId,
                         hasDate: !!caseData.scheduledDate
                     }
@@ -169,7 +203,18 @@ export class CasesManager {
             const savedCase = await this.dataManager.saveCase(caseData);
             if (savedCase && savedCase.id) {
                 console.log('Case saved successfully:', savedCase.id);
-                if (window.frontendLogger) {
+                
+                // Log case creation activity
+                const facilityName = this.getFacilityName(caseData.facility_id) || 'Unknown Facility';
+                const physicianName = this.getPhysicianName(caseData.physician_id) || 'Unknown Physician';
+                await this.dataManager.addSystemActivity(
+                    'case-created',
+                    `Created case for ${caseData.patientName} at ${facilityName} with ${physicianName} on ${caseData.scheduledDate}`,
+                    savedCase.id,
+                    'case'
+                );
+                
+                if (window.is_enable_api_logging && window.frontendLogger) {
                     window.frontendLogger.info('Case save operation successful', {
                         caseId: savedCase.id,
                         patientName: caseData.patientName
@@ -185,7 +230,7 @@ export class CasesManager {
             this.loadCases();
         } catch (error) {
             console.error('Error adding case:', error);
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.error('Case add operation failed in CasesManager', {
                     error: error.message,
                     code: error.code,
@@ -201,6 +246,18 @@ export class CasesManager {
             return window.app.modalManager.getTrayRequirementsFromUI('add');
         }
         return [];
+    }
+
+    // MyRepData-compatible method to merge tray requirements with physician preferences
+    // Note: Backend services moved to API - this now uses direct frontend data
+    async getMergedTrayRequirements(caseTypeName, physician_id) {
+        try {
+            // Use embedded requirements since services are now in backend API
+            return this.getSelectedTrayRequirements();
+        } catch (error) {
+            console.error('Error getting merged tray requirements:', error);
+            return [];
+        }
     }
 
     async loadCases() {
@@ -274,13 +331,14 @@ export class CasesManager {
         const facilities = this.dataManager.getFacilities();
         const caseTypes = this.dataManager.getCaseTypes();
         
-        const surgeon = surgeons.find(s => s.id === caseItem.surgeonId);
-        const facility = facilities.find(f => f.id === caseItem.facilityId);
+        const surgeon = surgeons.find(s => s.id === caseItem.physician_id);
+        const facility = facilities.find(f => f.id === caseItem.facility_id);
         const caseType = caseTypes.find(ct => ct.id === caseItem.caseTypeId);
         
+        // Display date/time assuming they're stored in CDT
         const scheduledDateTime = new Date(caseItem.scheduledDate + 'T' + (caseItem.scheduledTime || '08:00'));
         const dateStr = scheduledDateTime.toLocaleDateString();
-        const timeStr = scheduledDateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const timeStr = scheduledDateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (CDT)';
 
         return `
             <tr>
@@ -347,13 +405,14 @@ export class CasesManager {
         const facilities = this.dataManager.getFacilities();
         const caseTypes = this.dataManager.getCaseTypes();
         
-        const surgeon = surgeons.find(s => s.id === caseItem.surgeonId);
-        const facility = facilities.find(f => f.id === caseItem.facilityId);
+        const surgeon = surgeons.find(s => s.id === caseItem.physician_id);
+        const facility = facilities.find(f => f.id === caseItem.facility_id);
         const caseType = caseTypes.find(ct => ct.id === caseItem.caseTypeId);
         
+        // Display date/time assuming they're stored in CDT
         const scheduledDateTime = new Date(caseItem.scheduledDate + 'T' + (caseItem.scheduledTime || '08:00'));
         const dateStr = scheduledDateTime.toLocaleDateString();
-        const timeStr = scheduledDateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const timeStr = scheduledDateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (CDT)';
 
         return `
             <div class="col-md-6 col-lg-4">
@@ -445,7 +504,7 @@ export class CasesManager {
                                                 <small>${caseItem.scheduledTime || '08:00'}</small>
                                             </div>
                                             <small class="text-muted">
-                                                ${this.dataManager.getSurgeons().find(s => s.id === caseItem.surgeonId)?.name || 'Unknown Surgeon'}
+                                                ${this.dataManager.getSurgeons().find(s => s.id === caseItem.physician_id)?.name || 'Unknown Surgeon'}
                                             </small>
                                         </div>
                                     </div>
@@ -465,7 +524,7 @@ export class CasesManager {
         const totalCases = cases.length;
         const todayCases = cases.filter(c => c.scheduledDate === today).length;
         const urgentCases = cases.filter(c => c.priority === 'urgent').length;
-        const completedCases = cases.filter(c => c.status === 'completed').length;
+        const completedCases = cases.filter(c => c.status === CASE_STATUS.COMPLETE).length;
 
         // Update the existing metric cards in the dashboard
         const statsContainer = document.getElementById('casesStats');
@@ -494,13 +553,13 @@ export class CasesManager {
 
     async editCase(caseId) {
         try {
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.info('CasesManager.editCase() called', { caseId: caseId }, 'case-edit-flow');
             }
             
             const caseData = await this.dataManager.getCase(caseId);
             
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.info('Case data received in editCase', {
                     caseId: caseId,
                     hasCaseData: !!caseData,
@@ -511,20 +570,20 @@ export class CasesManager {
             if (caseData) {
                 // First populate the dropdowns and tray requirements
                 if (window.app.modalManager) {
-                    if (window.frontendLogger) {
+                    if (window.is_enable_api_logging && window.frontendLogger) {
                         window.frontendLogger.info('Starting modal UI population', { caseId: caseId }, 'case-edit-flow');
                     }
                     
                     await window.app.modalManager.populateCaseModalDropdowns();
                     await window.app.modalManager.populateTrayRequirements();
                     
-                    if (window.frontendLogger) {
+                    if (window.is_enable_api_logging && window.frontendLogger) {
                         window.frontendLogger.info('Modal UI population completed', { caseId: caseId }, 'case-edit-flow');
                     }
                 }
                 
                 // Then populate the form with case data
-                if (window.frontendLogger) {
+                if (window.is_enable_api_logging && window.frontendLogger) {
                     window.frontendLogger.info('About to populate edit form', { 
                         caseId: caseId,
                         caseData: {
@@ -540,13 +599,13 @@ export class CasesManager {
                 const modal = new bootstrap.Modal(document.getElementById('editCaseModal'));
                 modal.show();
             } else {
-                if (window.frontendLogger) {
+                if (window.is_enable_api_logging && window.frontendLogger) {
                     window.frontendLogger.error('No case data received', { caseId: caseId }, 'case-edit-flow');
                 }
             }
         } catch (error) {
             console.error('Error loading case for edit:', error);
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.error('Error in editCase', { 
                     caseId: caseId, 
                     error: error.message 
@@ -566,8 +625,8 @@ export class CasesManager {
 
         document.getElementById('editCaseId').value = caseData.id;
         document.getElementById('editPatientName').value = caseData.patientName || '';
-        document.getElementById('editCaseSurgeon').value = caseData.surgeonId || '';
-        document.getElementById('editCaseFacility').value = caseData.facilityId || '';
+        document.getElementById('editCasePhysician').value = caseData.physician_id || '';
+        document.getElementById('editCaseFacility').value = caseData.facility_id || '';
         document.getElementById('editCaseType').value = caseData.caseTypeId || '';
         document.getElementById('editScheduledDate').value = caseData.scheduledDate || '';
         document.getElementById('editScheduledTime').value = caseData.scheduledTime || '';
@@ -595,7 +654,7 @@ export class CasesManager {
         // Set selected tray requirements after ensuring UI is ready
         try {
             await this.waitForTrayRequirementsUI();
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.info('UI ready, calling setSelectedTrayRequirements', { 
                     caseId: caseData.id,
                     trayRequirements: trayRequirements 
@@ -603,7 +662,7 @@ export class CasesManager {
             }
             await this.setSelectedTrayRequirements(trayRequirements);
         } catch (error) {
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.error('waitForTrayRequirementsUI failed', { 
                     caseId: caseData.id,
                     error: error.message 
@@ -628,7 +687,7 @@ export class CasesManager {
                     const allTrayRequirementsLists = document.querySelectorAll('.tray-requirements-list');
                     const allDataModal = document.querySelectorAll('[data-modal]');
                     
-                    if (window.frontendLogger) {
+                    if (window.is_enable_api_logging && window.frontendLogger) {
                         window.frontendLogger.info('DOM debug info', {
                             attempt: attempts,
                             editTrayContainerExists: !!editTrayContainer,
@@ -642,7 +701,7 @@ export class CasesManager {
                 }
                 
                 if (container && addButton) {
-                    if (window.frontendLogger) {
+                    if (window.is_enable_api_logging && window.frontendLogger) {
                         window.frontendLogger.info('Tray requirements UI is ready', {
                             containerFound: !!container,
                             addButtonFound: !!addButton,
@@ -651,7 +710,7 @@ export class CasesManager {
                     }
                     resolve();
                 } else if (attempts >= maxAttempts) {
-                    if (window.frontendLogger) {
+                    if (window.is_enable_api_logging && window.frontendLogger) {
                         window.frontendLogger.error('Tray requirements UI timeout - elements not found', {
                             containerFound: !!container,
                             addButtonFound: !!addButton,
@@ -664,7 +723,7 @@ export class CasesManager {
                     reject(new Error('Tray requirements UI elements not found after timeout'));
                 } else {
                     // Only log every 20 attempts to reduce spam
-                    if (attempts % 20 === 0 && window.frontendLogger) {
+                    if (attempts % 20 === 0 && window.is_enable_api_logging && window.frontendLogger) {
                         window.frontendLogger.debug('Still waiting for tray requirements UI', {
                             containerFound: !!container,
                             addButtonFound: !!addButton,
@@ -690,7 +749,7 @@ export class CasesManager {
         }
         
         if (window.app.modalManager && window.app.modalManager.setTrayRequirementsInUI) {
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.info('Calling setTrayRequirementsInUI', {
                     trayRequirements: trayRequirements,
                     modal: 'edit'
@@ -698,7 +757,7 @@ export class CasesManager {
             }
             await window.app.modalManager.setTrayRequirementsInUI(trayRequirements, 'edit');
         } else {
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.error('ModalManager or setTrayRequirementsInUI not available', {
                     hasModalManager: !!(window.app.modalManager),
                     hasSetMethod: !!(window.app.modalManager?.setTrayRequirementsInUI)
@@ -710,7 +769,7 @@ export class CasesManager {
     getEditSelectedTrayRequirements() {
         if (window.app.modalManager && window.app.modalManager.getTrayRequirementsFromUI) {
             const result = window.app.modalManager.getTrayRequirementsFromUI('edit');
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.info('getEditSelectedTrayRequirements result', {
                     result: result,
                     resultLength: result?.length,
@@ -729,14 +788,21 @@ export class CasesManager {
         return [];
     }
 
-    getTrayTypeDisplayName(trayTypeCode) {
+    getTrayTypeDisplayName(tray) {
+        // Support both MyRepData case type compatibility and legacy type
+        if (typeof tray === 'object' && tray.case_type_compatibility && Array.isArray(tray.case_type_compatibility) && tray.case_type_compatibility.length > 0) {
+            return tray.case_type_compatibility.join(', ');
+        }
+        
+        // Handle legacy string type or object with type field
+        const trayTypeCode = typeof tray === 'string' ? tray : (tray.type || '');
         const trayTypeNames = {
             'fusion': 'Fusion Set',
             'revision': 'Revision Kit', 
             'mi': 'Minimally Invasive',
             'complete': 'Complete System'
         };
-        return trayTypeNames[trayTypeCode] || trayTypeCode;
+        return trayTypeNames[trayTypeCode] || trayTypeCode || 'General Purpose';
     }
 
     // Helper method to get tray requirements from case data (handles both field name formats)
@@ -762,7 +828,7 @@ export class CasesManager {
         try {
             const caseId = document.getElementById('editCaseId').value;
             
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.info('updateCase started', { 
                     caseId: caseId 
                 }, 'case-save-flow');
@@ -772,8 +838,8 @@ export class CasesManager {
             
             const updates = {
                 patientName: document.getElementById('editPatientName').value,
-                surgeonId: document.getElementById('editCaseSurgeon').value,
-                facilityId: document.getElementById('editCaseFacility').value,
+                physician_id: document.getElementById('editCasePhysician').value,
+                facility_id: document.getElementById('editCaseFacility').value,
                 caseTypeId: document.getElementById('editCaseType').value,
                 scheduledDate: document.getElementById('editScheduledDate').value,
                 scheduledTime: document.getElementById('editScheduledTime').value,
@@ -784,7 +850,7 @@ export class CasesManager {
                 tray_requirements: trayRequirements
             };
 
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.info('About to save case with tray requirements', { 
                     caseId: caseId,
                     trayRequirements: trayRequirements,
@@ -795,7 +861,7 @@ export class CasesManager {
 
             await this.dataManager.updateCase(caseId, updates);
             
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.info('Case saved successfully', { 
                     caseId: caseId 
                 }, 'case-save-flow');
@@ -806,7 +872,7 @@ export class CasesManager {
             this.loadCases();
         } catch (error) {
             console.error('Error updating case:', error);
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.error('Error updating case', { 
                     error: error.message 
                 }, 'case-save-flow');
@@ -843,8 +909,8 @@ export class CasesManager {
     }
 
     showCaseDetailsModal(caseData) {
-        const surgeon = this.dataManager.getSurgeons().find(s => s.id === caseData.surgeonId);
-        const facility = this.dataManager.getFacilities().find(f => f.id === caseData.facilityId);
+        const surgeon = this.dataManager.getSurgeons().find(s => s.id === caseData.physician_id);
+        const facility = this.dataManager.getFacilities().find(f => f.id === caseData.facility_id);
         const caseType = this.dataManager.getCaseTypes().find(ct => ct.id === caseData.caseTypeId);
 
         const modalBody = document.getElementById('caseDetailsModalBody');
@@ -921,6 +987,26 @@ export class CasesManager {
         return str.charAt(0).toUpperCase() + str.slice(1);
     }
 
+    // Populate case status dropdown with valid statuses
+    populateCaseStatusDropdown(selectElementId) {
+        const select = document.getElementById(selectElementId);
+        if (!select) {
+            console.warn(`Status dropdown element ${selectElementId} not found`);
+            return;
+        }
+
+        // Clear existing options
+        select.innerHTML = '';
+
+        // Add status options from constants
+        CASE_STATUS_OPTIONS.forEach(option => {
+            const optionElement = document.createElement('option');
+            optionElement.value = option.value;
+            optionElement.textContent = option.label;
+            select.appendChild(optionElement);
+        });
+    }
+
     showSuccessNotification(message) {
         if (window.app && window.app.notificationManager) {
             window.app.notificationManager.show(message, 'success');
@@ -950,5 +1036,21 @@ export class CasesManager {
             console.error('Cases Error:', message);
             alert(`Error: ${message}`);
         }
+    }
+
+    getFacilityName(facilityId) {
+        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
+            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
+            return facility ? facility.name : null;
+        }
+        return null;
+    }
+
+    getPhysicianName(physicianId) {
+        if (window.app.dataManager && window.app.dataManager.physicians) {
+            const physician = window.app.dataManager.physicians.find(p => p.id === physicianId);
+            return physician ? physician.name : null;
+        }
+        return null;
     }
 }

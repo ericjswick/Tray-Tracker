@@ -1,12 +1,12 @@
-// config/default.config.js - Default Configuration (Original)
+// config/default.config.js - Default Configuration (Tray Tracker)
 export const firebaseConfig = {
-    apiKey: "AIzaSyD3Tc8crUqOXEg4rKIIYvsyT-LJPEpTIcA",
-    authDomain: "si-bone-tracking.firebaseapp.com",
-    projectId: "si-bone-tracking",
-    storageBucket: "si-bone-tracking.firebasestorage.app",
-    messagingSenderId: "1065056003859",
-    appId: "1:1065056003859:web:aaae14ed73ec3dcae51ce6",
-    measurementId: "G-99MZFWPBJR"
+    apiKey: "AIzaSyDUR4NEfHH0s8aKYvg4RqyyH13h5ZyRFwk",
+    authDomain: "tray-tracker-dino.firebaseapp.com",
+    projectId: "tray-tracker-dino",
+    storageBucket: "tray-tracker-dino.firebasestorage.app",
+    messagingSenderId: "587568292924",
+    appId: "1:587568292924:web:462b3cb07fc808f86bcf39",
+    measurementId: "G-97ZVXH82ZR"
 };
 
 // Environment-specific settings
@@ -15,5 +15,6 @@ export const environmentConfig = {
     description: "Default Configuration",
     isDevelopment: true,
     enableConsoleLogging: true,
-    enableDebugMode: false
+    enableDebugMode: false,
+    enableApiLogging: false  // Global toggle for API logging - disabled
 };
