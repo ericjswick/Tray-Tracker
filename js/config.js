@@ -10,7 +10,7 @@ const getConfigFileName = () => {
     const envVar = processEnv || 
                    (typeof window !== 'undefined' ? window.ENVIRONMENT_VARIABLE_FILE : undefined) || 
                    (typeof localStorage !== 'undefined' ? localStorage.getItem('ENVIRONMENT_VARIABLE_FILE') : undefined) ||
-                   'default';
+                   'production';
     
     console.log('Loading configuration:', envVar);
     window.is_enable_api_logging && window.frontendLogger?.info('Config file selection', {
