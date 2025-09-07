@@ -1,4 +1,5 @@
 // js/MapManager.js
+import { TRAY_STATUS, normalizeStatus, isInUseStatus, isAvailableStatus, getStatusDisplayText } from './constants/TrayStatus.js';
 export class MapManager {
     constructor() {
         this.map = null;
@@ -41,7 +42,16 @@ export class MapManager {
 
         const filteredTrays = trays.filter(tray => {
             if (availabilityFilter && tray.status !== availabilityFilter) return false;
-            if (typeFilter && tray.type !== typeFilter) return false;
+            if (typeFilter) {
+                // Support both legacy type and MyRepData case type compatibility
+                let hasMatchingType = false;
+                if (tray.case_type_compatibility && Array.isArray(tray.case_type_compatibility)) {
+                    hasMatchingType = tray.case_type_compatibility.includes(typeFilter);
+                } else if (tray.type) {
+                    hasMatchingType = tray.type === typeFilter;
+                }
+                if (!hasMatchingType) return false;
+            }
             return true;
         });
 
@@ -60,12 +70,12 @@ export class MapManager {
             if (position) {
                 const marker = L.marker(position).addTo(this.map);
 
-                const statusClass = `status-${tray.status === 'in-use' ? 'in-use' : tray.status}`;
+                const statusClass = `status-${normalizeStatus(tray.status).replace('_', '-')}`;
 
                 // Get surgeon name for display (handle both old and new format)
                 let surgeonName = '';
-                if (tray.surgeonId && window.app.surgeonManager) {
-                    const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === tray.surgeonId);
+                if (tray.physician_id && window.app.surgeonManager) {
+                    const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === tray.physician_id);
                     surgeonName = surgeon ? surgeon.name : 'Unknown Surgeon';
                 } else if (tray.surgeon) {
                     surgeonName = tray.surgeon; // Legacy format
@@ -75,7 +85,7 @@ export class MapManager {
                 <div class="p-2">
                     <h6>${tray.name}</h6>
                     <p class="mb-1"><span class="badge ${statusClass}">${tray.status}</span></p>
-                    <p class="mb-1"><strong>Type:</strong> ${tray.type}</p>
+                    <p class="mb-1"><strong>Type:</strong> ${window.app.trayManager.getTrayTypeText(tray)}</p>
                     <p class="mb-1"><strong>Location:</strong> ${window.app.trayManager.getLocationText(tray.location)}</p>
                     ${tray.facility ? `<p class="mb-1"><strong>Facility:</strong> ${tray.facility}</p>` : ''}
                     ${tray.caseDate ? `<p class="mb-1"><strong>Case Date:</strong> ${tray.caseDate}</p>` : ''}
@@ -343,18 +353,18 @@ export class MapManager {
                 
                 const marker = L.marker(position, { icon: markerIcon }).addTo(this.map);
 
-                const surgeonName = this.getSurgeonName(tray.surgeonId);
+                const surgeonName = this.getSurgeonName(tray.physician_id);
                 
                 // Generate action buttons based on tray status (same logic as tray cards)
                 let actions = '';
-                if (tray.status === 'available') {
+                if (isAvailableStatus(tray.status)) {
                     actions += `
                         <button class="btn-primary-custom btn-sm" onclick="app.modalManager.showCheckinModal('${tray.id}')">
                             <i class="fas fa-sign-in-alt"></i> Check-in
                         </button>
                     `;
                 }
-                if (tray.status === 'in-use') {
+                if (isInUseStatus(tray.status)) {
                     actions += `
                         <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
                             <i class="fas fa-hand-paper"></i> Pickup
@@ -385,12 +395,16 @@ export class MapManager {
 
     getTrayMarkerColor(status) {
         const colors = {
-            'available': '#28a745',      // Green
-            'in-use': '#ffc107',         // Yellow
-            'checked-in': '#007bff',     // Blue
-            'picked-up': '#fd7e14'       // Orange
+            [TRAY_STATUS.AVAILABLE]: '#28a745',      // Green
+            [TRAY_STATUS.IN_USE]: '#ffc107',         // Yellow
+            [TRAY_STATUS.CHECKED_IN]: '#007bff',     // Blue
+            [TRAY_STATUS.PICKED_UP]: '#fd7e14',      // Orange
+            [TRAY_STATUS.CLEANING]: '#17a2b8',       // Cyan
+            [TRAY_STATUS.MAINTENANCE]: '#6c757d',    // Gray
+            [TRAY_STATUS.MISSING]: '#dc3545',        // Red
+            [TRAY_STATUS.UNKNOWN]: '#343a40'         // Dark
         };
-        return colors[status] || '#6c757d';
+        return colors[normalizeStatus(status)] || '#6c757d';
     }
 
     getSurgeonName(surgeonId) {

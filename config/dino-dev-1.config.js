@@ -15,5 +15,6 @@ export const environmentConfig = {
     description: "Dino Development Environment 1",
     isDevelopment: true,
     enableConsoleLogging: true,
-    enableDebugMode: true
+    enableDebugMode: true,
+    enableApiLogging: true  // Global toggle for API logging - set to false in production
 };

@@ -1,11 +1,18 @@
 // js/main.js - Updated for Tray Tracker
+
+// Version logging for deployment verification (run first)
+const appVersion = '1.3.0-logging-cleanup';
+const buildDate = new Date().toISOString().split('T')[0];
+console.log(`🚀 TrayTracker App v${appVersion} (Build: ${buildDate})`);
+console.log('📦 Features: Real-time Firebase subscriptions, Cross-browser sync, Reduced logging noise');
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-storage.js";
 
 // Import configuration
-import { firebaseConfig } from './config.js';
+import { firebaseConfig, environmentConfig } from './config.js';
 
 // Import all manager classes
 import { AuthManager } from './AuthManager.js';
@@ -18,12 +25,19 @@ import { ViewManager } from './ViewManager.js';
 import { NotificationManager } from './NotificationManager.js';
 import { DemoManager } from './DemoManager.js';
 import { UserManager } from './UserManager.js';
-import { LocationManager } from './LocationManager.js';
+import { FacilityManager } from './FacilityManager.js';
 import { SurgeonManager } from './SurgeonManager.js';
 import { CaseTypeManager } from './CaseTypeManager.js';
 import { CasesManager } from './CasesManager.js';
+import { DashboardManager } from './DashboardManager.js';
 import { FrontendLogger } from './utils/FrontendLogger.js';
-import { DuplicateRemover } from './utils/DuplicateRemover.js';
+import { FixTrayIdMigration } from './utils/FixTrayIdMigration.js';
+import { FacilityMigration } from './migration/migrateFacilities.js';
+import { TrayMigration } from './utils/TrayMigration.js';
+import { SurgeonToPhysicianMigration } from './utils/SurgeonToPhysicianMigration.js';
+import { TrayToTrayTrackingMigration } from './utils/TrayToTrayTrackingMigration.js';
+import { CaseToSurgicalCaseMigration } from './utils/CaseToSurgicalCaseMigration.js';
+import { timezoneConverter } from './utils/TimezoneConverter.js';
 
 
 // Initialize Firebase
@@ -43,8 +57,8 @@ try {
 // Main Application Class
 class SIBoneApp {
     constructor() {
-        // Initialize frontend logger first
-        this.logger = new FrontendLogger();
+        // Initialize frontend logger first with correct API base URL
+        this.logger = new FrontendLogger('https://traytracker-dev.serverdatahost.com/api');
         window.frontendLogger = this.logger;
         
         // Log app initialization
@@ -64,11 +78,82 @@ class SIBoneApp {
         this.notificationManager = new NotificationManager(db);
         this.demoManager = new DemoManager(auth, this.dataManager, db);
         this.userManager = new UserManager(auth, db, this.dataManager);
-        this.locationManager = new LocationManager(db);
+        this.facilityManager = new FacilityManager(db);
         this.surgeonManager = new SurgeonManager(db);
         this.caseTypeManager = new CaseTypeManager(db);
         this.casesManager = new CasesManager(this.dataManager);
-        this.duplicateRemover = new DuplicateRemover(db);
+        this.dashboardManager = new DashboardManager(this.dataManager);
+        
+        // Initialize migration tools
+        this.facilityMigration = new FacilityMigration(db);
+        this.trayMigration = new TrayMigration(db);
+        this.surgeonToPhysicianMigration = new SurgeonToPhysicianMigration(db);
+        this.trayToTrayTrackingMigration = new TrayToTrayTrackingMigration(db);
+        this.caseToSurgicalCaseMigration = new CaseToSurgicalCaseMigration(db);
+        
+        // Make migration tools available globally
+        window.facilityMigration = this.facilityMigration;
+        window.trayMigration = this.trayMigration;
+        window.surgeonToPhysicianMigration = this.surgeonToPhysicianMigration;
+        window.trayToTrayTrackingMigration = this.trayToTrayTrackingMigration;
+        window.caseToSurgicalCaseMigration = this.caseToSurgicalCaseMigration;
+        
+        // Add convenient global functions for tray field migration
+        window.checkTrayCompatibility = () => this.trayMigration.checkCompatibility();
+        window.previewTrayMigration = () => this.trayMigration.dryRun();
+        window.migrateTrayCollection = () => {
+            console.log('⚠️ This will modify your tray collection to be compatible with MyRepData.');
+            console.log('💡 The migration is safe - it only adds fields and keeps all existing data.');
+            const confirm = prompt('Type "YES" to proceed with migration:');
+            if (confirm === 'YES') {
+                this.trayMigration.migrate();
+            } else {
+                console.log('❌ Migration cancelled.');
+            }
+        };
+
+        // Add convenient global functions for collection migrations
+        window.checkMyRepDataCompatibility = () => {
+            console.log('🔍 Checking MyRepData collection compatibility...\n');
+            this.surgeonToPhysicianMigration.checkCompatibility();
+            this.trayToTrayTrackingMigration.checkCompatibility();
+            this.caseToSurgicalCaseMigration.checkCompatibility();
+        };
+        
+        window.previewCollectionMigrations = () => {
+            console.log('🔍 Previewing all MyRepData collection migrations...\n');
+            this.surgeonToPhysicianMigration.dryRun();
+            this.trayToTrayTrackingMigration.dryRun();
+            this.caseToSurgicalCaseMigration.dryRun();
+        };
+        
+        window.migrateToMyRepDataCollections = () => {
+            console.log('⚠️ This will migrate all collections to MyRepData-compatible names:');
+            console.log('  • surgeons → physicians');
+            console.log('  • trays → tray_tracking');
+            console.log('  • cases → surgical_cases');
+            console.log('💡 This creates new collections and keeps existing ones unchanged.');
+            console.log('📝 You will need to update code references after migration.');
+            const confirm = prompt('Type "MIGRATE" to proceed with all collection migrations:');
+            if (confirm === 'MIGRATE') {
+                console.log('🚀 Starting MyRepData collection migrations...\n');
+                this.surgeonToPhysicianMigration.migrate();
+                this.trayToTrayTrackingMigration.migrate();
+                this.caseToSurgicalCaseMigration.migrate();
+            } else {
+                console.log('❌ Collection migrations cancelled.');
+            }
+        };
+
+        // Make environment configuration available globally
+        this.environmentConfig = environmentConfig;
+        
+        // Make API logging toggle available as global variable for easy production control
+        window.is_enable_api_logging = environmentConfig?.ENABLE_API_LOGGING === true;
+        window.is_enable_tray_availability_logic_api_logging = environmentConfig?.ENABLE_TRAY_AVAILABILITY_LOGIC_API_LOGGING === true;
+        
+        // Make timezone converter available globally
+        this.timezoneConverter = timezoneConverter;
     }
 
     init() {
@@ -420,8 +505,8 @@ class SIBoneApp {
             this.trayManager.initializeViewMode();
         }
 
-        if (this.locationManager) {
-            this.locationManager.initializeViewMode();
+        if (this.facilityManager) {
+            this.facilityManager.initializeViewMode();
         }
 
         if (this.surgeonManager) {
@@ -538,8 +623,8 @@ class SIBoneApp {
         if (this.photoManager) {
             this.photoManager.stopCamera();
         }
-        if (this.locationManager) {
-            this.locationManager.cleanup();
+        if (this.facilityManager) {
+            this.facilityManager.cleanup();
         }
         if (this.surgeonManager) {
             this.surgeonManager.cleanup();
@@ -557,7 +642,7 @@ app.init();
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {
     app.cleanup();
-    if (window.frontendLogger) {
+    if (window.is_enable_api_logging && window.frontendLogger) {
         window.frontendLogger.cleanup();
     }
 });

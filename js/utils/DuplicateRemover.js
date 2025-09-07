@@ -75,7 +75,7 @@ export class DuplicateRemover {
     async removeDuplicateSurgeons() {
         try {
             console.log('Starting duplicate surgeon removal...');
-            const surgeonsSnapshot = await getDocs(collection(this.db, 'surgeons'));
+            const surgeonsSnapshot = await getDocs(collection(this.db, 'physicians'));
             
             const surgeonsByName = new Map();
             const surgeonsByEmail = new Map();
@@ -138,7 +138,7 @@ export class DuplicateRemover {
             // Delete duplicates
             for (const duplicate of duplicatesToDelete) {
                 try {
-                    await deleteDoc(doc(this.db, 'surgeons', duplicate.id));
+                    await deleteDoc(doc(this.db, 'physicians', duplicate.id));
                     console.log(`✓ Deleted duplicate surgeon: "${duplicate.name}" (${duplicate.email}) - ${duplicate.reason} (${duplicate.id})`);
                 } catch (error) {
                     console.error(`✗ Error deleting surgeon ${duplicate.id}:`, error);

@@ -1,6 +1,7 @@
 // js/DemoManager.js
 import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
-import { doc, setDoc, serverTimestamp, getDocs, collection, query, limit, addDoc } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+import { doc, setDoc, serverTimestamp, getDocs, collection, query, limit, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+import { TRAY_STATUS } from './constants/TrayStatus.js';
 
 export class DemoManager {
     constructor(auth, dataManager, db) {
@@ -11,32 +12,17 @@ export class DemoManager {
 
     async checkAndInitializeData() {
         try {
-            // First, clean up any existing duplicates before checking data
-            console.log('🧹 Cleaning up duplicate data...');
-            if (window.app && window.app.duplicateRemover) {
-                try {
-                    const duplicatesRemoved = await window.app.duplicateRemover.removeAllDuplicates();
-                    if (duplicatesRemoved.total > 0) {
-                        console.log(`✅ Removed ${duplicatesRemoved.total} duplicates (${duplicatesRemoved.locations} locations, ${duplicatesRemoved.surgeons} surgeons)`);
-                    } else {
-                        console.log('✅ No duplicates found - data is clean');
-                    }
-                } catch (error) {
-                    console.warn('Duplicate removal failed, continuing with initialization:', error);
-                }
-            }
-
             // Check if users exist
             const usersExist = await this.checkUsersExist();
 
             // Check if trays exist
             const traysExist = await this.checkTraysExist();
 
-            // Check if locations exist
-            const locationsExist = await this.checkLocationsExist();
+            // Check if facilities exist
+            const facilitiesExist = await this.checkLocationsExist();
 
-            // NEW: Check if surgeons exist
-            const surgeonsExist = await this.checkSurgeonsExist();
+            // Check if physicians exist
+            const physiciansExist = await this.checkSurgeonsExist();
 
             const caseTypesExist = await this.checkCaseTypesExist();
 
@@ -52,14 +38,14 @@ export class DemoManager {
                 // Then create demo trays
                 await this.createDemoTrays();
             }
-            if (!locationsExist) {
-                console.log('No Location data found, initializing...');
-                // Create demo locations
+            if (!facilitiesExist) {
+                console.log('No Facility data found, initializing...');
+                // Create demo facilities
                 await this.createDemoLocations();
             }
-            // NEW: Initialize surgeons if they don't exist
-            if (!surgeonsExist) {
-                console.log('No Surgeon data found, initializing...');
+            // Initialize physicians if they don't exist
+            if (!physiciansExist) {
+                console.log('No Physician data found, initializing...');
                 await this.createDemoSurgeons();
             }
 
@@ -68,7 +54,7 @@ export class DemoManager {
                 await this.createDemoCaseTypes();
             }
 
-            if (!usersExist || !traysExist || !locationsExist || !surgeonsExist || !caseTypesExist) {
+            if (!usersExist || !traysExist || !facilitiesExist || !physiciansExist || !caseTypesExist) {
                 return true;
             }
 
@@ -110,7 +96,7 @@ export class DemoManager {
 
     async checkTraysExist() {
         try {
-            const traysQuery = query(collection(this.db, 'trays'), limit(1));
+            const traysQuery = query(collection(this.db, 'tray_tracking'), limit(1));
             const traysSnapshot = await getDocs(traysQuery);
             return !traysSnapshot.empty;
         } catch (error) {
@@ -121,33 +107,33 @@ export class DemoManager {
 
     async checkLocationsExist() {
         try {
-            const locationsQuery = query(collection(this.db, 'locations'), limit(1));
-            const locationsSnapshot = await getDocs(locationsQuery);
-            return !locationsSnapshot.empty;
+            const facilitiesQuery = query(collection(this.db, 'facilities'), limit(1));
+            const facilitiesSnapshot = await getDocs(facilitiesQuery);
+            return !facilitiesSnapshot.empty;
         } catch (error) {
-            console.error('Error checking locations:', error);
+            console.error('Error checking facilities:', error);
             return false;
         }
     }
 
-    // NEW: Check if surgeons exist
+    // Check if physicians exist
     async checkSurgeonsExist() {
         try {
-            const surgeonsQuery = query(collection(this.db, 'surgeons'), limit(1));
-            const surgeonsSnapshot = await getDocs(surgeonsQuery);
-            return !surgeonsSnapshot.empty;
+            const physiciansQuery = query(collection(this.db, 'physicians'), limit(1));
+            const physiciansSnapshot = await getDocs(physiciansQuery);
+            return !physiciansSnapshot.empty;
         } catch (error) {
-            console.error('Error checking surgeons:', error);
+            console.error('Error checking physicians:', error);
             return false;
         }
     }
 
-    // Helper method to get existing location names
-    async getExistingLocationNames() {
+    // Helper method to get existing facility names
+    async getExistingFacilityNames() {
         try {
-            const locationsSnapshot = await getDocs(collection(this.db, 'locations'));
+            const facilitiesSnapshot = await getDocs(collection(this.db, 'facilities'));
             const existingNames = new Set();
-            locationsSnapshot.forEach((doc) => {
+            facilitiesSnapshot.forEach((doc) => {
                 const name = doc.data().name;
                 if (name) {
                     existingNames.add(name.toLowerCase().trim());
@@ -155,19 +141,19 @@ export class DemoManager {
             });
             return existingNames;
         } catch (error) {
-            console.error('Error getting existing location names:', error);
+            console.error('Error getting existing facility names:', error);
             return new Set();
         }
     }
 
-    // Helper method to get existing surgeon names and emails
+    // Helper method to get existing physician names and emails
     async getExistingSurgeonIdentifiers() {
         try {
-            const surgeonsSnapshot = await getDocs(collection(this.db, 'surgeons'));
+            const physiciansSnapshot = await getDocs(collection(this.db, 'physicians'));
             const existingNames = new Set();
             const existingEmails = new Set();
             
-            surgeonsSnapshot.forEach((doc) => {
+            physiciansSnapshot.forEach((doc) => {
                 const data = doc.data();
                 if (data.name) {
                     existingNames.add(data.name.toLowerCase().trim());
@@ -179,7 +165,7 @@ export class DemoManager {
             
             return { names: existingNames, emails: existingEmails };
         } catch (error) {
-            console.error('Error getting existing surgeon identifiers:', error);
+            console.error('Error getting existing physician identifiers:', error);
             return { names: new Set(), emails: new Set() };
         }
     }
@@ -192,12 +178,12 @@ export class DemoManager {
             // Wait a moment for users to be created
             await new Promise(resolve => setTimeout(resolve, 1000));
 
-            // Create demo locations
+            // Create demo facilities
             await this.createDemoLocations();
 
             await this.createDemoCaseTypes();
 
-            // NEW: Create demo surgeons
+            // Create demo physicians
             await this.createDemoSurgeons();
 
             // Then create demo trays
@@ -276,81 +262,80 @@ export class DemoManager {
     }
 
     async createDemoTrays() {
-        // Wait for surgeons to be created and available
+        // Wait for physicians and case types to be created and available
         let attempts = 0;
-        while ((!window.app.surgeonManager?.currentSurgeons || window.app.surgeonManager.currentSurgeons.length === 0) && attempts < 10) {
+        while ((!window.app.surgeonManager?.currentSurgeons || window.app.surgeonManager.currentSurgeons.length === 0 ||
+                !window.app.caseTypeManager?.currentCaseTypes || window.app.caseTypeManager.currentCaseTypes.length === 0) && attempts < 10) {
             await new Promise(resolve => setTimeout(resolve, 500));
             attempts++;
         }
 
-        // Get available surgeon IDs for demo trays
-        const availableSurgeons = window.app.surgeonManager?.currentSurgeons || [];
+        // Get available physicians and case types for demo trays
+        const availablePhysicians = window.app.surgeonManager?.currentSurgeons || [];
+        const availableCaseTypes = window.app.caseTypeManager?.currentCaseTypes || [];
 
         const demoTrays = [
             {
-                name: 'Fusion Set Alpha',
-                type: 'fusion',
-                status: 'available',
-                location: 'trunk',
-                facility: '',
-                caseDate: '',
-                surgeonId: '', // No surgeon assigned yet
-                notes: 'Demo tray - Fusion instrumentation set',
+                tray_id: 'TRY-001',
+                name: 'SI Fusion Lateral Set Alpha',
+                case_type_compatibility: ['SI fusion – lateral', 'SI fusion – Oblique/Postero lateral'],
+                status: TRAY_STATUS.AVAILABLE,
+                location: 'cleaning',
+                facility_id: '',
+                notes: 'Demo tray - SI joint fusion lateral approach instrumentation',
                 isDemoTray: true
             },
             {
-                name: 'Revision Kit Beta',
-                type: 'revision',
-                status: 'in-use',
-                location: 'facility',
-                facility: 'Froedtert Hospital',
-                caseDate: this.getDateString(1), // Tomorrow
-                surgeonId: availableSurgeons.find(s => s.name === 'Dr. Max Ots')?.id || '', // Assign Dr. Max Ots if available
-                notes: 'Demo tray - Scheduled for revision surgery',
+                tray_id: 'TRY-002', 
+                name: 'Spine Fusion Long Construct Beta',
+                case_type_compatibility: ['Spine fusion – Long Construct', 'Revision Surgery – Spine fusion'],
+                status: TRAY_STATUS.IN_USE,
+                location: 'sterile_processing',
+                facility_id: 'facility-001',
+                physician_id: availablePhysicians.find(p => p.name === 'Dr. Max Ots')?.id || '',
+                notes: 'Demo tray - Multi-level spine fusion instrumentation',
                 isDemoTray: true
             },
             {
-                name: 'MI System Gamma',
-                type: 'mi',
-                status: 'available',
-                location: 'corporate',
-                facility: '',
-                caseDate: '',
-                surgeonId: '', // No surgeon assigned yet
-                notes: 'Demo tray - Minimally invasive tools',
+                tray_id: 'TRY-003',
+                name: 'Minimally Invasive Spine Gamma',
+                case_type_compatibility: ['Minimally Invasive Spine fusion', 'Spine fusion – Short construct'],
+                status: TRAY_STATUS.AVAILABLE,
+                location: 'cleaning',
+                facility_id: '',
+                notes: 'Demo tray - Minimally invasive spine fusion tools',
                 isDemoTray: true
             },
             {
-                name: 'Complete Set Delta',
-                type: 'complete',
-                status: 'in-use',
-                location: 'facility',
-                facility: 'Aurora Medical Center - Summit',
-                caseDate: this.getDateString(-1), // Yesterday
-                surgeonId: availableSurgeons.find(s => s.name === 'Dr. Branko Prpa')?.id || '', // Assign Dr. Branko Prpa if available
-                notes: 'Demo tray - Complete surgical system',
+                tray_id: 'TRY-004',
+                name: 'SI Revision Complete Set Delta',
+                case_type_compatibility: ['Revision Surgery – SI fusion', 'SI fusion – Intra–articular'],
+                status: TRAY_STATUS.IN_USE,
+                location: 'operating_room',
+                facility_id: 'facility-002',
+                physician_id: availablePhysicians.find(p => p.name === 'Dr. Branko Prpa')?.id || '',
+                notes: 'Demo tray - SI joint revision surgery complete set',
                 isDemoTray: true
             },
             {
-                name: 'Fusion Pro Kit',
-                type: 'fusion',
-                status: 'available',
-                location: 'trunk',
-                facility: '',
-                caseDate: '',
-                surgeonId: '', // No surgeon assigned yet
-                notes: 'Demo tray - Professional fusion set',
+                tray_id: 'TRY-005',
+                name: 'Sacral Fracture TNT Pro',
+                case_type_compatibility: ['Sacral fracture – TNT/TORQ'],
+                status: TRAY_STATUS.AVAILABLE,
+                location: 'sterile_storage',
+                facility_id: '',
+                notes: 'Demo tray - TNT/TORQ sacral fracture repair system',
                 isDemoTray: true
             },
             {
-                name: 'Emergency Revision Set',
-                type: 'revision',
-                status: 'in-use',
-                location: 'facility',
-                facility: 'Aurora Medical Center - Grafton',
-                caseDate: this.getDateString(2), // Day after tomorrow
-                surgeonId: availableSurgeons.find(s => s.name === 'Dr. Syed Mehdi')?.id || '', // Assign Dr. Syed Mehdi if available
-                notes: 'Demo tray - Emergency backup set',
+                tray_id: 'TRY-006',
+                name: 'SI Medial-Lateral Emergency Set',
+                case_type_compatibility: ['SI fusion – Medial to lateral', 'SI fusion – lateral'],
+                status: 'in_transit',
+                location: 'in_transit',
+                facility_id: 'facility-003',
+                physician_id: availablePhysicians.find(p => p.name === 'Dr. Syed Mehdi')?.id || '',
+                notes: 'Demo tray - Emergency medial-lateral SI fusion set',
                 isDemoTray: true
             }
         ];
@@ -360,26 +345,35 @@ export class DemoManager {
 
         for (const tray of demoTrays) {
             try {
-                tray.assignedTo = currentUserId;
-                const savedTray = await this.dataManager.saveTray(tray);
+                // Add MyRepData compatible fields
+                tray.created_at = serverTimestamp();
+                tray.updated_at = serverTimestamp();
+                tray.created_by = currentUserId;
+                
+                // Create tray directly in tray_tracking collection
+                const docRef = await addDoc(collection(this.db, 'tray_tracking'), tray);
 
-                // Add initial history entry with surgeon name if assigned
-                let historyDetails = `Demo tray initialized at ${tray.location}`;
-                if (tray.surgeonId) {
-                    const surgeon = availableSurgeons.find(s => s.id === tray.surgeonId);
-                    if (surgeon) {
-                        historyDetails += ` with surgeon ${surgeon.name}`;
+                // Add initial activity log entry with physician name if assigned
+                let activityDescription = `Demo tray initialized at ${tray.location}`;
+                if (tray.physician_id) {
+                    const physician = availablePhysicians.find(p => p.id === tray.physician_id);
+                    if (physician) {
+                        activityDescription += ` assigned to ${physician.name}`;
                     }
                 }
 
-                await this.dataManager.addHistoryEntry(
-                    savedTray.id,
-                    'created',
-                    historyDetails,
-                    null
-                );
+                // Create activity log entry
+                await addDoc(collection(this.db, 'activities'), {
+                    type: 'tray_created',
+                    tray_id: docRef.id,
+                    physician_id: tray.physician_id || null,
+                    facility_id: tray.facility_id || null,
+                    description: activityDescription,
+                    created_at: serverTimestamp(),
+                    user_id: currentUserId
+                });
 
-                console.log(`Created demo tray: ${tray.name}${tray.surgeonId ? ' with surgeon assigned' : ''}`);
+                console.log(`Created demo tray: ${tray.name}${tray.physician_id ? ' with physician assigned' : ''}`);
             } catch (error) {
                 console.error(`Error creating demo tray ${tray.name}:`, error);
                 // Continue with other trays even if one fails
@@ -388,153 +382,145 @@ export class DemoManager {
     }
 
     async createDemoLocations() {
-        const demoLocations = [
+        // MyRepData-compatible facilities structure
+        const demoFacilities = [
             {
                 name: 'Aurora Medical Center - Grafton',
-                type: 'medical_facility',
+                type: 'hospital',
+                specialty: 'orthopedic',
                 address: '975 Port Washington Rd',
                 city: 'Grafton',
                 state: 'WI',
                 zip: '53024',
                 phone: '+1-262-329-1000',
-                contact: 'Sarah Johnson, OR Manager',
-                region: 'Wisconsin East',
-                latitude: 43.3239,
-                longitude: -87.9511,
+                territory: 'Wisconsin East',
                 notes: 'Primary facility for orthopedic procedures',
                 active: true,
-                isDemoLocation: true
+                isDemoFacility: true
             },
             {
                 name: 'Froedtert Hospital',
-                type: 'medical_facility',
+                type: 'hospital',
+                specialty: 'neurosurgery',
                 address: '9200 W Wisconsin Ave',
                 city: 'Milwaukee',
                 state: 'WI',
                 zip: '53226',
                 phone: '+1-414-805-3000',
-                contact: 'Dr. Michael Chen, Chief of Surgery',
-                region: 'Wisconsin East',
-                latitude: 43.0509,
-                longitude: -88.0034,
+                territory: 'Wisconsin East',
                 notes: 'Level 1 trauma center with advanced spine services',
                 active: true,
-                isDemoLocation: true
+                isDemoFacility: true
             },
             {
                 name: 'Aurora Medical Center - Summit',
-                type: 'medical_facility',
+                type: 'outpatient',
+                specialty: 'spine',
                 address: '36500 Aurora Dr',
                 city: 'Summit',
                 state: 'WI',
                 zip: '53066',
                 phone: '+1-262-434-1000',
-                contact: 'Jennifer Martinez, Surgical Coordinator',
-                region: 'Wisconsin East',
-                latitude: 43.0166,
-                longitude: -88.0711,
+                territory: 'Wisconsin East',
                 notes: 'Specialized in minimally invasive procedures',
                 active: true,
-                isDemoLocation: true
+                isDemoFacility: true
             },
             {
-                name: 'SI-BONE Corporate HQ',
-                type: 'corporate',
-                address: '471 El Camino Real',
-                city: 'Santa Clara',
-                state: 'CA',
-                zip: '95050',
-                phone: '+1-408-207-0700',
-                contact: 'Operations Team',
-                region: 'Corporate',
-                latitude: 37.4419,
-                longitude: -122.1430,
-                notes: 'Corporate headquarters and main distribution center',
+                name: 'ProHealth Waukesha Memorial Hospital',
+                type: 'hospital',
+                specialty: 'orthopedic',
+                address: 'W27W24500 National Ave',
+                city: 'Waukesha',
+                state: 'WI',
+                zip: '53188',
+                phone: '+1-262-928-1000',
+                territory: 'Wisconsin West',
+                notes: 'Comprehensive orthopedic and spine services',
                 active: true,
-                isDemoLocation: true
+                isDemoFacility: true
             },
             {
-                name: 'Wisconsin Distribution Center',
-                type: 'warehouse',
-                address: '1234 Industrial Blvd',
+                name: 'Children\'s Hospital of Wisconsin',
+                type: 'specialty',
+                specialty: 'pediatric',
+                address: '9000 W Wisconsin Ave',
                 city: 'Milwaukee',
                 state: 'WI',
-                zip: '53218',
-                phone: '+1-414-555-0199',
-                contact: 'Tom Wilson, Warehouse Manager',
-                region: 'Wisconsin East',
-                latitude: 43.0642,
-                longitude: -87.9073,
-                notes: 'Regional distribution and inventory management',
+                zip: '53226',
+                phone: '+1-414-266-2000',
+                territory: 'Wisconsin East',
+                notes: 'Pediatric and adolescent spine surgery center',
                 active: true,
-                isDemoLocation: true
+                isDemoFacility: true
             },
             {
-                name: "Eric's Regional Office",
-                type: 'rep_office',
-                address: '789 Business Park Dr, Suite 200',
-                city: 'Madison',
+                name: 'Medical College of Wisconsin',
+                type: 'academic',
+                specialty: 'research',
+                address: '8701 W Watertown Plank Rd',
+                city: 'Milwaukee',
                 state: 'WI',
-                zip: '53719',
-                phone: '+1-608-555-0150',
-                contact: 'Eric Swick',
-                region: 'Wisconsin East',
-                latitude: 43.0731,
-                longitude: -89.4012,
-                notes: 'Territory manager office and storage facility',
+                zip: '53226',
+                phone: '+1-414-955-8000',
+                territory: 'Wisconsin East',
+                notes: 'Academic medical center and research facility',
                 active: true,
-                isDemoLocation: true
+                isDemoFacility: true
             }
         ];
 
-        // Check which locations already exist
-        const existingNames = await this.getExistingLocationNames();
+        // Check which facilities already exist
+        const existingNames = await this.getExistingFacilityNames();
 
-        for (const location of demoLocations) {
+        for (const facility of demoFacilities) {
             try {
-                // Skip if location already exists
-                if (existingNames.has(location.name.toLowerCase().trim())) {
-                    console.log(`Location already exists, skipping: ${location.name}`);
+                // Skip if facility already exists
+                if (existingNames.has(facility.name.toLowerCase().trim())) {
+                    console.log(`Facility already exists, skipping: ${facility.name}`);
                     continue;
                 }
 
-                location.createdAt = serverTimestamp();
-                location.createdBy = window.app?.authManager?.getCurrentUser()?.uid || 'demo-user';
+                facility.created_at = serverTimestamp();
+                facility.updated_at = serverTimestamp();
+                facility.created_by = window.app?.authManager?.getCurrentUser()?.uid || 'demo-user';
 
-                await addDoc(collection(this.db, 'locations'), location);
-                console.log(`Created demo location: ${location.name}`);
+                await addDoc(collection(this.db, 'facilities'), facility);
+                console.log(`Created demo facility: ${facility.name}`);
             } catch (error) {
-                console.error(`Error creating demo location ${location.name}:`, error);
-                // Continue with other locations even if one fails
+                console.error(`Error creating demo facility ${facility.name}:`, error);
+                // Continue with other facilities even if one fails
             }
         }
     }
 
-    // NEW: Create demo surgeons
+    // Create demo physicians (MyRepData compatible)
     async createDemoSurgeons() {
-
+        // Wait for facilities to be created first
         let attempts = 0;
-        while ((!window.app.caseTypeManager?.currentCaseTypes || window.app.caseTypeManager.currentCaseTypes.length === 0) && attempts < 10) {
+        while (attempts < 10) {
+            try {
+                const facilitiesSnapshot = await getDocs(collection(this.db, 'facilities'));
+                if (!facilitiesSnapshot.empty) break;
+            } catch (error) {
+                console.log('Waiting for facilities to be created...');
+            }
             await new Promise(resolve => setTimeout(resolve, 500));
             attempts++;
         }
 
-        const availableCaseTypes = window.app.caseTypeManager?.currentCaseTypes || [];
-
-
-        const demoSurgeons = [
+        const demoPhysicians = [
             {
                 name: 'Dr. Max Ots',
                 specialty: 'Orthopedic Spine Surgery',
                 hospital: 'Froedtert Hospital',
                 phone: '+1-414-805-3100',
                 email: 'max.ots@froedtert.com',
-                region: 'Wisconsin East',
-                yearsExperience: 15,
+                territory: 'Wisconsin East',
+                years_experience: 15,
                 notes: 'Specialized in complex spinal deformity and SI joint fusion',
-                preferredCases: this.getCaseTypeIds(['SI Joint Fusion', 'TLIF', 'Posterior Fusion'], availableCaseTypes).join(','),
                 active: true,
-                isDemoSurgeon: true
+                isDemoPhysician: true
             },
             {
                 name: 'Dr. Branko Prpa',
@@ -542,12 +528,11 @@ export class DemoManager {
                 hospital: 'Aurora Medical Center - Summit',
                 phone: '+1-262-434-1050',
                 email: 'branko.prpa@aurora.org',
-                region: 'Wisconsin East',
-                yearsExperience: 12,
+                territory: 'Wisconsin East',
+                years_experience: 12,
                 notes: 'Focus on minimally invasive spine surgery and SI joint procedures',
-                preferredCases: this.getCaseTypeIds(['Minimally Invasive', 'SI Joint Fusion', 'Lateral Fusion'], availableCaseTypes).join(','),
                 active: true,
-                isDemoSurgeon: true
+                isDemoPhysician: true
             },
             {
                 name: 'Dr. Syed Mehdi',
@@ -555,12 +540,11 @@ export class DemoManager {
                 hospital: 'Aurora Medical Center - Grafton',
                 phone: '+1-262-329-1050',
                 email: 'syed.mehdi@aurora.org',
-                region: 'Wisconsin East',
-                yearsExperience: 18,
+                territory: 'Wisconsin East',
+                years_experience: 18,
                 notes: 'Extensive experience with SI joint pathology and fusion techniques',
-                preferredCases: this.getCaseTypeIds(['Minimally Invasive', 'SI Joint Fusion', 'Lateral Fusion'], availableCaseTypes).join(','),
                 active: true,
-                isDemoSurgeon: true
+                isDemoPhysician: true
             },
             {
                 name: 'Dr. Jennifer Smith',
@@ -568,12 +552,11 @@ export class DemoManager {
                 hospital: 'Children\'s Hospital of Wisconsin',
                 phone: '+1-414-266-2000',
                 email: 'jennifer.smith@chw.org',
-                region: 'Wisconsin East',
-                yearsExperience: 8,
+                territory: 'Wisconsin East',
+                years_experience: 8,
                 notes: 'Pediatric and adult spine surgery, SI joint specialist',
-                preferredCases: this.getCaseTypeIds(['Minimally Invasive', 'SI Joint Fusion', 'Lateral Fusion'], availableCaseTypes).join(','),
                 active: true,
-                isDemoSurgeon: true
+                isDemoPhysician: true
             },
             {
                 name: 'Dr. Michael Johnson',
@@ -581,12 +564,11 @@ export class DemoManager {
                 hospital: 'Medical College of Wisconsin',
                 phone: '+1-414-955-8000',
                 email: 'michael.johnson@mcw.edu',
-                region: 'Wisconsin East',
-                yearsExperience: 20,
+                territory: 'Wisconsin East',
+                years_experience: 20,
                 notes: 'SI joint injections and minimally invasive fusion procedures',
-                preferredCases: this.getCaseTypeIds(['Minimally Invasive', 'SI Joint Fusion', 'Lateral Fusion'], availableCaseTypes).join(','),
                 active: true,
-                isDemoSurgeon: true
+                isDemoPhysician: true
             },
             {
                 name: 'Dr. Sarah Williams',
@@ -594,88 +576,101 @@ export class DemoManager {
                 hospital: 'ProHealth Waukesha Memorial Hospital',
                 phone: '+1-262-928-1000',
                 email: 'sarah.williams@prohealth.com',
-                region: 'Wisconsin West',
-                yearsExperience: 10,
+                territory: 'Wisconsin West',
+                years_experience: 10,
                 notes: 'SI joint dysfunction and fusion, sports medicine',
-                preferredCases: this.getCaseTypeIds(['Minimally Invasive', 'SI Joint Fusion', 'Lateral Fusion'], availableCaseTypes).join(','),
                 active: true,
-                isDemoSurgeon: true
+                isDemoPhysician: true
             }
         ];
 
-        // Check which surgeons already exist
+        // Check which physicians already exist
         const existingIdentifiers = await this.getExistingSurgeonIdentifiers();
 
-        for (const surgeon of demoSurgeons) {
+        for (const physician of demoPhysicians) {
             try {
-                // Skip if surgeon already exists by name or email
-                const nameExists = existingIdentifiers.names.has(surgeon.name.toLowerCase().trim());
-                const emailExists = surgeon.email && existingIdentifiers.emails.has(surgeon.email.toLowerCase().trim());
+                // Skip if physician already exists by name or email
+                const nameExists = existingIdentifiers.names.has(physician.name.toLowerCase().trim());
+                const emailExists = physician.email && existingIdentifiers.emails.has(physician.email.toLowerCase().trim());
                 
                 if (nameExists || emailExists) {
-                    console.log(`Surgeon already exists, skipping: ${surgeon.name}${surgeon.email ? ` (${surgeon.email})` : ''}`);
+                    console.log(`Physician already exists, skipping: ${physician.name}${physician.email ? ` (${physician.email})` : ''}`);
                     continue;
                 }
 
-                surgeon.createdAt = serverTimestamp();
-                surgeon.createdBy = window.app?.authManager?.getCurrentUser()?.uid || 'demo-user';
+                physician.created_at = serverTimestamp();
+                physician.updated_at = serverTimestamp();
+                physician.created_by = window.app?.authManager?.getCurrentUser()?.uid || 'demo-user';
 
-                await addDoc(collection(this.db, 'surgeons'), surgeon);
-                console.log(`Created demo surgeon: ${surgeon.name}`);
+                await addDoc(collection(this.db, 'physicians'), physician);
+                console.log(`Created demo physician: ${physician.name}`);
             } catch (error) {
-                console.error(`Error creating demo surgeon ${surgeon.name}:`, error);
-                // Continue with other surgeons even if one fails
+                console.error(`Error creating demo physician ${physician.name}:`, error);
+                // Continue with other physicians even if one fails
             }
         }
     }
 
     async createDemoCaseTypes() {
+        // MyRepData-compatible case types based on the hardcoded values from MyRepData-internal
         const demoCaseTypes = [
             {
-                name: 'SI Joint Fusion',
-                description: 'Sacroiliac joint fusion procedures using minimally invasive techniques',
+                name: 'SI fusion – lateral',
+                description: 'Lateral approach sacroiliac joint fusion procedures',
                 active: true,
                 isDemoCaseType: true
             },
             {
-                name: 'Lateral Fusion',
-                description: 'Lateral lumbar interbody fusion procedures',
+                name: 'SI fusion – Intra–articular',
+                description: 'Intra-articular sacroiliac joint fusion procedures',
                 active: true,
                 isDemoCaseType: true
             },
             {
-                name: 'TLIF',
-                description: 'Transforaminal lumbar interbody fusion',
+                name: 'SI fusion – Oblique/Postero lateral',
+                description: 'Oblique and postero-lateral approach SI joint fusion',
                 active: true,
                 isDemoCaseType: true
             },
             {
-                name: 'ALIF',
-                description: 'Anterior lumbar interbody fusion',
+                name: 'SI fusion – Medial to lateral',
+                description: 'Medial to lateral approach SI joint fusion',
                 active: true,
                 isDemoCaseType: true
             },
             {
-                name: 'Posterior Fusion',
-                description: 'Posterior spinal fusion procedures',
+                name: 'Spine fusion – Long Construct',
+                description: 'Multi-level spine fusion requiring extensive instrumentation',
                 active: true,
                 isDemoCaseType: true
             },
             {
-                name: 'Revision Surgery',
-                description: 'Revision procedures for failed prior surgeries',
+                name: 'Spine fusion – Short construct',
+                description: 'Limited level spine fusion procedures',
                 active: true,
                 isDemoCaseType: true
             },
             {
-                name: 'Minimally Invasive',
-                description: 'General minimally invasive spinal procedures',
+                name: 'Sacral fracture – TNT/TORQ',
+                description: 'Sacral fracture repair using TNT/TORQ instrumentation system',
                 active: true,
                 isDemoCaseType: true
             },
             {
-                name: 'Pain Management',
-                description: 'Pain management and injection procedures',
+                name: 'Revision Surgery – Spine fusion',
+                description: 'Revision procedures for failed spine fusion surgeries',
+                active: true,
+                isDemoCaseType: true
+            },
+            {
+                name: 'Revision Surgery – SI fusion',
+                description: 'Revision procedures for failed SI joint fusion surgeries',
+                active: true,
+                isDemoCaseType: true
+            },
+            {
+                name: 'Minimally Invasive Spine fusion',
+                description: 'Minimally invasive spinal fusion procedures',
                 active: true,
                 isDemoCaseType: true
             }
@@ -710,8 +705,9 @@ export class DemoManager {
                     continue;
                 }
 
-                caseType.createdAt = serverTimestamp();
-                caseType.createdBy = window.app?.authManager?.getCurrentUser()?.uid || 'demo-user';
+                caseType.created_at = serverTimestamp();
+                caseType.updated_at = serverTimestamp();
+                caseType.created_by = window.app?.authManager?.getCurrentUser()?.uid || 'demo-user';
 
                 console.log(`Attempting to create case type: ${caseType.name}`);
                 const docRef = await addDoc(collection(this.db, 'casetypes'), caseType);
@@ -752,20 +748,73 @@ export class DemoManager {
     }
 
     async clearDemoData() {
-        if (!confirm('This will delete all demo data. This action cannot be undone. Continue?')) {
+        if (!confirm('This will delete all demo data from both old and new collections. This action cannot be undone. Continue?')) {
             return;
         }
 
         try {
-            // Delete demo trays
-            const trays = await this.dataManager.getAllTrays();
-            for (const tray of trays) {
-                if (tray.isDemoTray) {
-                    await this.dataManager.deleteTray(tray.id);
+            let deletedCount = 0;
+            const collections = [
+                // New MyRepData collections
+                { name: 'tray_tracking', demoField: 'isDemoTray' },
+                { name: 'physicians', demoField: 'isDemoPhysician' },
+                { name: 'facilities', demoField: 'isDemoFacility' },
+                { name: 'casetypes', demoField: 'isDemoCaseType' },
+                { name: 'activities', demoField: 'isDemoActivity' },
+                
+                // Old legacy collections (in case they still exist)
+                { name: 'trays', demoField: 'isDemoTray' },
+                { name: 'locations', demoField: 'isDemoLocation' },
+                { name: 'surgeons', demoField: 'isDemoSurgeon' },
+                { name: 'users', demoField: 'isDemoUser' }
+            ];
+
+            for (const collectionInfo of collections) {
+                try {
+                    console.log(`Checking collection: ${collectionInfo.name}`);
+                    const snapshot = await getDocs(collection(this.db, collectionInfo.name));
+                    
+                    const deletePromises = [];
+                    snapshot.forEach((doc) => {
+                        const data = doc.data();
+                        if (data[collectionInfo.demoField]) {
+                            deletePromises.push(deleteDoc(doc.ref));
+                            deletedCount++;
+                        }
+                    });
+
+                    // Wait for all deletions in this collection to complete
+                    await Promise.all(deletePromises);
+                    console.log(`Cleared ${deletePromises.length} demo items from ${collectionInfo.name}`);
+                } catch (error) {
+                    console.warn(`Collection ${collectionInfo.name} may not exist or error occurred:`, error.message);
+                    // Continue with other collections even if one fails
                 }
             }
 
-            alert('Demo data cleared successfully!');
+            // Also clear any demo history/activity entries
+            try {
+                const historySnapshot = await getDocs(collection(this.db, 'history'));
+                const historyDeletePromises = [];
+                historySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    if (data.description && data.description.includes('Demo tray')) {
+                        historyDeletePromises.push(deleteDoc(doc.ref));
+                        deletedCount++;
+                    }
+                });
+                await Promise.all(historyDeletePromises);
+                console.log(`Cleared ${historyDeletePromises.length} demo history entries`);
+            } catch (error) {
+                console.warn('History collection may not exist:', error.message);
+            }
+
+            alert(`Demo data cleared successfully! Deleted ${deletedCount} items across all collections.`);
+            
+            // Refresh the page to ensure UI reflects the changes
+            if (deletedCount > 0) {
+                window.location.reload();
+            }
         } catch (error) {
             console.error('Error clearing demo data:', error);
             alert('Error clearing demo data: ' + error.message);
