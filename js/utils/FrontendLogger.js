@@ -11,6 +11,13 @@ export class FrontendLogger {
     }
 
     async sendLog(level, message, data = null, context = 'frontend') {
+        // Check global API logging toggle - skip API logging if disabled but still console log
+        if (!window.is_enable_api_logging) {
+            // Only log to console if API logging is disabled
+            console[level] || console.log(`[${level.toUpperCase()}] ${message}`, data);
+            return;
+        }
+        
         const logEntry = {
             level,
             message,
@@ -37,7 +44,7 @@ export class FrontendLogger {
     }
 
     async flushLogs() {
-        if (this.isProcessing || this.logQueue.length === 0) {
+        if (this.isProcessing || this.logQueue.length === 0 || !window.is_enable_api_logging) {
             return;
         }
 
@@ -95,7 +102,7 @@ export class FrontendLogger {
 
     // Log case-related events
     logCaseAction(action, data = null) {
-        return this.info(`Case ${action}`, data, 'cases');
+        return this.info(`Case ${action}`, data, 'surgical_cases');
     }
 
     // Log dropdown population events

@@ -13,7 +13,11 @@ window.TRAY_TRACKER_CONFIG = {
     API_BASE_URL: '/api',
     
     // Debug settings
-    DEBUG_ROUTING: false
+    DEBUG_ROUTING: false,
+    
+    // Logging toggles
+    ENABLE_API_LOGGING: false,
+    ENABLE_TRAY_AVAILABILITY_LOGIC_API_LOGGING: false
 };
 
 console.log('⚙️ Default configuration loaded - Auto-detecting URL strategy');

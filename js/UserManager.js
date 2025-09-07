@@ -222,7 +222,6 @@ export class UserManager {
     }
 
     handleUsersUpdate(users) {
-        console.log('UserManager received users update:', users);
 
         if (users instanceof Map) {
             this.currentUsers = Array.from(users.values());
@@ -233,13 +232,11 @@ export class UserManager {
             this.currentUsers = [];
         }
 
-        console.log('Processing users:', this.currentUsers.length);
         this.renderUsers(this.currentUsers);
         this.updateStats(this.currentUsers);
     }
 
     renderUsers(users) {
-        console.log('Rendering users in view mode:', this.viewMode, 'Users count:', users.length);
 
         if (this.viewMode === 'card') {
             this.renderCardView(users);
@@ -345,6 +342,9 @@ export class UserManager {
                 <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditUserModal('${user.id}')">
                     <i class="fas fa-edit"></i> Edit
                 </button>
+                <button class="btn-warning-custom btn-sm" onclick="app.userManager.showUpdatePasswordModal('${user.id}', '${(user.name || user.email || 'Unknown User').replace(/'/g, '\\\'')}')" title="Send Password Reset Email">
+                    <i class="fas fa-envelope"></i> Reset
+                </button>
                 <button class="btn-danger-custom btn-sm" onclick="app.userManager.deleteUser('${user.id}', '${user.name || user.email}')">
                     <i class="fas fa-trash"></i> Delete
                 </button>
@@ -399,6 +399,9 @@ export class UserManager {
                 <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditUserModal('${user.id}')">
                     <i class="fas fa-edit"></i> Edit
                 </button>
+                <button class="btn-warning-custom btn-sm" onclick="app.userManager.showUpdatePasswordModal('${user.id}', '${(user.name || user.email || 'Unknown User').replace(/'/g, '\\\'')}')" title="Send Password Reset Email">
+                    <i class="fas fa-envelope"></i> Reset
+                </button>
                 <button class="btn-danger-custom btn-sm" onclick="app.userManager.deleteUser('${user.id}', '${user.name || user.email}')">
                     <i class="fas fa-trash"></i> Delete
                 </button>
@@ -451,6 +454,70 @@ export class UserManager {
         if (activeElement) activeElement.textContent = stats.active;
         if (managersElement) managersElement.textContent = stats.managers;
         if (repsElement) repsElement.textContent = stats.reps;
+    }
+
+    showUpdatePasswordModal(userId, userName) {
+        // Populate the modal with user information
+        document.getElementById('passwordUpdateUserId').value = userId;
+        document.getElementById('passwordUpdateUserName').value = userName;
+        
+        // Clear the form
+        document.getElementById('updateUserPasswordForm').reset();
+        document.getElementById('passwordUpdateUserId').value = userId;
+        document.getElementById('passwordUpdateUserName').value = userName;
+        
+        // Show the modal
+        const modal = new bootstrap.Modal(document.getElementById('updateUserPasswordModal'));
+        modal.show();
+    }
+
+    async updateUserPassword() {
+        const userId = document.getElementById('passwordUpdateUserId').value;
+        
+        if (!userId) {
+            this.showNotification('User ID not found', 'error');
+            return;
+        }
+
+        try {
+            // Import Firebase Auth functions
+            const { sendPasswordResetEmail, getAuth } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js");
+            const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
+
+            const auth = getAuth();
+            
+            // Get user's email from Firestore
+            const userRef = doc(this.db, 'users', userId);
+            const userDoc = await getDoc(userRef);
+            
+            if (!userDoc.exists()) {
+                throw new Error('User not found');
+            }
+            
+            const userData = userDoc.data();
+            const userEmail = userData.email;
+            
+            if (!userEmail) {
+                throw new Error('User email not found');
+            }
+
+            // Send password reset email using Firebase
+            await sendPasswordResetEmail(auth, userEmail);
+
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('updateUserPasswordModal'));
+            modal.hide();
+
+            // Show success notification
+            this.showNotification(`Password reset email sent to ${userEmail}. User will receive instructions to reset their password.`, 'success');
+            
+            // Clear form
+            document.getElementById('updateUserPasswordForm').reset();
+
+        } catch (error) {
+            console.error('Error updating user password:', error);
+            this.showNotification('Error updating password: ' + error.message, 'error');
+        }
     }
 
     showSuccessNotification(message) {

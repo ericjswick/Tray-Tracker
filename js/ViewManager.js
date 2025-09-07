@@ -1,5 +1,6 @@
 // js/ViewManager.js - Updated for Tray Tracker
 import { routingDetector } from './utils/RoutingDetector.js';
+import { isInUseStatus, isCheckedInStatus } from './constants/TrayStatus.js';
 
 export class ViewManager {
     constructor() {
@@ -74,8 +75,8 @@ export class ViewManager {
             case 'team':
                 this.initializeTeamView();
                 break;
-            case 'locations':
-                this.initializeLocationsView();
+            case 'facilities':
+                this.initializeFacilitiesView();
                 break;
             case 'trays':
                 this.initializeTraysView();
@@ -83,11 +84,14 @@ export class ViewManager {
             case 'users':
                 this.initializeUsersView();
                 break;
-            case 'locationadmin':
-                this.initializeLocationAdminView();
+            case 'facilityAdmin':
+                this.initializeFacilityAdminView();
                 break;
             case 'surgeons':
                 this.initializeSurgeonsView();
+                break;
+            case 'physicians':
+                this.initializePhysiciansView();
                 break;
             case 'map':
                 this.initializeMapView();
@@ -146,6 +150,17 @@ export class ViewManager {
                 }
             }
             
+            // Initialize dashboard cases
+            if (window.app.dashboardManager) {
+                window.app.dashboardManager.initialize();
+            }
+            
+            // Backfill tray history if needed (only runs once)
+            this.backfillTrayHistoryIfNeeded();
+            
+            // Load recent activity
+            this.loadRecentActivity();
+            
             // Set up dashboard filter listener
             const dashboardFilter = document.getElementById('dashboardStatusFilter');
             if (dashboardFilter) {
@@ -167,7 +182,7 @@ export class ViewManager {
         }, 100);
     }
 
-    initializeLocationsView() {
+    initializeFacilitiesView() {
         setTimeout(() => {
             if (window.app.mapManager) {
                 window.app.mapManager.initializeMap();
@@ -229,18 +244,18 @@ export class ViewManager {
         }, 100);
     }
 
-    initializeLocationAdminView() {
-        console.log('Initializing location admin view');
+    initializeFacilityAdminView() {
+        console.log('Initializing facility admin view');
         setTimeout(() => {
-            if (window.app.locationManager) {
+            if (window.app.facilityManager) {
                 try {
-                    window.app.locationManager.initializeViewMode();
-                    console.log('Location admin view initialized');
+                    window.app.facilityManager.initializeViewMode();
+                    console.log('Facility admin view initialized');
                 } catch (error) {
-                    console.error('Error initializing location admin view:', error);
+                    console.error('Error initializing facility admin view:', error);
                 }
             } else {
-                console.error('LocationManager not found');
+                console.error('FacilityManager not found');
             }
         }, 100);
     }
@@ -254,6 +269,22 @@ export class ViewManager {
                     console.log('Surgeons view initialized');
                 } catch (error) {
                     console.error('Error initializing surgeons view:', error);
+                }
+            } else {
+                console.error('SurgeonManager not found');
+            }
+        }, 100);
+    }
+
+    initializePhysiciansView() {
+        console.log('Initializing physicians view');
+        setTimeout(() => {
+            if (window.app.surgeonManager) {
+                try {
+                    window.app.surgeonManager.initializeViewMode();
+                    console.log('Physicians view initialized using SurgeonManager');
+                } catch (error) {
+                    console.error('Error initializing physicians view:', error);
                 }
             } else {
                 console.error('SurgeonManager not found');
@@ -316,7 +347,7 @@ export class ViewManager {
         card.className = 'tray-card';
 
         const statusClass = this.getStatusClass(tray.status);
-        const typeIcon = this.getTrayTypeIcon(tray.type);
+        const typeIcon = this.getTrayTypeIcon(tray);
         const locationText = this.getLocationText(tray.location);
 
         card.innerHTML = `
@@ -331,8 +362,23 @@ export class ViewManager {
             </div>
             <div class="tray-card-content">
                 <div class="tray-detail">
-                    <i class="fas fa-map-marker-alt"></i>
-                    <span class="tray-detail-value">${locationText}</span>
+                    ${this.isCheckedIn(tray) ? `
+                        <i class="fas fa-hospital"></i>
+                        <span class="tray-detail-value">${(() => {
+                            const facilityId = this.getTrayFacility(tray);
+                            const facilityName = this.getFacilityName(facilityId);
+                            
+                            // Debug for dashboard cards (using same pattern as TrayManager)
+                            if (window.is_enable_api_logging && window.frontendLogger) {
+                                // Dashboard HTML generation debugging available if needed
+                            }
+                            
+                            return facilityName;
+                        })()}</span>
+                    ` : `
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span class="tray-detail-value">${locationText}</span>
+                    `}
                 </div>
                 ${tray.caseDate ? `
                     <div class="tray-detail">
@@ -526,21 +572,41 @@ export class ViewManager {
     getStatusClass(status) {
         switch (status) {
             case 'available': return 'status-available';
-            case 'in-use': return 'status-in-use';
-            case 'corporate': return 'status-corporate';
-            case 'trunk': return 'status-trunk';
+            case 'in-use':
+            case 'in_use': return 'status-in-use';
+            case 'corporate':
+            case 'cleaning': return 'status-cleaning';
+            case 'trunk':
+            case 'maintenance': return 'status-maintenance';
             default: return 'status-available';
         }
     }
 
-    getTrayTypeIcon(type) {
+    getTrayTypeIcon(tray) {
+        // Support both legacy type field and MyRepData case type compatibility
+        let primaryType = '';
+        
+        if (tray.case_type_compatibility && Array.isArray(tray.case_type_compatibility) && tray.case_type_compatibility.length > 0) {
+            // Map MyRepData case types to icons
+            const caseType = tray.case_type_compatibility[0]; // Use first case type for icon
+            const caseTypeIcons = {
+                'SI fusion': 'fas fa-link',
+                'Spine fusion': 'fas fa-link',
+                'Minimally Invasive': 'fas fa-microscope',
+                'Revision Surgery': 'fas fa-tools',
+                'Complete System': 'fas fa-briefcase-medical'
+            };
+            return caseTypeIcons[caseType] || 'fas fa-medical-bag';
+        }
+        
+        // Fallback to legacy type icons
         const icons = {
             'fusion': 'fas fa-link',
             'revision': 'fas fa-tools',
             'mi': 'fas fa-microscope',
             'complete': 'fas fa-briefcase-medical'
         };
-        return icons[type] || 'fas fa-medical-bag';
+        return icons[tray.type] || 'fas fa-medical-bag';
     }
 
     getLocationText(locationId) {
@@ -601,6 +667,46 @@ export class ViewManager {
         return surgeonId;
     }
 
+    // Helper methods for dashboard tray cards
+    isCheckedIn(tray) {
+        return isCheckedInStatus(tray.status) || isInUseStatus(tray.status);
+    }
+
+    getTrayFacility(tray) {
+        return tray.facility_id || tray.facility || '';
+    }
+
+    getFacilityName(facilityId) {
+        if (!facilityId) return 'No Facility Assigned';
+        
+        // Try facilityManager first
+        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
+            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
+            if (facility) {
+                return facility.name;
+            }
+        }
+        
+        // Fallback to dataManager
+        if (window.app.dataManager) {
+            const facilities = window.app.dataManager.getFacilities();
+            if (facilities && facilities.length > 0) {
+                const facility = facilities.find(f => f.id === facilityId);
+                if (facility) {
+                    return facility.name;
+                }
+            }
+        }
+        
+        // If it looks like a name already, return as-is
+        if (facilityId.includes(' ') || facilityId.length > 25) {
+            return facilityId;
+        }
+        
+        // Final fallback
+        return `Unknown Facility (${facilityId})`;
+    }
+
     // Add this method to ViewManager class if it doesn't exist
     getSurgeonPreferredCasesText(preferredCases) {
         if (!preferredCases) return 'Any';
@@ -637,7 +743,7 @@ export class ViewManager {
             `;
         }
 
-        if (tray.status === 'in-use') {
+        if (tray.status === 'in-use' || tray.status === 'in_use') {
             actions += `
                 <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
                     <i class="fas fa-hand-paper"></i> Pickup
@@ -689,7 +795,7 @@ export class ViewManager {
         const stats = {
             active: trays.length,
             available: trays.filter(t => t.status === 'available').length,
-            inUse: trays.filter(t => t.status === 'in-use').length,
+            inUse: trays.filter(t => t.status === 'in-use' || t.status === 'in_use').length,
             corporate: trays.filter(t => t.location === 'corporate').length
         };
 
@@ -731,6 +837,101 @@ export class ViewManager {
         });
     }
 
+    async loadRecentActivity() {
+        try {
+            if (!window.app.dataManager) {
+                console.error('❌ DataManager not available');
+                this.updateRecentActivity([]);
+                return;
+            }
+            
+            const activities = await window.app.dataManager.getAllRecentActivity(10);
+            
+            if (!activities || activities.length === 0) {
+                this.updateRecentActivity([]);
+                return;
+            }
+                
+            // Transform the activity data to match the expected format
+            const transformedActivities = activities.map(activity => {
+                let description = activity.details;
+                if (activity.source === 'tray' && activity.trayName) {
+                    description = `${activity.trayName}: ${activity.details}`;
+                }
+                
+                const transformed = {
+                    type: activity.action || 'unknown',
+                    description: description,
+                    timestamp: activity.timestamp,
+                    user: activity.user || 'Unknown User'
+                };
+                
+                return transformed;
+            });
+            
+            this.updateRecentActivity(transformedActivities);
+        } catch (error) {
+            console.error('❌ Error loading recent activity:', error);
+            console.error('❌ Error stack:', error.stack);
+            // Show the default "no recent activity" state
+            this.updateRecentActivity([]);
+        }
+    }
+
+    handleActivitiesUpdate(activities) {
+        
+        // Transform activities to the format expected by updateRecentActivity
+        const transformedActivities = activities.map(activity => {
+            let description = activity.details;
+            if (activity.source === 'tray' && activity.trayName) {
+                description = `${activity.trayName}: ${activity.details}`;
+            }
+            
+            return {
+                trayName: activity.trayName || activity.source || 'System',
+                action: activity.action,
+                description: description,
+                time: activity.timestamp?.toDate ? activity.timestamp.toDate() : new Date(activity.timestamp),
+                photoUrl: activity.photoUrl
+            };
+        });
+
+        // Update the dashboard activities card if currently viewing dashboard
+        if (this.currentView === 'dashboard') {
+            this.updateRecentActivity(transformedActivities);
+        }
+    }
+
+    async backfillTrayHistoryIfNeeded() {
+        try {
+            // Check if backfill has already been done
+            const backfillKey = 'tray_history_backfill_completed';
+            if (localStorage.getItem(backfillKey) === 'true') {
+                console.log('Tray history backfill already completed, skipping...');
+                return;
+            }
+            
+            // Perform backfill
+            if (window.app.dataManager) {
+                console.log('Starting tray history backfill...');
+                const backfilledCount = await window.app.dataManager.backfillTrayHistory();
+                
+                if (backfilledCount > 0) {
+                    console.log(`Backfilled ${backfilledCount} trays with history`);
+                    // Mark backfill as completed
+                    localStorage.setItem(backfillKey, 'true');
+                    
+                    // Reload recent activity to show the new data
+                    setTimeout(() => {
+                        this.loadRecentActivity();
+                    }, 2000); // Wait 2 seconds for Firestore to update
+                }
+            }
+        } catch (error) {
+            console.error('Error during backfill check:', error);
+        }
+    }
+
     createActivityItem(activity) {
         const item = document.createElement('div');
         item.className = 'activity-item';
@@ -744,6 +945,7 @@ export class ViewManager {
             </div>
             <div class="activity-content">
                 <div class="activity-text">${activity.description}</div>
+                <div class="activity-user">${activity.user}</div>
                 <div class="activity-time">${timeAgo}</div>
             </div>
         `;
@@ -832,7 +1034,7 @@ export class ViewManager {
 
     // Get view name from current URL
     getViewFromUrl() {
-        const validViews = ['dashboard', 'team', 'locations', 'trays', 'users', 'locationadmin', 'surgeons', 'map', 'casetypes', 'cases'];
+        const validViews = ['dashboard', 'team', 'facilities', 'trays', 'users', 'facilityAdmin', 'surgeons', 'physicians', 'map', 'casetypes', 'cases'];
         
         if (this.routingStrategy === 'clean') {
             // Clean URLs: check pathname
@@ -865,10 +1067,10 @@ export class ViewManager {
         const navItems = [
             { id: 'nav-dashboard', view: 'dashboard' },
             { id: 'nav-team', view: 'team' },
-            { id: 'nav-locations', view: 'locations' },
+            { id: 'nav-facilities', view: 'facilities' },
             { id: 'nav-trays', view: 'trays' },
             { id: 'nav-users', view: 'users' },
-            { id: 'nav-locationadmin', view: 'locationadmin' },
+            { id: 'nav-facilityAdmin', view: 'facilityAdmin' },
             { id: 'nav-surgeons', view: 'surgeons' },
             { id: 'nav-map', view: 'map' },
             { id: 'nav-casetypes', view: 'casetypes' },
@@ -903,7 +1105,7 @@ export class ViewManager {
         });
 
         // Also update dropdown items without navigation IDs
-        const dropdownViews = ['users', 'locationadmin', 'surgeons', 'cases', 'casetypes'];
+        const dropdownViews = ['users', 'facilityAdmin', 'surgeons', 'physicians', 'cases', 'casetypes'];
         dropdownViews.forEach(view => {
             const elements = document.querySelectorAll(`a[href="#${view}"], a[href="/${view}"]`);
             elements.forEach(element => {
@@ -998,8 +1200,8 @@ export class ViewManager {
     
     isValidView(viewName) {
         const validViews = [
-            'dashboard', 'team', 'locations', 'trays', 'users', 
-            'locationadmin', 'surgeons', 'map', 'casetypes', 'cases'
+            'dashboard', 'team', 'facilities', 'trays', 'users', 
+            'facilityAdmin', 'surgeons', 'physicians', 'map', 'casetypes', 'cases'
         ];
         return validViews.includes(viewName);
     }
