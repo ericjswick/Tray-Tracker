@@ -75,9 +75,9 @@ export class SurgeonManager {
         this.renderSurgeons(this.currentSurgeons);
     }
 
-    async initializeViewMode() {
+    initializeViewMode() {
         this.setViewMode(this.viewMode);
-        await this.setupRealtimeListeners();
+        this.setupRealtimeListeners();
         this.showLoadingState();
     }
 
@@ -125,7 +125,7 @@ export class SurgeonManager {
         }
     }
 
-    async setupRealtimeListeners() {
+    setupRealtimeListeners() {
         console.log('Setting up realtime listeners for physicians...');
         
         if (!this.db) {
@@ -134,32 +134,38 @@ export class SurgeonManager {
             return;
         }
 
-        try {
-            console.log('Creating physicians query...');
-            // Check if physicians collection exists, fallback to surgeons
-            this.collectionName = await this.determineCollectionName();
-            const surgeonsQuery = query(collection(this.db, this.collectionName), orderBy('createdAt', 'desc'));
+        // Determine collection name asynchronously and then set up listener
+        this.determineCollectionName().then(collectionName => {
+            this.collectionName = collectionName;
             
-            console.log('Setting up onSnapshot listener...');
-            this.surgeonsUnsubscribe = onSnapshot(surgeonsQuery, (snapshot) => {
-                console.log('Received snapshot update, document count:', snapshot.size);
-                const surgeons = [];
-                snapshot.forEach((doc) => {
-                    surgeons.push({ id: doc.id, ...doc.data() });
-                });
+            try {
+                console.log(`Using collection: ${collectionName}`);
+                const surgeonsQuery = query(collection(this.db, this.collectionName), orderBy('createdAt', 'desc'));
+                
+                console.log('Setting up onSnapshot listener...');
+                this.surgeonsUnsubscribe = onSnapshot(surgeonsQuery, (snapshot) => {
+                    console.log('Received snapshot update, document count:', snapshot.size);
+                    const surgeons = [];
+                    snapshot.forEach((doc) => {
+                        surgeons.push({ id: doc.id, ...doc.data() });
+                    });
 
-                this.handleSurgeonsUpdate(surgeons);
-            }, (error) => {
-                console.error('Error listening to surgeons:', error);
-                this.showErrorNotification('Error loading physicians: ' + error.message);
+                    this.handleSurgeonsUpdate(surgeons);
+                }, (error) => {
+                    console.error('Error listening to surgeons:', error);
+                    this.showErrorNotification('Error loading physicians: ' + error.message);
+                    this.handleSurgeonsUpdate([]);
+                });
+                
+                console.log('Realtime listener setup complete');
+            } catch (error) {
+                console.error('Error setting up surgeons listener:', error);
                 this.handleSurgeonsUpdate([]);
-            });
-            
-            console.log('Realtime listener setup complete');
-        } catch (error) {
-            console.error('Error setting up surgeons listener:', error);
+            }
+        }).catch(error => {
+            console.error('Error determining collection name:', error);
             this.handleSurgeonsUpdate([]);
-        }
+        });
     }
 
     async addSurgeon() {
