@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Read(//var/log/**)",
+      "Bash(curl:*)",
+      "Read(//hosting/web/**)",
+      "Bash(netstat:*)",
+      "Bash(docker-compose:*)",
+      "Bash(docker logs:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -5,6 +5,30 @@ export class ModalManager {
         this.initializeModalEvents();
     }
 
+    async logToAPI(message, data = null, context = 'modal-debug') {
+        // Check global API logging toggle
+        if (!window.is_enable_api_logging) {
+            return; // Skip logging if disabled
+        }
+        
+        try {
+            await fetch('https://traytracker-dev.serverdatahost.com/api/debug/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    level: 'info',
+                    message: `🔥 ${message}`,
+                    data: data,
+                    context: context
+                })
+            });
+        } catch (error) {
+            console.log('Failed to log to API:', error);
+            // Fallback to console.log if API endpoint fails
+            console.log(`🔥 ${message}`, data);
+        }
+    }
+
     initializeModalEvents() {
         // Turnover action radio buttons
         document.querySelectorAll('input[name="turnoverAction"]').forEach(radio => {
@@ -33,9 +57,66 @@ export class ModalManager {
     }
 
     async showAddTrayModal() {
+        // Reset modal to add mode
+        window.app.trayManager.resetTrayModal();
+        
         await this.populateInitialLocationDropdown();
+        await this.populateCaseTypeCompatibilityDropdown();
         const modal = new bootstrap.Modal(document.getElementById('addTrayModal'));
         modal.show();
+    }
+
+    async populateCaseTypeCompatibilityDropdown() {
+        try {
+            const trayTypeSelect = document.getElementById('trayType');
+            if (!trayTypeSelect) {
+                console.error('Tray type select element not found');
+                return;
+            }
+
+            // Clear existing options
+            trayTypeSelect.innerHTML = '';
+
+            // Get case types from Firestore
+            const caseTypes = await this.dataManager.getAllCaseTypes();
+            
+            if (caseTypes && caseTypes.length > 0) {
+                // Filter active case types and sort alphabetically
+                const activeCaseTypes = caseTypes
+                    .filter(caseType => caseType.active !== false && !caseType.deletedAt)
+                    .sort((a, b) => a.name.localeCompare(b.name));
+                
+                // Populate dropdown with case types from Firestore
+                activeCaseTypes.forEach(caseType => {
+                    const option = document.createElement('option');
+                    option.value = caseType.name;
+                    option.textContent = caseType.name;
+                    trayTypeSelect.appendChild(option);
+                });
+                
+                console.log(`Populated case type compatibility dropdown with ${activeCaseTypes.length} case types`);
+            } else {
+                // Fallback to hardcoded case types if Firestore collection is empty
+                console.warn('No case types found in Firestore, using fallback options');
+                const fallbackCaseTypes = [
+                    'SI fusion – lateral',
+                    'SI fusion – Intra–articular',
+                    'Spine fusion – Long Construct',
+                    'Spine fusion – Short construct',
+                    'Minimally Invasive Spine fusion'
+                ];
+                
+                fallbackCaseTypes.forEach(caseTypeName => {
+                    const option = document.createElement('option');
+                    option.value = caseTypeName;
+                    option.textContent = caseTypeName;
+                    trayTypeSelect.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Error populating case type compatibility dropdown:', error);
+            // Show a user-friendly message or fallback options
+        }
     }
 
     async populateInitialLocationDropdown() {
@@ -79,26 +160,37 @@ export class ModalManager {
         document.getElementById('checkinTrayId').value = trayId;
 
         // Populate facilities dropdown
-        const facilitiesList = document.getElementById('facilityName');
-        facilitiesList.innerHTML = '<option value="">Select Location...</option>';
+        const facilitiesList = document.getElementById('checkinFacilityName');
+        facilitiesList.innerHTML = '<option value="">Select Facility...</option>';
 
-        // Add locations from Firebase
-        if (window.app.locationManager && window.app.locationManager.currentLocations) {
-            const activeLocations = window.app.locationManager.currentLocations
-                .filter(location => location.active)
+        // Add facilities from Firebase facilities collection
+        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
+            const activeFacilities = window.app.facilityManager.currentFacilities
+                .filter(facility => facility.active !== false && !facility.deletedAt)
                 .sort((a, b) => a.name.localeCompare(b.name));
 
-            activeLocations.forEach(location => {
+            activeFacilities.forEach(facility => {
                 const option = document.createElement('option');
-                option.value = location.id;
-                option.textContent = location.name;
+                option.value = facility.id;
+                option.textContent = facility.name;
                 facilitiesList.appendChild(option);
+            });
+
+            this.logToAPI('🔥 [CHECK-IN MODAL] Populated facilities dropdown', {
+                facilitiesCount: activeFacilities.length,
+                facilities: activeFacilities.map(f => ({ id: f.id, name: f.name }))
+            });
+        } else {
+            this.logToAPI('🔥 [CHECK-IN MODAL] No facilities available', {
+                hasFacilityManager: !!window.app.facilityManager,
+                hasCurrentFacilities: !!(window.app.facilityManager && window.app.facilityManager.currentFacilities),
+                facilitiesCount: window.app.facilityManager?.currentFacilities?.length || 0
             });
         }
 
         // Populate surgeons
-        const surgeonSelect = document.getElementById('surgeon');
-        surgeonSelect.innerHTML = '<option value="">Select Surgeon...</option>';
+        const surgeonSelect = document.getElementById('physician');
+        surgeonSelect.innerHTML = '<option value="">Select Physician...</option>';
 
         // Get surgeons from SurgeonManager if available, otherwise use DataManager fallback
         if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons) {
@@ -145,9 +237,50 @@ export class ModalManager {
             }
         }
 
-        // Set default date to today if not pre-filled
-        if (!document.getElementById('caseDate').value) {
-            document.getElementById('caseDate').value = new Date().toISOString().split('T')[0];
+        // Populate cases dropdown
+        const casesSelect = document.getElementById('checkinCaseSelect');
+        casesSelect.innerHTML = '<option value="">Choose a scheduled case...</option>';
+        
+        try {
+            // Get cases directly from dataManager if casesManager doesn't have them loaded
+            let cases = [];
+            if (window.app.casesManager && window.app.casesManager.currentCases && window.app.casesManager.currentCases.length > 0) {
+                cases = window.app.casesManager.currentCases;
+            } else if (window.app.dataManager) {
+                // Load cases directly from dataManager
+                cases = await window.app.dataManager.getAllCases();
+            }
+
+            if (cases && cases.length > 0) {
+                // Get any future cases
+                const today = new Date().toISOString().split('T')[0];
+                const upcomingCases = cases
+                    .filter(caseItem => caseItem.scheduledDate >= today)
+                    .sort((a, b) => {
+                        // Sort by date first, then by time
+                        const dateA = new Date(a.scheduledDate + 'T' + (a.scheduledTime || '08:00'));
+                        const dateB = new Date(b.scheduledDate + 'T' + (b.scheduledTime || '08:00'));
+                        return dateA - dateB;
+                    });
+
+                upcomingCases.forEach(caseItem => {
+                    const option = document.createElement('option');
+                    option.value = caseItem.id;
+                    // Format case display with patient, facility, and date
+                    const facilityName = this.getFacilityName(caseItem.facility_id);
+                    const physicianName = this.getPhysicianName(caseItem.physician_id);
+                    const dateStr = new Date(caseItem.scheduledDate).toLocaleDateString();
+                    const timeStr = caseItem.scheduledTime ? caseItem.scheduledTime : '';
+                    option.textContent = `${caseItem.patientName} - ${facilityName} - ${dateStr} ${timeStr}`;
+                    casesSelect.appendChild(option);
+                });
+                
+                console.log(`Loaded ${upcomingCases.length} upcoming cases for check-in dropdown`);
+            } else {
+                console.log('No cases found for check-in dropdown');
+            }
+        } catch (error) {
+            console.error('Error loading cases for check-in dropdown:', error);
         }
 
         // Clear photo preview
@@ -197,7 +330,7 @@ export class ModalManager {
                         ${tray.surgeon ? `
                             <div class="info-item">
                                 <i class="fas fa-user-md"></i>
-                                <span><strong>Surgeon:</strong> ${this.getSurgeonName(tray.surgeon)}</span>
+                                <span><strong>Physician:</strong> ${this.getSurgeonName(tray.surgeon)}</span>
                             </div>
                         ` : ''}
                         ${tray.assignedTo ? `
@@ -302,7 +435,7 @@ export class ModalManager {
 
     getSurgeonName(surgeonId) {
         // If it's already a name (legacy data), return as is
-        if (!surgeonId || typeof surgeonId !== 'string') return 'Unknown Surgeon';
+        if (!surgeonId || typeof surgeonId !== 'string') return 'Unknown Physician';
 
         // Check if it looks like an ID (Firebase IDs are longer)
         if (surgeonId.length < 15) {
@@ -462,15 +595,60 @@ export class ModalManager {
         modal.show();
     }
 
-    showAddSurgeonModal() {
-        this.populateCaseTypesDropdown('surgeonPreferredCases');
+    showAddFacilityModal() {
+        // Reset form
+        const form = document.getElementById('addFacilityForm');
+        if (form) form.reset();
+        
+        // Set default values
+        const activeCheckbox = document.getElementById('facilityActive');
+        if (activeCheckbox) activeCheckbox.checked = true;
+        
+        const prioritySelect = document.getElementById('facilityPriority');
+        if (prioritySelect) prioritySelect.value = '3';
+        
+        const modal = new bootstrap.Modal(document.getElementById('addFacilityModal'));
+        modal.show();
+    }
 
-        const select = document.getElementById('surgeonPreferredCases');
-        if (select) {
-            Array.from(select.options).forEach(option => {
-                option.selected = false;
-            });
+    async showEditFacilityModal(facilityId) {
+        try {
+            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
+            if (!facility) {
+                this.showErrorNotification('Facility not found');
+                return;
+            }
+
+            // Populate form fields
+            document.getElementById('editFacilityId').value = facilityId;
+            document.getElementById('editFacilityName').value = facility.name || '';
+            document.getElementById('editFacilityType').value = facility.type || '';
+            document.getElementById('editFacilitySpecialty').value = facility.specialty || '';
+            document.getElementById('editFacilityAddress').value = facility.address || '';
+            document.getElementById('editFacilityCity').value = facility.city || '';
+            document.getElementById('editFacilityState').value = facility.state || '';
+            document.getElementById('editFacilityZip').value = facility.zip || '';
+            document.getElementById('editFacilityPhone').value = facility.phone || '';
+            document.getElementById('editFacilityTerritory').value = facility.territory || '';
+            document.getElementById('editFacilityPriority').value = facility.priority || '3';
+            document.getElementById('editFacilityContact').value = facility.contact?.primary || '';
+            document.getElementById('editFacilityContactEmail').value = facility.contact?.email || '';
+            document.getElementById('editFacilityNPI').value = facility.npi || '';
+            document.getElementById('editFacilityNotes').value = facility.notes || '';
+            document.getElementById('editFacilityActive').checked = facility.active !== false;
+            document.getElementById('editFacilityLatitude').value = facility.latitude || '';
+            document.getElementById('editFacilityLongitude').value = facility.longitude || '';
+
+            const modal = new bootstrap.Modal(document.getElementById('editFacilityModal'));
+            modal.show();
+        } catch (error) {
+            console.error('Error showing edit facility modal:', error);
+            this.showErrorNotification('Error loading facility data: ' + error.message);
         }
+    }
+
+    showAddSurgeonModal() {
+        // Preferred cases functionality removed - no longer populate dropdown
 
         const modal = new bootstrap.Modal(document.getElementById('addSurgeonModal'));
         modal.show();
@@ -498,17 +676,22 @@ export class ModalManager {
 
     async showEditSurgeonModal(surgeonId) {
         try {
+            await this.logToAPI('showEditSurgeonModal called', { surgeonId }, 'surgeon-modal');
+            
             const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === surgeonId);
 
             if (!surgeon) {
-                this.showErrorNotification('Surgeon not found');
+                await this.logToAPI('ERROR: Surgeon not found', { surgeonId }, 'surgeon-modal');
+                this.showErrorNotification('Physician not found');
                 return;
             }
 
-            // Populate case types dropdown first
-            await this.populateCaseTypesDropdown('editSurgeonPreferredCases');
+            await this.logToAPI('Found surgeon', { surgeonId, surgeonName: surgeon.name }, 'surgeon-modal');
+
+            // Preferred cases functionality removed - no longer populate dropdown
 
             // Populate form fields
+            await this.logToAPI('Populating form fields...', null, 'surgeon-modal');
             document.getElementById('editSurgeonId').value = surgeonId;
             document.getElementById('editSurgeonTitle').value = surgeon.title || 'Dr.';
             document.getElementById('editSurgeonName').value = surgeon.name || '';
@@ -519,29 +702,36 @@ export class ModalManager {
             document.getElementById('editSurgeonNotes').value = surgeon.notes || '';
             document.getElementById('editSurgeonActive').checked = surgeon.active !== false;
 
-            // Handle preferred cases - convert from comma-separated IDs to selection
-            if (surgeon.preferredCases) {
-                const caseTypeIds = surgeon.preferredCases.split(',').map(id => id.trim()).filter(id => id);
-                const select = document.getElementById('editSurgeonPreferredCases');
+            // Preferred cases functionality removed - no longer handle selections
 
-                // Clear all selections first
-                Array.from(select.options).forEach(option => {
-                    option.selected = false;
-                });
-
-                // Select matching options
-                Array.from(select.options).forEach(option => {
-                    if (caseTypeIds.includes(option.value)) {
-                        option.selected = true;
-                    }
-                });
-            }
-
+            await this.logToAPI('Showing modal...', null, 'surgeon-modal');
             const modal = new bootstrap.Modal(document.getElementById('editSurgeonModal'));
             modal.show();
+
+            // Load surgeon's tray preferences after modal is shown
+            await this.logToAPI('Setting up tray preferences loading with 500ms delay...', null, 'surgeon-modal');
+            setTimeout(async () => {
+                await this.logToAPI('Timeout triggered - about to load tray preferences', null, 'surgeon-modal-timeout');
+                await this.logToAPI('Checking surgeon manager availability', { 
+                    surgeonManagerExists: !!window.app.surgeonManager,
+                    methodExists: !!window.app.surgeonManager?.loadSurgeonTrayPreferences
+                }, 'surgeon-modal-timeout');
+                
+                if (window.app.surgeonManager && window.app.surgeonManager.loadSurgeonTrayPreferences) {
+                    await this.logToAPI('Calling loadSurgeonTrayPreferences', { surgeonId }, 'surgeon-modal-timeout');
+                    try {
+                        await window.app.surgeonManager.loadSurgeonTrayPreferences(surgeonId);
+                        await this.logToAPI('loadSurgeonTrayPreferences completed successfully', null, 'surgeon-modal-timeout');
+                    } catch (error) {
+                        await this.logToAPI('ERROR in loadSurgeonTrayPreferences', { error: error.message, stack: error.stack }, 'surgeon-modal-timeout');
+                    }
+                } else {
+                    await this.logToAPI('ERROR: surgeonManager or loadSurgeonTrayPreferences method not available', null, 'surgeon-modal-timeout');
+                }
+            }, 500); // Wait for modal to be fully rendered
         } catch (error) {
-            console.error('Error showing edit surgeon modal:', error);
-            this.showErrorNotification('Error loading surgeon data: ' + error.message);
+            console.error('🔥 ERROR in showEditSurgeonModal:', error);
+            this.showErrorNotification('Error loading physician data: ' + error.message);
         }
     }
 
@@ -626,6 +816,10 @@ export class ModalManager {
     }
 
     showAddCaseTypeModal() {
+        // Reset tray requirements for new case type
+        if (window.app.caseTypeManager) {
+            window.app.caseTypeManager.resetTrayRequirementsForAdd();
+        }
         const modal = new bootstrap.Modal(document.getElementById('addCaseTypeModal'));
         modal.show();
     }
@@ -644,6 +838,11 @@ export class ModalManager {
             document.getElementById('editCaseTypeName').value = caseType.name || '';
             document.getElementById('editCaseTypeDescription').value = caseType.description || '';
             document.getElementById('editCaseTypeActive').checked = caseType.active !== false;
+            
+            // Load existing tray requirements
+            if (window.app.caseTypeManager) {
+                await window.app.caseTypeManager.loadTrayRequirementsForEdit(caseType);
+            }
 
             const modal = new bootstrap.Modal(document.getElementById('editCaseTypeModal'));
             modal.show();
@@ -660,7 +859,7 @@ export class ModalManager {
             console.log('🔍 DEBUG: DataManager getCaseTypes method exists?', typeof this.dataManager.getCaseTypes);
             
             // Log to API debug endpoint
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.logCaseAction('Add case modal opened', {
                     hasDataManager: !!this.dataManager,
                     hasCaseTypesMethod: typeof this.dataManager?.getCaseTypes === 'function',
@@ -672,7 +871,7 @@ export class ModalManager {
             const modalElement = document.getElementById('addCaseModal');
             const modal = new bootstrap.Modal(modalElement);
             
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.debug('About to show add case modal', {
                     modalExists: !!modalElement,
                     modalId: modalElement?.id,
@@ -684,7 +883,7 @@ export class ModalManager {
             
             // Log when modal is actually shown
             modalElement.addEventListener('shown.bs.modal', () => {
-                if (window.frontendLogger) {
+                if (window.is_enable_api_logging && window.frontendLogger) {
                     window.frontendLogger.debug('Add case modal is now visible', {
                         modalDisplay: window.getComputedStyle(modalElement).display,
                         modalClass: modalElement.className
@@ -696,7 +895,7 @@ export class ModalManager {
             setTimeout(async () => {
                 console.log('🔍 DEBUG: About to populate dropdowns...');
                 
-                if (window.frontendLogger) {
+                if (window.is_enable_api_logging && window.frontendLogger) {
                     window.frontendLogger.debug('Starting dropdown population', {
                         modalIsVisible: modalElement.style.display !== 'none' && window.getComputedStyle(modalElement).display !== 'none',
                         timeout: '100ms'
@@ -720,12 +919,12 @@ export class ModalManager {
     async populateCaseModalDropdowns() {
         try {
             // Populate surgeons
-            const surgeonSelect = document.getElementById('addCaseSurgeon');
-            const editSurgeonSelect = document.getElementById('editCaseSurgeon');
+            const surgeonSelect = document.getElementById('addCasePhysician');
+            const editSurgeonSelect = document.getElementById('editCasePhysician');
             if (surgeonSelect) {
                 const surgeons = this.dataManager.getSurgeons();
                 console.log('Loading surgeons for dropdown:', surgeons.length);
-                const surgeonOptions = '<option value="">Select Surgeon</option>' + 
+                const surgeonOptions = '<option value="">Select Physician</option>' + 
                     surgeons.map(surgeon => `<option value="${surgeon.id}">${surgeon.name}</option>`).join('');
                 surgeonSelect.innerHTML = surgeonOptions;
                 if (editSurgeonSelect) editSurgeonSelect.innerHTML = surgeonOptions;
@@ -755,7 +954,7 @@ export class ModalManager {
                 console.log('🔍 DEBUG: Is array?', Array.isArray(caseTypes));
                 
                 // Log to API debug endpoint
-                if (window.frontendLogger) {
+                if (window.is_enable_api_logging && window.frontendLogger) {
                     window.frontendLogger.logDropdownPopulation('case-types', caseTypes.length, {
                         isArray: Array.isArray(caseTypes),
                         dataType: typeof caseTypes,
@@ -770,7 +969,7 @@ export class ModalManager {
                     caseTypeSelect.innerHTML = '<option value="">No Case Types Available - Create Some First</option>';
                     
                     // Log to API debug endpoint
-                    if (window.frontendLogger) {
+                    if (window.is_enable_api_logging && window.frontendLogger) {
                         window.frontendLogger.warn('No case types available in dropdown', {
                             dataManagerHasCaseTypes: !!this.dataManager.caseTypes,
                             dataManagerCaseTypesLength: this.dataManager.caseTypes?.length || 0,
@@ -791,7 +990,7 @@ export class ModalManager {
                         caseTypes.map(caseType => `<option value="${caseType.id}">${caseType.name}</option>`).join('');
                     
                     // Log before setting innerHTML
-                    if (window.frontendLogger) {
+                    if (window.is_enable_api_logging && window.frontendLogger) {
                         window.frontendLogger.debug('About to set case type dropdown innerHTML', {
                             elementId: caseTypeSelect.id,
                             elementTagName: caseTypeSelect.tagName,
@@ -807,7 +1006,7 @@ export class ModalManager {
                     if (editCaseTypeSelect) editCaseTypeSelect.innerHTML = caseTypeOptions;
                     
                     // Log immediately after setting innerHTML
-                    if (window.frontendLogger) {
+                    if (window.is_enable_api_logging && window.frontendLogger) {
                         window.frontendLogger.debug('Case type dropdown innerHTML set', {
                             elementId: caseTypeSelect.id,
                             newInnerHTML: caseTypeSelect.innerHTML,
@@ -818,7 +1017,7 @@ export class ModalManager {
                     }
                     
                     // Log successful population to API debug endpoint
-                    if (window.frontendLogger) {
+                    if (window.is_enable_api_logging && window.frontendLogger) {
                         window.frontendLogger.info('Case types dropdown populated successfully', {
                             count: caseTypes.length,
                             optionsGenerated: caseTypeOptions.length,
@@ -987,14 +1186,21 @@ export class ModalManager {
         }
     }
 
-    getTrayTypeDisplayName(trayTypeCode) {
+    getTrayTypeDisplayName(tray) {
+        // Support both MyRepData case type compatibility and legacy type
+        if (typeof tray === 'object' && tray.case_type_compatibility && Array.isArray(tray.case_type_compatibility) && tray.case_type_compatibility.length > 0) {
+            return tray.case_type_compatibility.join(', ');
+        }
+        
+        // Handle legacy string type or object with type field
+        const trayTypeCode = typeof tray === 'string' ? tray : (tray.type || '');
         const trayTypeNames = {
             'fusion': 'Fusion Set',
             'revision': 'Revision Kit', 
             'mi': 'Minimally Invasive',
             'complete': 'Complete System'
         };
-        return trayTypeNames[trayTypeCode] || trayTypeCode;
+        return trayTypeNames[trayTypeCode] || trayTypeCode || 'General Purpose';
     }
 
     async addTrayRequirement(buttonElement) {
@@ -1002,7 +1208,7 @@ export class ModalManager {
             const modal = buttonElement.closest('.modal').id.includes('edit') ? 'edit' : 'add';
             const container = buttonElement.parentElement.nextElementSibling;
             
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.debug('addTrayRequirement called', {
                     modal: modal,
                     hasButton: !!buttonElement,
@@ -1029,7 +1235,7 @@ export class ModalManager {
                                 <option value="">Select Tray...</option>
                                 ${trays.map(tray => `
                                     <option value="${tray.id}" data-tray-name="${tray.name}" data-tray-type="${tray.type}">
-                                        ${tray.name} (${this.getTrayTypeDisplayName(tray.type)})
+                                        ${tray.name} (${this.getTrayTypeDisplayName(tray)})
                                     </option>
                                 `).join('')}
                             </select>
@@ -1062,7 +1268,7 @@ export class ModalManager {
 
             container.insertAdjacentHTML('beforeend', requirementHTML);
             
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.debug('HTML inserted into container', {
                     modal: modal,
                     containerChildrenAfterInsert: container.children.length,
@@ -1072,7 +1278,7 @@ export class ModalManager {
             }
         } catch (error) {
             console.error('Error adding tray requirement:', error);
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.error('addTrayRequirement failed', { error: error.message }, 'tray-requirements-debug');
             }
         }
@@ -1121,7 +1327,7 @@ export class ModalManager {
     }
 
     async setTrayRequirementsInUI(requirements, modal = 'edit') {
-        if (window.frontendLogger) {
+        if (window.is_enable_api_logging && window.frontendLogger) {
             window.frontendLogger.info('ModalManager.setTrayRequirementsInUI called', {
                 requirements: requirements,
                 modal: modal,
@@ -1132,7 +1338,7 @@ export class ModalManager {
         
         const container = document.querySelector(`[data-modal="${modal}"].tray-requirements-list`);
         if (!container) {
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.error('Tray requirements container not found', { 
                     modal: modal,
                     selector: `[data-modal="${modal}"] .tray-requirements-list`
@@ -1141,14 +1347,14 @@ export class ModalManager {
             return;
         }
 
-        if (window.frontendLogger) {
+        if (window.is_enable_api_logging && window.frontendLogger) {
             window.frontendLogger.info('Container found, processing requirements', {
                 modal: modal,
                 requirements: requirements,
                 containerFound: true
             }, 'tray-requirements-debug');
         }
-        if (window.frontendLogger) {
+        if (window.is_enable_api_logging && window.frontendLogger) {
             window.frontendLogger.info('Setting tray requirements in UI', {
                 modal: modal,
                 requirements: requirements,
@@ -1162,7 +1368,7 @@ export class ModalManager {
         container.innerHTML = '';
 
         if (requirements && requirements.length > 0) {
-            if (window.frontendLogger) {
+            if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.info('Starting to process requirements', {
                     requirementsCount: requirements.length
                 }, 'tray-requirements-debug');
@@ -1170,7 +1376,7 @@ export class ModalManager {
             
             for (let index = 0; index < requirements.length; index++) {
                 const req = requirements[index];
-                if (window.frontendLogger) {
+                if (window.is_enable_api_logging && window.frontendLogger) {
                     window.frontendLogger.info(`Processing requirement ${index + 1}`, {
                         requirement: req,
                         index: index,
@@ -1189,7 +1395,7 @@ export class ModalManager {
                 const updatedContainer = document.querySelector(`[data-modal="${modal}"].tray-requirements-list`);
                 const lastItem = updatedContainer ? updatedContainer.lastElementChild : null;
                 
-                if (window.frontendLogger) {
+                if (window.is_enable_api_logging && window.frontendLogger) {
                     window.frontendLogger.debug('Added tray requirement item to DOM', {
                         index: index,
                         hasLastItem: !!lastItem,
@@ -1209,7 +1415,7 @@ export class ModalManager {
                 if (traySelect && req.tray_id) {
                     traySelect.value = req.tray_id;
                     
-                    if (window.frontendLogger) {
+                    if (window.is_enable_api_logging && window.frontendLogger) {
                         window.frontendLogger.info('Set tray select value', {
                             expectedValue: req.tray_id,
                             actualValue: traySelect.value,
@@ -1224,7 +1430,7 @@ export class ModalManager {
                 
                 if (requirementType) {
                     requirementType.value = req.requirement_type || 'required';
-                    if (window.frontendLogger) {
+                    if (window.is_enable_api_logging && window.frontendLogger) {
                         window.frontendLogger.debug('Set requirement type', {
                             value: req.requirement_type || 'required'
                         }, 'tray-requirements-debug');
@@ -1233,7 +1439,7 @@ export class ModalManager {
                 
                 if (quantity) {
                     quantity.value = req.quantity || 1;
-                    if (window.frontendLogger) {
+                    if (window.is_enable_api_logging && window.frontendLogger) {
                         window.frontendLogger.debug('Set quantity', {
                             value: req.quantity || 1
                         }, 'tray-requirements-debug');
@@ -1242,7 +1448,7 @@ export class ModalManager {
                 
                 if (priority) {
                     priority.value = req.priority || 1;
-                    if (window.frontendLogger) {
+                    if (window.is_enable_api_logging && window.frontendLogger) {
                         window.frontendLogger.debug('Set priority', {
                             value: req.priority || 1
                         }, 'tray-requirements-debug');
@@ -1252,5 +1458,21 @@ export class ModalManager {
         } else {
             container.innerHTML = '<div class="text-muted small">Click "Add Tray Requirement" to specify required trays for this case</div>';
         }
+    }
+
+    getFacilityName(facilityId) {
+        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
+            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
+            return facility ? facility.name : 'Unknown Facility';
+        }
+        return 'Unknown Facility';
+    }
+
+    getPhysicianName(physicianId) {
+        if (window.app.dataManager && window.app.dataManager.physicians) {
+            const physician = window.app.dataManager.physicians.find(p => p.id === physicianId);
+            return physician ? physician.name : 'Unknown Physician';
+        }
+        return 'Unknown Physician';
     }
 }
