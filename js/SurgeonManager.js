@@ -15,6 +15,9 @@ export class SurgeonManager {
         // Storage for current surgeon's preferences during editing
         this.currentSurgeonPreferences = [];
         
+        // Store collection name for consistent usage
+        this.collectionName = 'physicians'; // Will be updated by determineCollectionName
+        
         // Log initialization immediately
         this.logToAPI('SurgeonManager initialized', { 
             timestamp: new Date().toISOString(),
@@ -104,6 +107,24 @@ export class SurgeonManager {
         }
     }
 
+    async determineCollectionName() {
+        try {
+            // First try physicians collection
+            const physiciansSnapshot = await getDocs(collection(this.db, 'physicians'));
+            if (physiciansSnapshot.size > 0) {
+                console.log('Using physicians collection');
+                return 'physicians';
+            }
+            
+            // Fallback to surgeons collection
+            console.log('Physicians collection empty, using surgeons collection');
+            return 'surgeons';
+        } catch (error) {
+            console.error('Error determining collection name:', error);
+            return 'surgeons'; // Default fallback
+        }
+    }
+
     setupRealtimeListeners() {
         console.log('Setting up realtime listeners for physicians...');
         
@@ -115,7 +136,9 @@ export class SurgeonManager {
 
         try {
             console.log('Creating physicians query...');
-            const surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('createdAt', 'desc'));
+            // Check if physicians collection exists, fallback to surgeons
+            this.collectionName = await this.determineCollectionName();
+            const surgeonsQuery = query(collection(this.db, this.collectionName), orderBy('createdAt', 'desc'));
             
             console.log('Setting up onSnapshot listener...');
             this.surgeonsUnsubscribe = onSnapshot(surgeonsQuery, (snapshot) => {
@@ -160,7 +183,7 @@ export class SurgeonManager {
                 isDemoSurgeon: false
             };
 
-            await addDoc(collection(this.db, 'physicians'), surgeon);
+            await addDoc(collection(this.db, this.collectionName), surgeon);
 
             bootstrap.Modal.getInstance(document.getElementById('addSurgeonModal')).hide();
             document.getElementById('addSurgeonForm').reset();
@@ -209,7 +232,7 @@ export class SurgeonManager {
         }
 
         try {
-            await deleteDoc(doc(this.db, 'physicians', surgeonId));
+            await deleteDoc(doc(this.db, this.collectionName, surgeonId));
             this.showSuccessNotification('Surgeon deleted successfully!');
         } catch (error) {
             console.error('Error deleting surgeon:', error);
