@@ -1,6 +1,9 @@
 // Docker-specific configuration
 // This file can be mounted or replaced in Docker containers
 
+// Set Firebase configuration environment
+window.ENVIRONMENT_VARIABLE_FILE = 'dino-dev-1';
+
 window.TRAY_TRACKER_CONFIG = {
     // Force clean URLs in Docker environment
     CLEAN_URLS_ENABLED: true,

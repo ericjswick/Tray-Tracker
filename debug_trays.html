@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Trays</title>
+</head>
+<body>
+    <h1>Debug Tray Data</h1>
+    <div id="results"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
+        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+
+        // Firebase config (from default.config.js)
+        const firebaseConfig = {
+            apiKey: "AIzaSyDUR4NEfHH0s8aKYvg4RqyyH13h5ZyRFwk",
+            authDomain: "tray-tracker-dino.firebaseapp.com",
+            projectId: "tray-tracker-dino",
+            storageBucket: "tray-tracker-dino.firebasestorage.app",
+            messagingSenderId: "587568292924",
+            appId: "1:587568292924:web:462b3cb07fc808f86bcf39",
+            measurementId: "G-97ZVXH82ZR"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        async function debugTrays() {
+            try {
+                console.log('Fetching trays from Firebase...');
+                const traysSnapshot = await getDocs(collection(db, 'tray_tracking'));
+                const trays = [];
+                
+                traysSnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    trays.push({ 
+                        firebaseId: doc.id, 
+                        tray_id: data.tray_id,
+                        name: data.name,
+                        case_type_compatibility: data.case_type_compatibility,
+                        ...data 
+                    });
+                });
+
+                console.log('Raw trays from Firebase:', trays);
+                
+                // Check for duplicates by ID
+                const idCounts = {};
+                const trayIdCounts = {};
+                const nameCounts = {};
+                
+                trays.forEach(tray => {
+                    idCounts[tray.firebaseId] = (idCounts[tray.firebaseId] || 0) + 1;
+                    if (tray.tray_id) {
+                        trayIdCounts[tray.tray_id] = (trayIdCounts[tray.tray_id] || 0) + 1;
+                    }
+                    if (tray.name) {
+                        nameCounts[tray.name] = (nameCounts[tray.name] || 0) + 1;
+                    }
+                });
+
+                const results = document.getElementById('results');
+                results.innerHTML = `
+                    <h2>Tray Data Analysis</h2>
+                    <p><strong>Total trays:</strong> ${trays.length}</p>
+                    
+                    <h3>Duplicate Firebase IDs:</h3>
+                    ${Object.entries(idCounts).filter(([id, count]) => count > 1).map(([id, count]) => 
+                        `<p>${id}: ${count} times</p>`
+                    ).join('') || '<p>None found</p>'}
+                    
+                    <h3>Duplicate tray_id fields:</h3>
+                    ${Object.entries(trayIdCounts).filter(([id, count]) => count > 1).map(([id, count]) => 
+                        `<p>${id}: ${count} times</p>`
+                    ).join('') || '<p>None found</p>'}
+                    
+                    <h3>Duplicate names:</h3>
+                    ${Object.entries(nameCounts).filter(([name, count]) => count > 1).map(([name, count]) => 
+                        `<p>${name}: ${count} times</p>`
+                    ).join('') || '<p>None found</p>'}
+                    
+                    <h3>Trays missing tray_id field:</h3>
+                    ${trays.filter(t => !t.tray_id).map(t => 
+                        `<p>Firebase ID: ${t.firebaseId}, Name: ${t.name}</p>`
+                    ).join('') || '<p>None found</p>'}
+                    
+                    <h3>All Trays (first 10):</h3>
+                    ${trays.slice(0, 10).map(t => 
+                        `<p>Firebase ID: ${t.firebaseId}, tray_id: ${t.tray_id || 'MISSING'}, Name: ${t.name}</p>`
+                    ).join('')}
+                    
+                    <h3>Raw Data (check console for full details)</h3>
+                    <p>Check browser console for complete tray data</p>
+                `;
+
+            } catch (error) {
+                console.error('Error fetching trays:', error);
+                document.getElementById('results').innerHTML = `<p>Error: ${error.message}</p>`;
+            }
+        }
+
+        debugTrays();
+    </script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 // js/AuthManager.js - Updated for Tray Tracker
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
 import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 import { signInWithPopup, GoogleAuthProvider, signInWithRedirect, getRedirectResult } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
 
@@ -12,14 +12,14 @@ export class AuthManager {
         
         try {
             this.googleProvider = new GoogleAuthProvider();
-            window.frontendLogger?.info('AuthManager constructor completed', {
+            window.is_enable_api_logging && window.frontendLogger?.info('AuthManager constructor completed', {
                 hasAuth: !!this.auth,
                 hasDb: !!this.db,
                 hasGoogleProvider: !!this.googleProvider,
                 authAppName: this.auth?.app?.name || 'unknown'
             }, 'auth');
         } catch (error) {
-            window.frontendLogger?.error('Failed to create Google Auth Provider', {
+            window.is_enable_api_logging && window.frontendLogger?.error('Failed to create Google Auth Provider', {
                 message: error.message,
                 stack: error.stack
             }, 'auth');
@@ -34,7 +34,7 @@ export class AuthManager {
         if (!this.auth) return;
         
         // Log authentication setup
-        window.frontendLogger?.info('Setting up authentication listener', {
+        window.is_enable_api_logging && window.frontendLogger?.info('Setting up authentication listener', {
             hasAuth: !!this.auth,
             hasDb: !!this.db,
             hasGoogleProvider: !!this.googleProvider
@@ -45,7 +45,7 @@ export class AuthManager {
         this.unsubscribeAuth = onAuthStateChanged(this.auth, async (user) => {
             if (user) {
                 // User is signed in
-                window.frontendLogger?.info('Authentication state: user signed in', {
+                window.is_enable_api_logging && window.frontendLogger?.info('Authentication state: user signed in', {
                     email: user.email,
                     uid: user.uid,
                     providerId: user.providerId
@@ -63,7 +63,7 @@ export class AuthManager {
                 this.checkInitialData();
             } else {
                 // User is signed out
-                window.frontendLogger?.info('Authentication state: user signed out', null, 'auth');
+                window.is_enable_api_logging && window.frontendLogger?.info('Authentication state: user signed out', null, 'auth');
                 this.currentUser = null;
                 this.showLogin();
             }
@@ -104,7 +104,6 @@ export class AuthManager {
         try {
             setTimeout(async () => {
                 if (window.app && window.app.demoManager) {
-                    console.log('🚀 Starting post-login data initialization...');
                     const dataInitialized = await window.app.demoManager.checkAndInitializeData();
                     if (dataInitialized) {
                         console.log('Initial demo data was created for new Firebase database');
@@ -182,6 +181,16 @@ export class AuthManager {
             });
         }
 
+        // Forgot Password form
+        const forgotPasswordForm = document.getElementById('forgotPasswordForm');
+        if (forgotPasswordForm) {
+            forgotPasswordForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = document.getElementById('resetEmail').value;
+                await this.sendPasswordReset(email);
+            });
+        }
+
         // Register form
         const registerForm = document.getElementById('registerForm');
         if (registerForm) {
@@ -209,29 +218,34 @@ export class AuthManager {
         }
     }
 
-    async register(name, email, password, role, phone) {
+    async sendPasswordReset(email) {
         try {
-            this.showLoadingState('Creating account...');
-            const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
-            const user = userCredential.user;
-
-            // Save user profile to Firestore
-            await setDoc(doc(this.db, 'users', user.uid), {
-                name,
-                email,
-                role,
-                phone,
-                createdAt: serverTimestamp(),
-                active: true,
-                isDemoUser: false
-            });
-
-            this.showSuccessNotification('Account created successfully!');
+            this.showLoadingState('Sending password reset email...');
+            
+            // Send password reset email
+            await sendPasswordResetEmail(this.auth, email);
+            
+            // Show success message
+            document.getElementById('resetPasswordSuccess').classList.remove('d-none');
+            document.getElementById('forgotPasswordForm').classList.add('d-none');
+            
+            this.hideLoadingState();
+            
+            // Log success
+            window.is_enable_api_logging && window.frontendLogger?.info('Password reset email sent', { email: email }, 'auth');
+            
         } catch (error) {
-            console.error('Registration error:', error);
-            this.showErrorNotification('Registration failed: ' + this.getErrorMessage(error));
+            console.error('Password reset error:', error);
+            this.showErrorNotification('Failed to send password reset email: ' + this.getErrorMessage(error));
             this.hideLoadingState();
         }
+    }
+
+    async register(name, email, password, role, phone) {
+        // Registration is disabled - show error and redirect to login
+        this.showErrorNotification('Registration is disabled. Please contact your administrator for account setup.');
+        this.showLogin();
+        return;
     }
 
     async demoLogin(email, password) {
@@ -261,20 +275,32 @@ export class AuthManager {
         this.hideLoadingState();
         document.getElementById('loginScreen').classList.remove('d-none');
         document.getElementById('registerScreen').classList.add('d-none');
+        document.getElementById('forgotPasswordScreen').classList.add('d-none');
         document.getElementById('mainApp').classList.add('d-none');
     }
 
     showRegister() {
+        // Registration is disabled - redirect to login
+        this.showLogin();
+    }
+
+    showForgotPassword() {
         this.hideLoadingState();
         document.getElementById('loginScreen').classList.add('d-none');
-        document.getElementById('registerScreen').classList.remove('d-none');
+        document.getElementById('registerScreen').classList.add('d-none');
+        document.getElementById('forgotPasswordScreen').classList.remove('d-none');
         document.getElementById('mainApp').classList.add('d-none');
+        
+        // Clear any previous success messages
+        document.getElementById('resetPasswordSuccess').classList.add('d-none');
+        document.getElementById('resetEmail').value = '';
     }
 
     showMainApp() {
         this.hideLoadingState();
         document.getElementById('loginScreen').classList.add('d-none');
         document.getElementById('registerScreen').classList.add('d-none');
+        document.getElementById('forgotPasswordScreen').classList.add('d-none');
         document.getElementById('mainApp').classList.remove('d-none');
 
         // Initialize data when user logs in
@@ -472,7 +498,7 @@ export class AuthManager {
     async signInWithGoogle() {
         try {
             // Log authentication attempt start
-            window.frontendLogger?.info('Google sign-in initiated', {
+            window.is_enable_api_logging && window.frontendLogger?.info('Google sign-in initiated', {
                 provider: 'Google',
                 method: 'popup/redirect',
                 timestamp: new Date().toISOString()
@@ -483,15 +509,15 @@ export class AuthManager {
             // Try popup first, fallback to redirect if needed
             let result;
             try {
-                window.frontendLogger?.debug('Attempting Google popup sign-in', null, 'auth');
+                window.is_enable_api_logging && window.frontendLogger?.debug('Attempting Google popup sign-in', null, 'auth');
                 result = await signInWithPopup(this.auth, this.googleProvider);
-                window.frontendLogger?.info('Google popup sign-in successful', {
+                window.is_enable_api_logging && window.frontendLogger?.info('Google popup sign-in successful', {
                     uid: result.user.uid,
                     email: result.user.email,
                     displayName: result.user.displayName
                 }, 'auth');
             } catch (popupError) {
-                window.frontendLogger?.warn('Google popup sign-in failed', {
+                window.is_enable_api_logging && window.frontendLogger?.warn('Google popup sign-in failed', {
                     code: popupError.code,
                     message: popupError.message,
                     stack: popupError.stack
@@ -499,7 +525,7 @@ export class AuthManager {
                 
                 if (popupError.code === 'auth/popup-blocked' ||
                     popupError.code === 'auth/popup-closed-by-user') {
-                    window.frontendLogger?.info('Popup blocked, switching to redirect method', {
+                    window.is_enable_api_logging && window.frontendLogger?.info('Popup blocked, switching to redirect method', {
                         originalError: popupError.code
                     }, 'auth');
                     console.log('Popup blocked, trying redirect...');
@@ -512,7 +538,7 @@ export class AuthManager {
             // Check if Gmail address exists in users collection BEFORE completing sign-in
             const user = result.user;
             console.log('Checking authorization for Gmail:', user.email);
-            window.frontendLogger?.info('Checking Gmail authorization', {
+            window.is_enable_api_logging && window.frontendLogger?.info('Checking Gmail authorization', {
                 email: user.email,
                 uid: user.uid,
                 providerId: user.providerId
@@ -524,7 +550,7 @@ export class AuthManager {
             );
             const querySnapshot = await getDocs(userQuery);
             
-            window.frontendLogger?.debug('Firestore user query completed', {
+            window.is_enable_api_logging && window.frontendLogger?.debug('Firestore user query completed', {
                 email: user.email,
                 queryEmpty: querySnapshot.empty,
                 docCount: querySnapshot.size
@@ -534,7 +560,7 @@ export class AuthManager {
                 // Special case: Auto-create dino.bartolome@gmail.com as administrator
                 if (user.email === 'dino.bartolome@gmail.com') {
                     console.log('Auto-creating administrator account for:', user.email);
-                    window.frontendLogger?.info('Auto-creating administrator account', {
+                    window.is_enable_api_logging && window.frontendLogger?.info('Auto-creating administrator account', {
                         email: user.email,
                         uid: user.uid,
                         action: 'admin-account-creation'
@@ -558,7 +584,7 @@ export class AuthManager {
                     });
                     
                     console.log('Administrator account created successfully');
-                    window.frontendLogger?.info('Administrator account created successfully', {
+                    window.is_enable_api_logging && window.frontendLogger?.info('Administrator account created successfully', {
                         email: user.email,
                         uid: user.uid,
                         role: 'Administrator'
@@ -566,14 +592,14 @@ export class AuthManager {
                 } else {
                     // User doesn't exist - sign them out and show error
                     console.log('Gmail address not authorized:', user.email);
-                    window.frontendLogger?.error('Gmail address not authorized', {
+                    window.is_enable_api_logging && window.frontendLogger?.error('Gmail address not authorized', {
                         email: user.email,
                         uid: user.uid,
                         action: 'access-denied'
                     }, 'auth');
                     
                     await signOut(this.auth);
-                    window.frontendLogger?.info('User signed out due to unauthorized email', {
+                    window.is_enable_api_logging && window.frontendLogger?.info('User signed out due to unauthorized email', {
                         email: user.email
                     }, 'auth');
                     
@@ -582,7 +608,7 @@ export class AuthManager {
             } else {
                 // User exists - handle UID linking for existing profile
                 console.log('Gmail address authorized, handling UID linking:', user.email);
-                window.frontendLogger?.info('Gmail address authorized - handling UID linking', {
+                window.is_enable_api_logging && window.frontendLogger?.info('Gmail address authorized - handling UID linking', {
                     email: user.email,
                     uid: user.uid,
                     action: 'uid-linking'
@@ -593,7 +619,7 @@ export class AuthManager {
                 const existingUserData = existingUserDoc.data();
                 
                 console.log('Existing user found:', existingUserId, 'New Google UID:', user.uid);
-                window.frontendLogger?.debug('Existing user profile found', {
+                window.is_enable_api_logging && window.frontendLogger?.debug('Existing user profile found', {
                     existingUserId,
                     newGoogleUID: user.uid,
                     needsUIDTransfer: existingUserId !== user.uid
@@ -602,7 +628,7 @@ export class AuthManager {
                 if (existingUserId !== user.uid) {
                     // Transfer existing profile to new Google Auth UID
                     console.log('Transferring user profile from', existingUserId, 'to', user.uid);
-                    window.frontendLogger?.info('Transferring user profile to Google UID', {
+                    window.is_enable_api_logging && window.frontendLogger?.info('Transferring user profile to Google UID', {
                         fromUID: existingUserId,
                         toUID: user.uid,
                         email: user.email
@@ -614,20 +640,20 @@ export class AuthManager {
                         googleUID: user.uid,
                         lastLogin: serverTimestamp(),
                         updatedAt: serverTimestamp()
-                    });
+                    }, { merge: true });
                     
                     // Remove old document with different UID
                     console.log('Cleaning up old user document:', existingUserId);
                     await deleteDoc(doc(this.db, 'users', existingUserId));
                     
                     console.log('User profile successfully transferred to new Google UID');
-                    window.frontendLogger?.info('User profile transfer completed successfully', {
+                    window.is_enable_api_logging && window.frontendLogger?.info('User profile transfer completed successfully', {
                         email: user.email,
                         newUID: user.uid
                     }, 'auth');
                 } else {
                     // Same UID - just update last login
-                    window.frontendLogger?.debug('Same UID detected - updating last login', {
+                    window.is_enable_api_logging && window.frontendLogger?.debug('Same UID detected - updating last login', {
                         uid: user.uid,
                         email: user.email
                     }, 'auth');
@@ -641,7 +667,7 @@ export class AuthManager {
             }
             
             // Proceed with normal Google sign-in flow
-            window.frontendLogger?.info('Proceeding with Google sign-in flow completion', {
+            window.is_enable_api_logging && window.frontendLogger?.info('Proceeding with Google sign-in flow completion', {
                 email: user.email,
                 uid: user.uid
             }, 'auth');
@@ -649,7 +675,7 @@ export class AuthManager {
 
         } catch (error) {
             console.error('Google sign in error:', error);
-            window.frontendLogger?.error('Google sign-in failed', {
+            window.is_enable_api_logging && window.frontendLogger?.error('Google sign-in failed', {
                 code: error.code || 'unknown',
                 message: error.message,
                 stack: error.stack,
@@ -706,13 +732,13 @@ export class AuthManager {
 
     async checkRedirectResult() {
         try {
-            window.frontendLogger?.debug('Checking for Google redirect result', null, 'auth');
+            window.is_enable_api_logging && window.frontendLogger?.debug('Checking for Google redirect result', null, 'auth');
             const result = await getRedirectResult(this.auth);
             if (result) {
                 // Apply same authorization check for redirect results
                 const user = result.user;
                 console.log('Checking authorization for Gmail redirect:', user.email);
-                window.frontendLogger?.info('Google redirect authentication received', {
+                window.is_enable_api_logging && window.frontendLogger?.info('Google redirect authentication received', {
                     email: user.email,
                     uid: user.uid,
                     method: 'redirect'
@@ -749,7 +775,7 @@ export class AuthManager {
                         googleUID: user.uid,
                         lastLogin: serverTimestamp(),
                         updatedAt: serverTimestamp()
-                    });
+                    }, { merge: true });
                     
                     // Remove old document with different UID
                     console.log('Cleaning up old user document (redirect):', existingUserId);

@@ -13,7 +13,7 @@ const getConfigFileName = () => {
                    'default';
     
     console.log('Loading configuration:', envVar);
-    window.frontendLogger?.info('Config file selection', {
+    window.is_enable_api_logging && window.frontendLogger?.info('Config file selection', {
         envVar,
         processEnv,
         windowEnv: typeof window !== 'undefined' ? window.ENVIRONMENT_VARIABLE_FILE : undefined,
@@ -33,7 +33,7 @@ try {
     environmentConfig = configModule.environmentConfig;
     
     console.log(`✅ Successfully loaded config: ${environmentConfig?.name || configFileName}`);
-    window.frontendLogger?.info('Config loaded successfully', {
+    window.is_enable_api_logging && window.frontendLogger?.info('Config loaded successfully', {
         configName: environmentConfig?.name || configFileName,
         hasFirebaseConfig: !!firebaseConfig,
         projectId: firebaseConfig?.projectId,
@@ -49,7 +49,7 @@ try {
     console.warn(`⚠️ Failed to load config file: ${configFileName}.config.js, falling back to default`);
     console.warn('Error:', error.message);
     
-    window.frontendLogger?.warn('Config loading failed - falling back to default', {
+    window.is_enable_api_logging && window.frontendLogger?.warn('Config loading failed - falling back to default', {
         requestedConfig: configFileName,
         error: error.message,
         stack: error.stack,
@@ -66,20 +66,21 @@ try {
         console.error('❌ Failed to load default configuration:', fallbackError);
         // Last resort: inline default config
         firebaseConfig = {
-            apiKey: "AIzaSyD3Tc8crUqOXEg4rKIIYvsyT-LJPEpTIcA",
-            authDomain: "si-bone-tracking.firebaseapp.com",
-            projectId: "si-bone-tracking",
-            storageBucket: "si-bone-tracking.firebasestorage.app",
-            messagingSenderId: "1065056003859",
-            appId: "1:1065056003859:web:aaae14ed73ec3dcae51ce6",
-            measurementId: "G-99MZFWPBJR"
+            apiKey: "AIzaSyDUR4NEfHH0s8aKYvg4RqyyH13h5ZyRFwk",
+            authDomain: "tray-tracker-dino.firebaseapp.com",
+            projectId: "tray-tracker-dino",
+            storageBucket: "tray-tracker-dino.firebasestorage.app",
+            messagingSenderId: "587568292924",
+            appId: "1:587568292924:web:462b3cb07fc808f86bcf39",
+            measurementId: "G-97ZVXH82ZR"
         };
         environmentConfig = {
             name: "inline-fallback",
             description: "Inline Fallback Configuration",
             isDevelopment: true,
             enableConsoleLogging: true,
-            enableDebugMode: false
+            enableDebugMode: false,
+            enableApiLogging: true  // Global toggle for API logging - set to false in production
         };
     }
 }
@@ -104,14 +105,26 @@ To use different environments, set the ENVIRONMENT_VARIABLE_FILE variable:
    docker run -e ENVIRONMENT_VARIABLE_FILE=dino-dev-1 ...
 
 Available configurations:
-- default.config.js (default if no env var set)
-- dino-dev-1.config.js (Dino's development environment)
+- default.config.js (default if no env var set) - Development settings with API logging enabled
+- dino-dev-1.config.js (Dino's development environment) - Development with debug mode
+- production.config.js (production environment) - API logging DISABLED for performance
 
 === ADDING NEW CONFIGURATIONS ===
 
 Create a new file: config/your-env-name.config.js
 Export: firebaseConfig and environmentConfig objects
 Set ENVIRONMENT_VARIABLE_FILE="your-env-name"
+
+=== API LOGGING CONTROL ===
+
+The global variable window.is_enable_api_logging controls all API logging:
+- Set environmentConfig.enableApiLogging = true for development environments  
+- Set environmentConfig.enableApiLogging = false for production to disable API calls
+- When disabled: Console logging still works, but no API requests are sent
+- This improves production performance by eliminating logging API calls
+
+To disable API logging temporarily:
+window.is_enable_api_logging = false;
 
 === FIREBASE SETUP INSTRUCTIONS ===
 

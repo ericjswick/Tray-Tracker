@@ -58,19 +58,26 @@
                 <button type="button" class="btn-google w-100" onclick="app.authManager.signInWithGoogle()">
                     <i class="fab fa-google"></i> Continue with Google
                 </button>
+                
+                <div class="forgot-password-link text-center mt-3">
+                    <button type="button" class="btn-link" onclick="app.authManager.showForgotPassword()">
+                        <i class="fas fa-key"></i> Forgot Password?
+                    </button>
+                </div>
             </form>
 
-            <div class="register-link">
+            <!-- Hide registration link - signups disabled -->
+            <div class="register-link d-none">
                 <button class="btn-link" onclick="app.authManager.showRegister()">
-                    Don't have an account? Register
+                    Don't have an account? Contact Administrator
                 </button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Registration Screen -->
-<div id="registerScreen" class="d-none">
+<!-- Registration Screen - DISABLED -->
+<div id="registerScreen" class="d-none" style="display: none !important;">
     <div class="login-container">
         <div class="login-card">
             <div class="login-header">
@@ -109,6 +116,43 @@
     </div>
 </div>
 
+<!-- Forgot Password Screen -->
+<div id="forgotPasswordScreen" class="d-none">
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <h3>
+                    <i class="fas fa-key"></i> Reset Password
+                </h3>
+                <p class="text-muted mb-0">Enter your email address and we'll send you a link to reset your password.</p>
+            </div>
+            
+            <form id="forgotPasswordForm" class="login-form">
+                <div class="form-group">
+                    <label for="resetEmail" class="form-label">Email Address</label>
+                    <input type="email" class="form-control" id="resetEmail" placeholder="Enter your email" required>
+                </div>
+                
+                <button type="submit" class="btn-primary-custom w-100">
+                    <i class="fas fa-envelope"></i> Send Reset Email
+                </button>
+                
+                <div class="text-center mt-3">
+                    <button type="button" class="btn-link" onclick="app.authManager.showLogin()">
+                        <i class="fas fa-arrow-left"></i> Back to Login
+                    </button>
+                </div>
+            </form>
+            
+            <!-- Success message (initially hidden) -->
+            <div id="resetPasswordSuccess" class="alert alert-success mt-3 d-none">
+                <i class="fas fa-check-circle"></i>
+                <strong>Email Sent!</strong> If an account with that email exists, you'll receive password reset instructions.
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Main Application -->
 <div id="mainApp" class="d-none">
     <!-- Header Navigation -->
@@ -131,9 +175,9 @@
                             </a>
                         </li>
                         <li>
-                            <a href="#locations" class="nav-item" id="nav-locations">
-                                <i class="fas fa-map-marker-alt"></i>
-                                <span>Locations</span>
+                            <a href="#facilities" class="nav-item" id="nav-facilities">
+                                <i class="fas fa-building"></i>
+                                <span>Facilities</span>
                             </a>
                         </li>
                         <li>
@@ -157,11 +201,11 @@
                                 <li><a class="dropdown-item" href="#users">
                                     <i class="fas fa-user-cog"></i> User Management
                                 </a></li>
-                                <li><a class="dropdown-item" href="#locationadmin">
-                                    <i class="fas fa-map-marker-alt"></i> Location Admin
+                                <li><a class="dropdown-item" href="#facilityAdmin">
+                                    <i class="fas fa-building"></i> Facility Admin
                                 </a></li>
-                                <li><a class="dropdown-item" href="#surgeons">
-                                    <i class="fas fa-user-md"></i> Surgeon Management
+                                <li><a class="dropdown-item" href="#physicians">
+                                    <i class="fas fa-user-md"></i> Physician Management
                                 </a></li>
                                 <li><a class="dropdown-item" href="#cases">
                                     <i class="fas fa-calendar-alt"></i> Surgical Cases
@@ -271,6 +315,43 @@
                     </div>
                 </div>
 
+                <!-- Upcoming Cases Section -->
+                <div class="dashboard-section">
+                    <div class="dashboard-header">
+                        <h3 id="dashboardCasesSectionTitle">
+                            <i class="fas fa-calendar-alt"></i>
+                            Upcoming Cases
+                        </h3>
+                        <div class="dashboard-filters">
+                            <div class="d-flex gap-2 align-items-center">
+                                <span class="filter-label"><i class="fas fa-filter"></i> Filter by:</span>
+                                <select class="filter-select" id="dashboardCasesDateFilter">
+                                    <option value="today">Today</option>
+                                    <option value="tomorrow">Tomorrow</option>
+                                    <option value="week" selected>This Week</option>
+                                    <option value="month">This Month</option>
+                                    <option value="recent">Recent (Last 7 Days)</option>
+                                    <option value="past">All Past Cases</option>
+                                </select>
+                                <select class="filter-select" id="dashboardCasesStatusFilter">
+                                    <option value="">All Status</option>
+                                    <option value="Scheduled">Scheduled</option>
+                                    <option value="Canceled">Canceled</option>
+                                    <option value="Complete">Complete</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Cases Cards Container -->
+                    <div id="dashboardCasesContent" class="cases-cards-grid">
+                        <div class="loading-state">
+                            <div class="spinner-border" role="status"></div>
+                            <p class="mt-2">Loading cases...</p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Recent Activity Sidebar -->
                 <div class="activity-sidebar">
                     <div class="activity-header">
@@ -315,8 +396,8 @@
             </div>
         </div>
 
-        <!-- Locations View -->
-        <div id="locationsView" class="view d-none">
+        <!-- Facilities View -->
+        <div id="facilitiesView" class="view d-none">
             <div class="page-header">
                 <h1 class="page-title">
                     <i class="fas fa-map-marked-alt"></i>
@@ -367,7 +448,7 @@
                         <select class="filter-select" id="trayStatusFilter">
                             <option value="">All Tray Status</option>
                             <option value="available">Available</option>
-                            <option value="in-use">In Use</option>
+                            <option value="in_use">In Use</option>
                             <option value="checked-in">Checked In</option>
                             <option value="picked-up">Picked Up</option>
                         </select>
@@ -376,8 +457,8 @@
                         <select class="filter-select" id="trayLocationFilter">
                             <option value="">All Tray Locations</option>
                             <option value="facility">At Facility</option>
-                            <option value="corporate">At Corporate</option>
-                            <option value="trunk">In Trunk</option>
+                            <option value="cleaning">Cleaning</option>
+                            <option value="maintenance">Maintenance</option>
                         </select>
                     </div>
                     
@@ -433,7 +514,7 @@
                     <select class="filter-select" id="traysStatusFilter">
                         <option value="">All Status</option>
                         <option value="available">Available</option>
-                        <option value="in-use">In Use</option>
+                        <option value="in_use">In Use</option>
                         <option value="checked-in">Checked In</option>
                         <option value="picked-up">Picked Up</option>
                     </select>
@@ -518,38 +599,34 @@
             </div>
         </div>
 
-        <!-- Surgeon Management View -->
-        <div id="surgeonsView" class="view d-none">
+        <!-- Physician Management View -->
+        <div id="physiciansView" class="view d-none">
             <div class="page-header">
                 <div>
                     <h1 class="page-title">
                         <i class="fas fa-user-md"></i>
-                        Surgeon Management
+                        Physician Management
                     </h1>
-                    <p class="page-subtitle">Manage surgeons and their specialties</p>
+                    <p class="page-subtitle">Manage physicians and their specialties</p>
                 </div>
-                <button class="btn-primary-custom" onclick="app.modalManager.showAddSurgeonModal()">
-                    <i class="fas fa-user-md"></i>
-                    Add Surgeon
-                </button>
             </div>
 
-            <!-- Surgeon Stats -->
+            <!-- Physician Stats -->
             <div class="metrics-grid mb-4">
                 <div class="metric-card">
-                    <div class="metric-value metric-active" id="totalSurgeonsCount">0</div>
-                    <div class="metric-label">Total Surgeons</div>
+                    <div class="metric-value metric-active" id="totalPhysiciansCount">0</div>
+                    <div class="metric-label">Total Physicians</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value metric-available" id="activeSurgeonsCount">0</div>
-                    <div class="metric-label">Active Surgeons</div>
+                    <div class="metric-value metric-available" id="activePhysiciansCount">0</div>
+                    <div class="metric-label">Active Physicians</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value metric-in-use" id="orthopedicSurgeonsCount">0</div>
+                    <div class="metric-value metric-in-use" id="orthopedicPhysiciansCount">0</div>
                     <div class="metric-label">Orthopedic/Spine</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value metric-upcoming" id="generalSurgeonsCount">0</div>
+                    <div class="metric-value metric-upcoming" id="generalPhysiciansCount">0</div>
                     <div class="metric-label">General</div>
                 </div>
             </div>
@@ -557,25 +634,25 @@
             <!-- View Toggle -->
             <div class="view-controls">
                 <div class="btn-group" role="group">
-                    <button type="button" class="btn-view active" id="surgeonCardViewBtn" onclick="app.surgeonManager.setViewMode('card')">
+                    <button type="button" class="btn-view active" id="physicianCardViewBtn" onclick="app.surgeonManager.setViewMode('card')">
                         <i class="fas fa-th-large"></i> Cards
                     </button>
-                    <button type="button" class="btn-view" id="surgeonListViewBtn" onclick="app.surgeonManager.setViewMode('list')">
+                    <button type="button" class="btn-view" id="physicianListViewBtn" onclick="app.surgeonManager.setViewMode('list')">
                         <i class="fas fa-list"></i> List
                     </button>
                 </div>
             </div>
 
-            <!-- Surgeon Content -->
-            <div id="surgeonCardView" class="surgeon-cards-grid">
+            <!-- Physician Content -->
+            <div id="physicianCardView" class="physician-cards-grid">
                 <div class="loading-state">
                     <div class="spinner-border" role="status"></div>
-                    <p class="mt-2">Loading surgeons...</p>
+                    <p class="mt-2">Loading physicians...</p>
                 </div>
             </div>
 
-            <div id="surgeonListView" class="d-none">
-                <div id="surgeonHorizontalCards">
+            <div id="physicianListView" class="d-none">
+                <div id="physicianHorizontalCards">
                     <!-- List view content -->
                 </div>
             </div>
@@ -708,61 +785,65 @@
             </div>
         </div>
 
-        <!-- Location Admin View -->
-        <div id="locationadminView" class="view d-none">
+        <!-- Facility Admin View -->
+        <div id="facilityAdminView" class="view d-none">
             <div class="page-header">
                 <div>
                     <h1 class="page-title">
-                        <i class="fas fa-map-marker-alt"></i>
-                        Location Administration
+                        <i class="fas fa-building"></i>
+                        Facility Administration
                     </h1>
-                    <p class="page-subtitle">Manage facilities and corporate locations</p>
+                    <p class="page-subtitle">Manage medical facilities, ASCs, and hospitals</p>
                 </div>
-                <button class="btn-primary-custom" onclick="app.modalManager.showAddLocationModal()">
-                    <i class="fas fa-map-marker-alt"></i>
-                    Add Location
+                <button class="btn-primary-custom" onclick="app.modalManager.showAddFacilityModal()">
+                    <i class="fas fa-building"></i>
+                    Add Facility
                 </button>
             </div>
 
-            <!-- Location Stats -->
+            <!-- Facility Stats -->
             <div class="metrics-grid mb-4">
                 <div class="metric-card">
-                    <div class="metric-value metric-active" id="totalLocationsCount">0</div>
-                    <div class="metric-label">Total Locations</div>
+                    <div class="metric-value metric-active" id="totalFacilitiesCount">0</div>
+                    <div class="metric-label">Total Facilities</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value metric-available" id="facilitiesCount">0</div>
-                    <div class="metric-label">Medical Facilities</div>
+                    <div class="metric-value metric-available" id="ascCount">0</div>
+                    <div class="metric-label">ASCs</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value metric-in-use" id="corporateLocationsCount">0</div>
-                    <div class="metric-label">Corporate Locations</div>
+                    <div class="metric-value metric-in-use" id="hospitalCount">0</div>
+                    <div class="metric-label">Hospitals</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value metric-upcoming" id="oblCount">0</div>
+                    <div class="metric-label">OBLs</div>
                 </div>
             </div>
 
             <!-- View Toggle -->
             <div class="view-controls">
                 <div class="btn-group" role="group">
-                    <button type="button" class="btn-view active" id="locationCardViewBtn" onclick="app.locationManager.setViewMode('card')">
+                    <button type="button" class="btn-view active" id="facilityCardViewBtn" onclick="app.facilityManager.setViewMode('card')">
                         <i class="fas fa-th-large"></i> Cards
                     </button>
-                    <button type="button" class="btn-view" id="locationListViewBtn" onclick="app.locationManager.setViewMode('list')">
+                    <button type="button" class="btn-view" id="facilityListViewBtn" onclick="app.facilityManager.setViewMode('list')">
                         <i class="fas fa-list"></i> List
                     </button>
                 </div>
             </div>
 
-            <!-- Location Content -->
-            <div id="locationCardView" class="location-cards-grid">
+            <!-- Facility Content -->
+            <div id="facilityCardView" class="location-cards-grid">
                 <div class="loading-state">
                     <div class="spinner-border" role="status"></div>
-                    <p class="mt-2">Loading locations...</p>
+                    <p class="mt-2">Loading facilities...</p>
                 </div>
             </div>
 
-            <div id="locationListView" class="d-none">
-                <div id="locationHorizontalCards">
-                    <!-- List view content -->
+            <div id="facilityListView" class="d-none">
+                <div id="facilityHorizontalCards">
+                    <!-- Horizontal facility cards will be rendered here -->
                 </div>
             </div>
         </div>
@@ -776,38 +857,48 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add New Tray</h5>
+                <h5 class="modal-title" id="addTrayModalTitle">Add New Tray</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <form id="addTrayForm">
+                    <input type="hidden" id="editTrayId">
                     <div class="form-group">
                         <label for="trayName" class="form-label">Tray Name *</label>
                         <input type="text" class="form-control" id="trayName" required>
                     </div>
                     <div class="form-group">
-                        <label for="trayType" class="form-label">Tray Type *</label>
-                        <select class="form-control" id="trayType" required>
-                            <option value="">Select Type...</option>
-                            <option value="fusion">Fusion Set</option>
-                            <option value="revision">Revision Kit</option>
-                            <option value="mi">Minimally Invasive</option>
-                            <option value="complete">Complete System</option>
+                        <label for="trayType" class="form-label">Case Type Compatibility *</label>
+                        <select class="form-control" id="trayType" multiple size="4" required>
+                            <!-- Case types will be populated dynamically from Firestore casetypes collection -->
                         </select>
+                        <small class="form-text text-muted">Hold Ctrl (Windows) or Cmd (Mac) to select multiple case types</small>
                     </div>
                     <div class="form-group">
                         <label for="initialLocation" class="form-label">Initial Location *</label>
                         <select class="form-control" id="initialLocation" required>
                             <option value="">Select Location...</option>
-                            <option value="corporate">SI-BONE Corporate</option>
-                            <option value="trunk">Rep Trunk</option>
+                            <option value="cleaning">Cleaning Facility</option>
+                            <option value="maintenance">Maintenance</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="trayStatus" class="form-label">Status *</label>
+                        <select class="form-control" id="trayStatus" required>
+                            <option value="available">Available</option>
+                            <option value="in_use">In Use</option>
+                            <option value="cleaning">Cleaning</option>
+                            <option value="maintenance">Maintenance</option>
+                            <option value="missing">Missing</option>
+                            <option value="checked_in">Checked In</option>
+                            <option value="picked_up">Picked Up</option>
                         </select>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn-primary-custom" onclick="app.trayManager.addTray()">Add Tray</button>
+                <button type="button" class="btn-primary-custom" id="addTrayModalButton" onclick="app.trayManager.saveTray()">Add Tray</button>
             </div>
         </div>
     </div>
@@ -824,26 +915,48 @@
             <div class="modal-body">
                 <form id="checkinForm">
                     <input type="hidden" id="checkinTrayId">
+                    
+                    <!-- Selection Mode Toggle -->
+                    <div class="form-group mb-4">
+                        <label class="form-label">Check-in Method</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="checkinMethod" id="checkinMethodCase" value="case" autocomplete="off" checked onchange="toggleCheckinMethod()">
+                            <label class="btn btn-outline-primary" for="checkinMethodCase">Select Existing Case</label>
+                            
+                            <input type="radio" class="btn-check" name="checkinMethod" id="checkinMethodManual" value="manual" autocomplete="off" onchange="toggleCheckinMethod()">
+                            <label class="btn btn-outline-primary" for="checkinMethodManual">Manual Entry</label>
+                        </div>
+                    </div>
+
+                    <!-- Case Selection (shown by default) -->
+                    <div id="checkinCaseSection" class="mb-4">
+                        <div class="form-group">
+                            <label for="checkinCaseSelect" class="form-label">Select Case *</label>
+                            <select class="form-control" id="checkinCaseSelect" onchange="onCheckinCaseSelect()">
+                                <option value="">Choose a scheduled case...</option>
+                            </select>
+                            <small class="form-text text-muted">Facility and physician will be automatically filled from the selected case</small>
+                        </div>
+                    </div>
+
                     <div class="row">
-                        <div class="col-md-6">
+                        <!-- Manual Entry Section (hidden by default) -->
+                        <div class="col-md-6 d-none" id="checkinManualSection">
                             <div class="form-group">
-                                <label for="facilityName" class="form-label">Facility Name *</label>
-                                <select class="form-control" id="facilityName">
+                                <label for="checkinFacilityName" class="form-label">Facility Name *</label>
+                                <select class="form-control" id="checkinFacilityName">
                                     <option value="">Select Location...</option>
                                 </select>
                             </div>
-                        </div>
-                        <div class="col-md-6">
                             <div class="form-group">
-                                <label for="caseDate" class="form-label">Case Date *</label>
-                                <input type="date" class="form-control" id="caseDate" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="surgeon" class="form-label">Surgeon</label>
-                                <select class="form-control" id="surgeon">
-                                    <option value="">Select Surgeon...</option>
+                                <label for="physician" class="form-label">Physician</label>
+                                <select class="form-control" id="physician">
+                                    <option value="">Select Physician...</option>
                                 </select>
                             </div>
+                        </div>
+                        
+                        <div class="col-md-6">
                             <div class="form-group">
                                 <label class="form-label">Photo</label>
                                 <div class="camera-container">
@@ -987,8 +1100,8 @@
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="form-group">
-                                    <label for="newCaseDate" class="form-label">New Case Date *</label>
-                                    <input type="date" class="form-control" id="newCaseDate">
+                                    <label for="newCaseDate" class="form-label">New Case Date & Time * <span class="text-muted">(in CDT)</span></label>
+                                    <input type="datetime-local" class="form-control" id="newCaseDate">
                                 </div>
                                 <div class="form-group">
                                     <label for="turnoverCheckinNotes" class="form-label">Check-in Notes (Optional)</label>
@@ -1179,30 +1292,87 @@
     </div>
 </div>
 
-<!-- Add Location Modal -->
-<div class="modal fade" id="addLocationModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+<!-- Update User Password Modal -->
+<div class="modal fade" id="updateUserPasswordModal" tabindex="-1">
+    <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add New Location</h5>
+                <h5 class="modal-title">Send Password Reset</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="addLocationForm">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Admin Action:</strong> This will send a password reset email to the user. They will receive secure instructions to create a new password.
+                </div>
+                <form id="updateUserPasswordForm">
+                    <input type="hidden" id="passwordUpdateUserId">
+                    
+                    <div class="form-group">
+                        <label for="passwordUpdateUserName" class="form-label">User</label>
+                        <input type="text" class="form-control" id="passwordUpdateUserName" readonly>
+                    </div>
+                    
+                    <div class="alert alert-warning mt-3">
+                        <i class="fas fa-envelope"></i>
+                        <strong>Password Reset Process:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>User will receive a password reset email</li>
+                            <li>Email contains a secure link to reset their password</li>
+                            <li>User creates their own new password</li>
+                            <li>Reset link expires after 1 hour for security</li>
+                        </ul>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn-primary-custom" onclick="app.userManager.updateUserPassword()">
+                    <i class="fas fa-envelope"></i> Send Password Reset Email
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Facility Modal -->
+<div class="modal fade" id="addFacilityModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Facility</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addFacilityForm">
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="locationName" class="form-label">Location Name *</label>
-                                <input type="text" class="form-control" id="locationName" required>
+                                <label for="facilityId" class="form-label">Facility ID <small class="text-muted">(optional - auto-generated if empty)</small></label>
+                                <input type="text" class="form-control" id="facilityId" placeholder="e.g., FACILITY_001">
                             </div>
                             <div class="form-group">
-                                <label for="locationType" class="form-label">Location Type *</label>
-                                <select class="form-control" id="locationType" required>
+                                <label for="facilityName" class="form-label">Facility Name *</label>
+                                <input type="text" class="form-control" id="facilityName" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="facilityType" class="form-label">Facility Type *</label>
+                                <select class="form-control" id="facilityType" required>
                                     <option value="">Select Type...</option>
-                                    <option value="medical_facility">Medical Facility</option>
-                                    <option value="corporate">Corporate Office</option>
-                                    <option value="warehouse">Warehouse</option>
-                                    <option value="rep_office">Rep Office</option>
+                                    <option value="ASC">ASC (Ambulatory Surgery Center)</option>
+                                    <option value="Hospital">Hospital</option>
+                                    <option value="OBL">OBL (Office-Based Lab)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="facilitySpecialty" class="form-label">Specialty</label>
+                                <select class="form-control" id="facilitySpecialty">
+                                    <option value="">Select Specialty...</option>
+                                    <option value="Ortho Spine">Ortho Spine</option>
+                                    <option value="Pain Management">Pain Management</option>
+                                    <option value="Neurosurgery">Neurosurgery</option>
+                                    <option value="Ortho">Ortho</option>
+                                    <option value="General">General</option>
                                 </select>
                             </div>
                             <div class="form-group">
@@ -1376,113 +1546,168 @@
     </div>
 </div>
 
-<!-- Add Surgeon Modal -->
-<div class="modal fade" id="addSurgeonModal" tabindex="-1">
+<!-- Edit Facility Modal -->
+<div class="modal fade" id="editFacilityModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add New Surgeon</h5>
+                <h5 class="modal-title">Edit Facility</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="addSurgeonForm">
+                <form id="editFacilityForm">
+                    <input type="hidden" id="editFacilityId">
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="surgeonTitle" class="form-label">Title</label>
-                                <select class="form-control" id="surgeonTitle">
-                                    <option value="Dr.">Dr.</option>
-                                    <option value="Prof.">Prof.</option>
-                                    <option value="Prof. Dr.">Prof. Dr.</option>
+                                <label for="editFacilityName" class="form-label">Facility Name *</label>
+                                <input type="text" class="form-control" id="editFacilityName" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="editFacilityType" class="form-label">Facility Type *</label>
+                                <select class="form-control" id="editFacilityType" required>
+                                    <option value="">Select Type...</option>
+                                    <option value="ASC">ASC (Ambulatory Surgery Center)</option>
+                                    <option value="Hospital">Hospital</option>
+                                    <option value="OBL">OBL (Office-Based Lab)</option>
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="surgeonName" class="form-label">Full Name *</label>
-                                <input type="text" class="form-control" id="surgeonName" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="surgeonSpecialty" class="form-label">Specialty</label>
-                                <select class="form-control" id="surgeonSpecialty">
+                                <label for="editFacilitySpecialty" class="form-label">Specialty</label>
+                                <select class="form-control" id="editFacilitySpecialty">
                                     <option value="">Select Specialty...</option>
-                                    <option value="Neurosurgery">Neurosurgery</option>
                                     <option value="Ortho Spine">Ortho Spine</option>
-                                    <option value="Pain">Pain</option>
-                                    <option value="Ortho Trauma">Ortho Trauma</option>
-                                    <option value="IR">IR</option>
+                                    <option value="Pain Management">Pain Management</option>
+                                    <option value="Neurosurgery">Neurosurgery</option>
                                     <option value="Ortho">Ortho</option>
+                                    <option value="General">General</option>
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="surgeonHospital" class="form-label">Primary Hospital</label>
-                                <input type="text" class="form-control" id="surgeonHospital">
+                                <label for="editFacilityAddress" class="form-label">Address</label>
+                                <textarea class="form-control" id="editFacilityAddress" rows="2"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="editFacilityCity" class="form-label">City *</label>
+                                <input type="text" class="form-control" id="editFacilityCity" required>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="surgeonEmail" class="form-label">Email</label>
-                                <input type="email" class="form-control" id="surgeonEmail">
+                                <label for="editFacilityState" class="form-label">State *</label>
+                                <input type="text" class="form-control" id="editFacilityState" required>
                             </div>
                             <div class="form-group">
-                                <label for="surgeonPhone" class="form-label">Phone Number</label>
-                                <input type="tel" class="form-control" id="surgeonPhone">
+                                <label for="editFacilityZip" class="form-label">ZIP Code</label>
+                                <input type="text" class="form-control" id="editFacilityZip">
                             </div>
                             <div class="form-group">
-                                <label for="surgeonPreferredCases" class="form-label">Preferred Case Types</label>
-                                <select class="form-control multi-select" id="surgeonPreferredCases" multiple size="6">
-                                    <!-- Options populated by JavaScript -->
+                                <label for="editFacilityPhone" class="form-label">Phone</label>
+                                <input type="tel" class="form-control" id="editFacilityPhone">
+                            </div>
+                            <div class="form-group">
+                                <label for="editFacilityTerritory" class="form-label">Territory</label>
+                                <select class="form-control" id="editFacilityTerritory">
+                                    <option value="">Select Territory...</option>
+                                    <option value="Wisconsin East">Wisconsin East</option>
+                                    <option value="Wisconsin West">Wisconsin West</option>
+                                    <option value="Illinois North">Illinois North</option>
+                                    <option value="Illinois South">Illinois South</option>
                                 </select>
-                                <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple case types, or click and drag</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="editFacilityPriority" class="form-label">Priority</label>
+                                <select class="form-control" id="editFacilityPriority">
+                                    <option value="1">1 - High</option>
+                                    <option value="2">2 - Medium-High</option>
+                                    <option value="3">3 - Medium</option>
+                                    <option value="4">4 - Low-Medium</option>
+                                    <option value="5">5 - Low</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="editFacilityContact" class="form-label">Primary Contact</label>
+                                <input type="text" class="form-control" id="editFacilityContact">
+                            </div>
+                            <div class="form-group">
+                                <label for="editFacilityContactEmail" class="form-label">Contact Email</label>
+                                <input type="email" class="form-control" id="editFacilityContactEmail">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="editFacilityNPI" class="form-label">NPI</label>
+                                <input type="text" class="form-control" id="editFacilityNPI">
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="surgeonActive" checked>
-                                <label class="form-check-label" for="surgeonActive">
-                                    Active Surgeon
+                                <input class="form-check-input" type="checkbox" id="editFacilityActive">
+                                <label class="form-check-label" for="editFacilityActive">
+                                    Active Facility
                                 </label>
                             </div>
                         </div>
                     </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="editFacilityLatitude" class="form-label">Latitude</label>
+                                <input type="number" class="form-control" id="editFacilityLatitude" step="any">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="editFacilityLongitude" class="form-label">Longitude</label>
+                                <input type="number" class="form-control" id="editFacilityLongitude" step="any">
+                            </div>
+                        </div>
+                    </div>
                     <div class="form-group">
-                        <label for="surgeonNotes" class="form-label">Notes</label>
-                        <textarea class="form-control" id="surgeonNotes" rows="2"></textarea>
+                        <label for="editFacilityNotes" class="form-label">Notes</label>
+                        <textarea class="form-control" id="editFacilityNotes" rows="2"></textarea>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn-primary-custom" onclick="app.surgeonManager.addSurgeon()">Add Surgeon</button>
+                <button type="button" class="btn-primary-custom" onclick="app.facilityManager.updateFacility()">Update Facility</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Edit Surgeon Modal -->
-<div class="modal fade" id="editSurgeonModal" tabindex="-1">
+
+<!-- Edit Physician Modal -->
+<div class="modal fade" id="editPhysicianModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Edit Surgeon</h5>
+                <h5 class="modal-title">Edit Physician</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="editSurgeonForm">
-                    <input type="hidden" id="editSurgeonId">
+                <form id="editPhysicianForm">
+                    <input type="hidden" id="editPhysicianId">
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="editSurgeonTitle" class="form-label">Title</label>
-                                <select class="form-control" id="editSurgeonTitle">
+                                <label for="editPhysicianTitle" class="form-label">Title</label>
+                                <select class="form-control" id="editPhysicianTitle">
                                     <option value="Dr.">Dr.</option>
                                     <option value="Prof.">Prof.</option>
                                     <option value="Prof. Dr.">Prof. Dr.</option>
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="editSurgeonName" class="form-label">Full Name *</label>
-                                <input type="text" class="form-control" id="editSurgeonName" required>
+                                <label for="editPhysicianName" class="form-label">Full Name *</label>
+                                <input type="text" class="form-control" id="editPhysicianName" required>
                             </div>
                             <div class="form-group">
-                                <label for="editSurgeonSpecialty" class="form-label">Specialty</label>
-                                <select class="form-control" id="editSurgeonSpecialty">
+                                <label for="editPhysicianSpecialty" class="form-label">Specialty</label>
+                                <select class="form-control" id="editPhysicianSpecialty">
                                     <option value="">Select Specialty...</option>
                                     <option value="Orthopedic">Orthopedic Surgery</option>
                                     <option value="Spine">Spine Surgery</option>
@@ -1493,43 +1718,83 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="editSurgeonHospital" class="form-label">Primary Hospital</label>
-                                <input type="text" class="form-control" id="editSurgeonHospital">
+                                <label for="editPhysicianHospital" class="form-label">Primary Hospital</label>
+                                <input type="text" class="form-control" id="editPhysicianHospital">
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="editSurgeonEmail" class="form-label">Email</label>
-                                <input type="email" class="form-control" id="editSurgeonEmail">
+                                <label for="editPhysicianEmail" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="editPhysicianEmail">
                             </div>
                             <div class="form-group">
-                                <label for="editSurgeonPhone" class="form-label">Phone Number</label>
-                                <input type="tel" class="form-control" id="editSurgeonPhone">
-                            </div>
-                            <div class="form-group">
-                                <label for="editSurgeonPreferredCases" class="form-label">Preferred Case Types</label>
-                                <select class="form-control multi-select" id="editSurgeonPreferredCases" multiple size="6">
-                                    <!-- Options populated by JavaScript -->
-                                </select>
-                                <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple case types, or click and drag</small>
+                                <label for="editPhysicianPhone" class="form-label">Phone Number</label>
+                                <input type="tel" class="form-control" id="editPhysicianPhone">
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="editSurgeonActive">
-                                <label class="form-check-label" for="editSurgeonActive">
-                                    Active Surgeon
+                                <input class="form-check-input" type="checkbox" id="editPhysicianActive">
+                                <label class="form-check-label" for="editPhysicianActive">
+                                    Active Physician
                                 </label>
                             </div>
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="editSurgeonNotes" class="form-label">Notes</label>
-                        <textarea class="form-control" id="editSurgeonNotes" rows="2"></textarea>
+                        <label for="editPhysicianNotes" class="form-label">Notes</label>
+                        <textarea class="form-control" id="editPhysicianNotes" rows="2"></textarea>
+                    </div>
+                    
+                    <!-- Tray Preferences Section -->
+                    <div class="mb-3">
+                        <h6 class="mb-3">Tray Preferences by Case Type</h6>
+                        <div class="accordion" id="physicianTrayPreferencesAccordion">
+                            <!-- Case type tabs will be populated by JavaScript -->
+                        </div>
+                        
+                        <!-- Add New Preference -->
+                        <div class="border rounded p-3 bg-light mt-3">
+                            <h6 class="mb-2">Add New Preference</h6>
+                            <div class="row mb-2">
+                                <div class="col-md-3">
+                                    <select class="form-control" id="physicianPrefCaseType">
+                                        <option value="">Select Case Type...</option>
+                                        <!-- Options populated by JavaScript -->
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <select class="form-control" id="physicianPreferenceTrayIdDropdown">
+                                        <option value="">Select Tray ID...</option>
+                                        <!-- Options populated by JavaScript based on case type -->
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <select class="form-control" id="physicianPrefRequirementType">
+                                        <option value="preferred">Preferred</option>
+                                        <option value="required">Required</option>
+                                        <option value="optional">Optional</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control" id="physicianPrefQuantity" placeholder="Qty" value="1" min="1">
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="button" class="btn btn-sm btn-primary" onclick="app.surgeonManager.addTrayPreference()">
+                                        <i class="fas fa-plus"></i> Add
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <input type="text" class="form-control" id="physicianPrefNotes" placeholder="Notes (optional)">
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn-primary-custom" onclick="app.surgeonManager.updateSurgeon()">Update Surgeon</button>
+                <button type="button" class="btn-primary-custom" onclick="app.surgeonManager.updatePhysician()">Update Physician</button>
             </div>
         </div>
     </div>
@@ -1537,7 +1802,7 @@
 
 <!-- Add Case Type Modal -->
 <div class="modal fade" id="addCaseTypeModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Add New Case Type</h5>
@@ -1553,11 +1818,44 @@
                         <label for="caseTypeDescription" class="form-label">Description</label>
                         <textarea class="form-control" id="caseTypeDescription" rows="3"></textarea>
                     </div>
-                    <div class="form-check">
+                    <div class="form-check mb-3">
                         <input class="form-check-input" type="checkbox" id="caseTypeActive" checked>
                         <label class="form-check-label" for="caseTypeActive">
                             Active Case Type
                         </label>
+                    </div>
+                    
+                    <!-- Tray Requirements Section -->
+                    <div class="mb-3">
+                        <h6 class="mb-2">Default Tray Requirements</h6>
+                        <div class="row mb-2">
+                            <div class="col-md-4">
+                                <input type="text" class="form-control" id="newTrayId" placeholder="Tray ID (e.g., TRAY_001)">
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-control" id="newTrayRequirementType">
+                                    <option value="required">Required</option>
+                                    <option value="preferred">Preferred</option>
+                                    <option value="backup">Backup</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" class="form-control" id="newTrayQuantity" placeholder="Qty" value="1" min="1">
+                            </div>
+                            <div class="col-md-2">
+                                <button type="button" class="btn btn-primary btn-sm" onclick="app.caseTypeManager.addTrayRequirement()">
+                                    <i class="fas fa-plus"></i> Add
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-12 mb-2">
+                            <input type="text" class="form-control" id="newTrayNotes" placeholder="Notes (optional)">
+                        </div>
+                        
+                        <!-- Current Tray Requirements List -->
+                        <div id="addCaseTypeTrayRequirements" class="border rounded p-2 bg-light">
+                            <small class="text-muted">No tray requirements added yet. Add requirements above.</small>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -1571,7 +1869,7 @@
 
 <!-- Edit Case Type Modal -->
 <div class="modal fade" id="editCaseTypeModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Edit Case Type</h5>
@@ -1588,11 +1886,46 @@
                         <label for="editCaseTypeDescription" class="form-label">Description</label>
                         <textarea class="form-control" id="editCaseTypeDescription" rows="3"></textarea>
                     </div>
-                    <div class="form-check">
+                    <div class="form-check mb-3">
                         <input class="form-check-input" type="checkbox" id="editCaseTypeActive">
                         <label class="form-check-label" for="editCaseTypeActive">
                             Active Case Type
                         </label>
+                    </div>
+                    
+                    <!-- Tray Requirements Section -->
+                    <div class="mb-3">
+                        <h6 class="mb-2">Default Tray Requirements</h6>
+                        <div class="row mb-2">
+                            <div class="col-md-4">
+                                <select class="form-control" id="editCaseTypeTrayDropdown_CT001" disabled>
+                                    <option value="">Loading trays...</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-control" id="editNewTrayRequirementType">
+                                    <option value="required">Required</option>
+                                    <option value="preferred">Preferred</option>
+                                    <option value="backup">Backup</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" class="form-control" id="editNewTrayQuantity" placeholder="Qty" value="1" min="1">
+                            </div>
+                            <div class="col-md-2">
+                                <button type="button" class="btn btn-primary btn-sm" onclick="app.caseTypeManager.addTrayRequirementToEdit()">
+                                    <i class="fas fa-plus"></i> Add
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-12 mb-2">
+                            <input type="text" class="form-control" id="editNewTrayNotes" placeholder="Notes (optional)">
+                        </div>
+                        
+                        <!-- Current Tray Requirements List -->
+                        <div id="editCaseTypeTrayRequirements" class="border rounded p-2 bg-light">
+                            <small class="text-muted">Loading tray requirements...</small>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -1623,9 +1956,9 @@
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="addCaseSurgeon" class="form-label">Surgeon</label>
-                                <select class="form-select" id="addCaseSurgeon" required>
-                                    <option value="">Select Surgeon</option>
+                                <label for="addCasePhysician" class="form-label">Physician</label>
+                                <select class="form-select" id="addCasePhysician" required>
+                                    <option value="">Select Physician</option>
                                     <!-- Options will be populated dynamically -->
                                 </select>
                             </div>
@@ -1654,13 +1987,13 @@
                     <div class="row">
                         <div class="col-md-4">
                             <div class="mb-3">
-                                <label for="scheduledDate" class="form-label">Scheduled Date</label>
+                                <label for="scheduledDate" class="form-label">Scheduled Date <span class="text-muted">(in CDT)</span></label>
                                 <input type="date" class="form-control" id="scheduledDate" required>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="mb-3">
-                                <label for="scheduledTime" class="form-label">Scheduled Time</label>
+                                <label for="scheduledTime" class="form-label">Scheduled Time <span class="text-muted">(in CDT)</span></label>
                                 <input type="time" class="form-control" id="scheduledTime" required>
                             </div>
                         </div>
@@ -1727,9 +2060,9 @@
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="editCaseSurgeon" class="form-label">Surgeon</label>
-                                <select class="form-select" id="editCaseSurgeon" required>
-                                    <option value="">Select Surgeon</option>
+                                <label for="editCasePhysician" class="form-label">Physician</label>
+                                <select class="form-select" id="editCasePhysician" required>
+                                    <option value="">Select Physician</option>
                                 </select>
                             </div>
                         </div>
@@ -1755,13 +2088,13 @@
                     <div class="row">
                         <div class="col-md-4">
                             <div class="mb-3">
-                                <label for="editScheduledDate" class="form-label">Scheduled Date</label>
+                                <label for="editScheduledDate" class="form-label">Scheduled Date <span class="text-muted">(in CDT)</span></label>
                                 <input type="date" class="form-control" id="editScheduledDate" required>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="mb-3">
-                                <label for="editScheduledTime" class="form-label">Scheduled Time</label>
+                                <label for="editScheduledTime" class="form-label">Scheduled Time <span class="text-muted">(in CDT)</span></label>
                                 <input type="time" class="form-control" id="editScheduledTime" required>
                             </div>
                         </div>
@@ -1777,11 +2110,9 @@
                             <div class="mb-3">
                                 <label for="editCaseStatus" class="form-label">Status</label>
                                 <select class="form-select" id="editCaseStatus">
-                                    <option value="scheduled">Scheduled</option>
-                                    <option value="in-progress">In Progress</option>
-                                    <option value="completed">Completed</option>
-                                    <option value="cancelled">Cancelled</option>
-                                    <option value="postponed">Postponed</option>
+                                    <option value="Scheduled">Scheduled</option>
+                                    <option value="Canceled">Canceled</option>
+                                    <option value="Complete">Complete</option>
                                 </select>
                             </div>
                         </div>
@@ -1844,5 +2175,58 @@
 
 <!-- Firebase SDK and Main App -->
 <script type="module" src="js/main.js"></script>
+<script type="module" src="js/utils/FirebaseDataDump.js"></script>
+
+<script>
+// Toggle function for check-in method
+function toggleCheckinMethod() {
+    const caseMethod = document.getElementById('checkinMethodCase');
+    const manualMethod = document.getElementById('checkinMethodManual');
+    const caseSection = document.getElementById('checkinCaseSection');
+    const manualSection = document.getElementById('checkinManualSection');
+    
+    if (caseMethod.checked) {
+        // Show case selection, hide manual entry
+        caseSection.classList.remove('d-none');
+        manualSection.classList.add('d-none');
+        
+        // Clear manual fields
+        document.getElementById('checkinFacilityName').value = '';
+        document.getElementById('physician').value = '';
+    } else {
+        // Show manual entry, hide case selection
+        caseSection.classList.add('d-none');
+        manualSection.classList.remove('d-none');
+        
+        // Clear case selection
+        document.getElementById('checkinCaseSelect').value = '';
+    }
+}
+
+// Handle case selection change
+async function onCheckinCaseSelect() {
+    const caseSelect = document.getElementById('checkinCaseSelect');
+    const selectedCaseId = caseSelect.value;
+    
+    if (selectedCaseId && window.app && window.app.casesManager) {
+        try {
+            // Get case data and populate fields
+            const caseData = await window.app.casesManager.getCaseById(selectedCaseId);
+            if (caseData) {
+                // Set facility ID
+                document.getElementById('checkinFacilityName').value = caseData.facility_id || '';
+                // Set physician ID  
+                document.getElementById('physician').value = caseData.physician_id || '';
+            }
+        } catch (error) {
+            console.error('Error getting case data:', error);
+        }
+    } else {
+        // Clear fields if no case selected
+        document.getElementById('checkinFacilityName').value = '';
+        document.getElementById('physician').value = '';
+    }
+}
+</script>
 </body>
 </html>
