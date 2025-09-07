@@ -280,10 +280,16 @@ export class TrayManager {
     }
 
     renderTrays(trays) {
+        // Apply trays page status filter
+        const statusFilter = document.getElementById('traysStatusFilter')?.value || '';
+        const filteredTrays = statusFilter ? 
+            trays.filter(tray => tray.status === statusFilter) : 
+            trays;
+            
         if (this.viewMode === 'card') {
-            this.renderCardView(trays);
+            this.renderCardView(filteredTrays);
         } else {
-            this.renderListView(trays);
+            this.renderListView(filteredTrays);
         }
     }
 

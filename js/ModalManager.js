@@ -652,4 +652,605 @@ export class ModalManager {
             this.showErrorNotification('Error loading case type data: ' + error.message);
         }
     }
+
+    async showAddCaseModal() {
+        try {
+            console.log('🔍 DEBUG: Opening Add Case Modal');
+            console.log('🔍 DEBUG: DataManager exists?', !!this.dataManager);
+            console.log('🔍 DEBUG: DataManager getCaseTypes method exists?', typeof this.dataManager.getCaseTypes);
+            
+            // Log to API debug endpoint
+            if (window.frontendLogger) {
+                window.frontendLogger.logCaseAction('Add case modal opened', {
+                    hasDataManager: !!this.dataManager,
+                    hasCaseTypesMethod: typeof this.dataManager?.getCaseTypes === 'function',
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            // Show modal first
+            const modalElement = document.getElementById('addCaseModal');
+            const modal = new bootstrap.Modal(modalElement);
+            
+            if (window.frontendLogger) {
+                window.frontendLogger.debug('About to show add case modal', {
+                    modalExists: !!modalElement,
+                    modalId: modalElement?.id,
+                    modalDisplay: modalElement ? window.getComputedStyle(modalElement).display : 'N/A'
+                }, 'modal-show');
+            }
+            
+            modal.show();
+            
+            // Log when modal is actually shown
+            modalElement.addEventListener('shown.bs.modal', () => {
+                if (window.frontendLogger) {
+                    window.frontendLogger.debug('Add case modal is now visible', {
+                        modalDisplay: window.getComputedStyle(modalElement).display,
+                        modalClass: modalElement.className
+                    }, 'modal-shown');
+                }
+            }, { once: true });
+            
+            // Then populate dropdowns - sometimes Firebase data takes time to load
+            setTimeout(async () => {
+                console.log('🔍 DEBUG: About to populate dropdowns...');
+                
+                if (window.frontendLogger) {
+                    window.frontendLogger.debug('Starting dropdown population', {
+                        modalIsVisible: modalElement.style.display !== 'none' && window.getComputedStyle(modalElement).display !== 'none',
+                        timeout: '100ms'
+                    }, 'dropdown-populate-start');
+                }
+                
+                await this.populateCaseModalDropdowns();
+                await this.populateTrayRequirements();
+            }, 100);
+            
+            // Set default date to today
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('scheduledDate').value = today;
+            
+        } catch (error) {
+            console.error('Error showing add case modal:', error);
+            this.showErrorNotification('Error loading case modal data: ' + error.message);
+        }
+    }
+
+    async populateCaseModalDropdowns() {
+        try {
+            // Populate surgeons
+            const surgeonSelect = document.getElementById('addCaseSurgeon');
+            const editSurgeonSelect = document.getElementById('editCaseSurgeon');
+            if (surgeonSelect) {
+                const surgeons = this.dataManager.getSurgeons();
+                console.log('Loading surgeons for dropdown:', surgeons.length);
+                const surgeonOptions = '<option value="">Select Surgeon</option>' + 
+                    surgeons.map(surgeon => `<option value="${surgeon.id}">${surgeon.name}</option>`).join('');
+                surgeonSelect.innerHTML = surgeonOptions;
+                if (editSurgeonSelect) editSurgeonSelect.innerHTML = surgeonOptions;
+            }
+
+            // Populate facilities
+            const facilitySelect = document.getElementById('addCaseFacility');
+            const editFacilitySelect = document.getElementById('editCaseFacility');
+            if (facilitySelect) {
+                const facilities = this.dataManager.getFacilities();
+                console.log('Loading facilities for dropdown:', facilities.length);
+                const facilityOptions = '<option value="">Select Facility</option>' + 
+                    facilities.map(facility => `<option value="${facility.id}">${facility.name}</option>`).join('');
+                facilitySelect.innerHTML = facilityOptions;
+                if (editFacilitySelect) editFacilitySelect.innerHTML = facilityOptions;
+            }
+
+            // Populate case types
+            const caseTypeSelect = document.getElementById('addCaseCaseType');
+            const editCaseTypeSelect = document.getElementById('editCaseType');
+            if (caseTypeSelect) {
+                const caseTypes = this.dataManager.getCaseTypes();
+                console.log('🔍 DEBUG: Loading case types for dropdown');
+                console.log('🔍 DEBUG: Case types data:', caseTypes);
+                console.log('🔍 DEBUG: Case types length:', caseTypes.length);
+                console.log('🔍 DEBUG: Case types type:', typeof caseTypes);
+                console.log('🔍 DEBUG: Is array?', Array.isArray(caseTypes));
+                
+                // Log to API debug endpoint
+                if (window.frontendLogger) {
+                    window.frontendLogger.logDropdownPopulation('case-types', caseTypes.length, {
+                        isArray: Array.isArray(caseTypes),
+                        dataType: typeof caseTypes,
+                        caseTypes: caseTypes.slice(0, 5).map(ct => ({ id: ct.id, name: ct.name })), // First 5 for debugging
+                        hasSelectElement: !!caseTypeSelect,
+                        selectElementId: caseTypeSelect?.id
+                    });
+                }
+                
+                if (caseTypes.length === 0) {
+                    console.warn('No case types found. Make sure case types are created in Firebase.');
+                    caseTypeSelect.innerHTML = '<option value="">No Case Types Available - Create Some First</option>';
+                    
+                    // Log to API debug endpoint
+                    if (window.frontendLogger) {
+                        window.frontendLogger.warn('No case types available in dropdown', {
+                            dataManagerHasCaseTypes: !!this.dataManager.caseTypes,
+                            dataManagerCaseTypesLength: this.dataManager.caseTypes?.length || 0,
+                            firebaseConnection: !!this.dataManager.db
+                        }, 'case-types-empty');
+                    }
+                    
+                    // Add a helpful message to user
+                    setTimeout(() => {
+                        if (confirm('No case types found! Would you like to initialize demo data which includes case types?')) {
+                            if (window.app && window.app.demoManager) {
+                                window.app.demoManager.initializeDemoData();
+                            }
+                        }
+                    }, 1000);
+                } else {
+                    const caseTypeOptions = '<option value="">Select Case Type</option>' + 
+                        caseTypes.map(caseType => `<option value="${caseType.id}">${caseType.name}</option>`).join('');
+                    
+                    // Log before setting innerHTML
+                    if (window.frontendLogger) {
+                        window.frontendLogger.debug('About to set case type dropdown innerHTML', {
+                            elementId: caseTypeSelect.id,
+                            elementTagName: caseTypeSelect.tagName,
+                            expectedId: 'addCaseCaseType',
+                            currentInnerHTML: caseTypeSelect.innerHTML,
+                            currentOptionCount: caseTypeSelect.options?.length || 0,
+                            newOptionsHTML: caseTypeOptions,
+                            newOptionsLength: caseTypeOptions.length
+                        }, 'dropdown-before-set');
+                    }
+                    
+                    caseTypeSelect.innerHTML = caseTypeOptions;
+                    if (editCaseTypeSelect) editCaseTypeSelect.innerHTML = caseTypeOptions;
+                    
+                    // Log immediately after setting innerHTML
+                    if (window.frontendLogger) {
+                        window.frontendLogger.debug('Case type dropdown innerHTML set', {
+                            elementId: caseTypeSelect.id,
+                            newInnerHTML: caseTypeSelect.innerHTML,
+                            newOptionCount: caseTypeSelect.options?.length || 0,
+                            firstOption: caseTypeSelect.options?.[0]?.text || 'N/A',
+                            lastOption: caseTypeSelect.options?.[caseTypeSelect.options.length - 1]?.text || 'N/A'
+                        }, 'dropdown-after-set');
+                    }
+                    
+                    // Log successful population to API debug endpoint
+                    if (window.frontendLogger) {
+                        window.frontendLogger.info('Case types dropdown populated successfully', {
+                            count: caseTypes.length,
+                            optionsGenerated: caseTypeOptions.length,
+                            caseTypeNames: caseTypes.map(ct => ct.name),
+                            hasEditSelect: !!editCaseTypeSelect,
+                            generatedHTML: caseTypeOptions,
+                            selectElementInfo: {
+                                id: caseTypeSelect.id,
+                                tagName: caseTypeSelect.tagName,
+                                className: caseTypeSelect.className,
+                                style: caseTypeSelect.style.cssText,
+                                disabled: caseTypeSelect.disabled,
+                                hidden: caseTypeSelect.hidden,
+                                offsetWidth: caseTypeSelect.offsetWidth,
+                                offsetHeight: caseTypeSelect.offsetHeight,
+                                childElementCount: caseTypeSelect.childElementCount
+                            }
+                        }, 'case-types-success');
+                        
+                        // Additional DOM debugging
+                        setTimeout(() => {
+                            try {
+                                const actualHTML = caseTypeSelect.innerHTML || '';
+                                const options = caseTypeSelect.options || [];
+                                const optionCount = options.length;
+                                const isVisible = caseTypeSelect.offsetWidth > 0 && caseTypeSelect.offsetHeight > 0;
+                                const computedStyle = window.getComputedStyle(caseTypeSelect);
+                                
+                                window.frontendLogger.debug('Case types dropdown DOM state after population', {
+                                    actualHTML: actualHTML.substring(0, 500), // First 500 chars
+                                    optionCount: optionCount,
+                                    hasOptions: optionCount > 0,
+                                    isVisible: isVisible,
+                                    computedDisplay: computedStyle.display,
+                                    computedVisibility: computedStyle.visibility,
+                                    computedOpacity: computedStyle.opacity,
+                                    zIndex: computedStyle.zIndex,
+                                    position: computedStyle.position,
+                                    parentElement: caseTypeSelect.parentElement?.tagName || 'N/A',
+                                    selectValue: caseTypeSelect.value || '',
+                                    selectedIndex: caseTypeSelect.selectedIndex || -1,
+                                    boundingRect: caseTypeSelect.getBoundingClientRect(),
+                                    elementType: caseTypeSelect.tagName,
+                                    optionsExists: !!caseTypeSelect.options
+                                }, 'dropdown-dom-debug');
+                                
+                                // Add click listener to track user interaction
+                                caseTypeSelect.addEventListener('click', (event) => {
+                                    const currentOptions = caseTypeSelect.options || [];
+                                    window.frontendLogger.debug('User clicked case type dropdown', {
+                                        optionCount: currentOptions.length,
+                                        currentValue: caseTypeSelect.value || '',
+                                        clickX: event.clientX,
+                                        clickY: event.clientY,
+                                        elementRect: caseTypeSelect.getBoundingClientRect()
+                                    }, 'dropdown-interaction');
+                                }, { once: true });
+                                
+                                // Add focus listener
+                                caseTypeSelect.addEventListener('focus', () => {
+                                    const currentOptions = caseTypeSelect.options || [];
+                                    window.frontendLogger.debug('Case type dropdown focused', {
+                                        optionCount: currentOptions.length,
+                                        hasOptions: currentOptions.length > 0,
+                                        firstOptionText: currentOptions.length > 0 ? currentOptions[0].text : 'N/A',
+                                        lastOptionText: currentOptions.length > 1 ? currentOptions[currentOptions.length - 1].text : 'N/A'
+                                    }, 'dropdown-interaction');
+                                }, { once: true });
+                                
+                                // Set up MutationObserver to watch for changes to the dropdown
+                                const observer = new MutationObserver((mutations) => {
+                                    mutations.forEach((mutation) => {
+                                        if (mutation.type === 'childList' || mutation.type === 'attributes') {
+                                            window.frontendLogger.warn('Case type dropdown was modified after population', {
+                                                mutationType: mutation.type,
+                                                addedNodes: mutation.addedNodes.length,
+                                                removedNodes: mutation.removedNodes.length,
+                                                attributeName: mutation.attributeName,
+                                                newOptionCount: caseTypeSelect.options?.length || 0,
+                                                newInnerHTML: caseTypeSelect.innerHTML?.substring(0, 200) || ''
+                                            }, 'dropdown-mutation');
+                                        }
+                                    });
+                                });
+                                
+                                observer.observe(caseTypeSelect, {
+                                    childList: true,
+                                    attributes: true,
+                                    subtree: true
+                                });
+                                
+                                // Stop observing after 10 seconds
+                                setTimeout(() => observer.disconnect(), 10000);
+                                
+                            } catch (debugError) {
+                                window.frontendLogger.error('Error in dropdown DOM debugging', {
+                                    error: debugError.message,
+                                    elementExists: !!caseTypeSelect,
+                                    elementId: caseTypeSelect?.id,
+                                    elementTagName: caseTypeSelect?.tagName
+                                }, 'dropdown-debug-error');
+                            }
+                        }, 100);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error populating case modal dropdowns:', error);
+        }
+    }
+
+    async populateTrayRequirements() {
+        try {
+            const addTrayContainer = document.getElementById('trayRequirements');
+            const editTrayContainer = document.getElementById('editTrayRequirements');
+            
+            // Only proceed if at least one container exists
+            if (!addTrayContainer && !editTrayContainer) return;
+
+            const trays = await this.dataManager.getAllTrays();
+            if (trays.length === 0) {
+                const noTraysMessage = '<small class="text-muted">No trays available</small>';
+                if (addTrayContainer) addTrayContainer.innerHTML = noTraysMessage;
+                if (editTrayContainer) editTrayContainer.innerHTML = noTraysMessage;
+                return;
+            }
+
+            // Generate tray requirement builder interface
+            const trayRequirementBuilder = `
+                <div class="tray-requirements-builder">
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-sm btn-primary" onclick="app.modalManager.addTrayRequirement(this)">
+                            <i class="fas fa-plus"></i> Add Tray Requirement
+                        </button>
+                    </div>
+                    <div class="tray-requirements-list" data-modal="add">
+                        <div class="text-muted small">Click "Add Tray Requirement" to specify required trays for this case</div>
+                    </div>
+                </div>
+            `;
+
+            const editTrayRequirementBuilder = `
+                <div class="tray-requirements-builder">
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-sm btn-primary" onclick="app.modalManager.addTrayRequirement(this)">
+                            <i class="fas fa-plus"></i> Add Tray Requirement
+                        </button>
+                    </div>
+                    <div class="tray-requirements-list" data-modal="edit">
+                        <div class="text-muted small">Click "Add Tray Requirement" to specify required trays for this case</div>
+                    </div>
+                </div>
+            `;
+
+            // Populate both containers
+            if (addTrayContainer) addTrayContainer.innerHTML = trayRequirementBuilder;
+            if (editTrayContainer) editTrayContainer.innerHTML = editTrayRequirementBuilder;
+            
+        } catch (error) {
+            console.error('Error populating tray requirements:', error);
+            const errorMessage = '<small class="text-danger">Error loading trays</small>';
+            const addTrayContainer = document.getElementById('trayRequirements');
+            const editTrayContainer = document.getElementById('editTrayRequirements');
+            if (addTrayContainer) addTrayContainer.innerHTML = errorMessage;
+            if (editTrayContainer) editTrayContainer.innerHTML = errorMessage;
+        }
+    }
+
+    getTrayTypeDisplayName(trayTypeCode) {
+        const trayTypeNames = {
+            'fusion': 'Fusion Set',
+            'revision': 'Revision Kit', 
+            'mi': 'Minimally Invasive',
+            'complete': 'Complete System'
+        };
+        return trayTypeNames[trayTypeCode] || trayTypeCode;
+    }
+
+    async addTrayRequirement(buttonElement) {
+        try {
+            const modal = buttonElement.closest('.modal').id.includes('edit') ? 'edit' : 'add';
+            const container = buttonElement.parentElement.nextElementSibling;
+            
+            if (window.frontendLogger) {
+                window.frontendLogger.debug('addTrayRequirement called', {
+                    modal: modal,
+                    hasButton: !!buttonElement,
+                    hasContainer: !!container,
+                    containerClasses: container ? Array.from(container.classList) : 'no container',
+                    containerHTML: container ? container.innerHTML.substring(0, 100) : 'no container',
+                    expectedSelector: `[data-modal="${modal}"].tray-requirements-list`
+                }, 'tray-requirements-debug');
+            }
+            const trays = await this.dataManager.getAllTrays();
+            
+            // Clear placeholder text if this is the first requirement
+            if (container.children.length === 1 && container.children[0].classList.contains('text-muted')) {
+                container.innerHTML = '';
+            }
+
+            const requirementId = Date.now();
+            const requirementHTML = `
+                <div class="tray-requirement-item border rounded p-3 mb-3" data-requirement-id="${requirementId}">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="form-label small">Tray</label>
+                            <select class="form-select form-select-sm tray-select" onchange="app.modalManager.updateTrayRequirement(this)" required>
+                                <option value="">Select Tray...</option>
+                                ${trays.map(tray => `
+                                    <option value="${tray.id}" data-tray-name="${tray.name}" data-tray-type="${tray.type}">
+                                        ${tray.name} (${this.getTrayTypeDisplayName(tray.type)})
+                                    </option>
+                                `).join('')}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">Type</label>
+                            <select class="form-select form-select-sm requirement-type" required>
+                                <option value="required">Required</option>
+                                <option value="preferred">Preferred</option>
+                                <option value="optional">Optional</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">Quantity</label>
+                            <input type="number" class="form-control form-control-sm quantity" value="1" min="1" max="10" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">Priority</label>
+                            <input type="number" class="form-control form-control-sm priority" value="1" min="1" max="10" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">&nbsp;</label>
+                            <button type="button" class="btn btn-sm btn-outline-danger d-block" onclick="app.modalManager.removeTrayRequirement(this)">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            container.insertAdjacentHTML('beforeend', requirementHTML);
+            
+            if (window.frontendLogger) {
+                window.frontendLogger.debug('HTML inserted into container', {
+                    modal: modal,
+                    containerChildrenAfterInsert: container.children.length,
+                    containerClasses: Array.from(container.classList),
+                    isExpectedContainer: container.classList.contains('tray-requirements-list') && container.getAttribute('data-modal') === modal
+                }, 'tray-requirements-debug');
+            }
+        } catch (error) {
+            console.error('Error adding tray requirement:', error);
+            if (window.frontendLogger) {
+                window.frontendLogger.error('addTrayRequirement failed', { error: error.message }, 'tray-requirements-debug');
+            }
+        }
+    }
+
+    updateTrayRequirement(selectElement) {
+        const selectedOption = selectElement.selectedOptions[0];
+        if (selectedOption) {
+            const item = selectElement.closest('.tray-requirement-item');
+            item.setAttribute('data-tray-id', selectElement.value);
+            item.setAttribute('data-tray-name', selectedOption.getAttribute('data-tray-name'));
+            item.setAttribute('data-tray-type', selectedOption.getAttribute('data-tray-type'));
+        }
+    }
+
+    removeTrayRequirement(buttonElement) {
+        const item = buttonElement.closest('.tray-requirement-item');
+        const container = item.parentElement;
+        item.remove();
+
+        // Show placeholder text if no requirements left
+        if (container.children.length === 0) {
+            container.innerHTML = '<div class="text-muted small">Click "Add Tray Requirement" to specify required trays for this case</div>';
+        }
+    }
+
+    getTrayRequirementsFromUI(modal = 'add') {
+        const selector = modal === 'edit' ? '[data-modal="edit"] .tray-requirement-item' : '[data-modal="add"] .tray-requirement-item';
+        const items = document.querySelectorAll(selector);
+        
+        return Array.from(items).map(item => {
+            const traySelect = item.querySelector('.tray-select');
+            const requirementType = item.querySelector('.requirement-type');
+            const quantity = item.querySelector('.quantity');
+            const priority = item.querySelector('.priority');
+            
+            return {
+                tray_id: traySelect.value,
+                tray_name: traySelect.selectedOptions[0]?.getAttribute('data-tray-name') || '',
+                tray_type: traySelect.selectedOptions[0]?.getAttribute('data-tray-type') || '',
+                requirement_type: requirementType.value,
+                quantity: parseInt(quantity.value) || 1,
+                priority: parseInt(priority.value) || 1
+            };
+        }).filter(req => req.tray_id); // Only return requirements with a selected tray
+    }
+
+    async setTrayRequirementsInUI(requirements, modal = 'edit') {
+        if (window.frontendLogger) {
+            window.frontendLogger.info('ModalManager.setTrayRequirementsInUI called', {
+                requirements: requirements,
+                modal: modal,
+                requirementsLength: requirements?.length,
+                isArray: Array.isArray(requirements)
+            }, 'tray-requirements-debug');
+        }
+        
+        const container = document.querySelector(`[data-modal="${modal}"].tray-requirements-list`);
+        if (!container) {
+            if (window.frontendLogger) {
+                window.frontendLogger.error('Tray requirements container not found', { 
+                    modal: modal,
+                    selector: `[data-modal="${modal}"] .tray-requirements-list`
+                }, 'tray-requirements-debug');
+            }
+            return;
+        }
+
+        if (window.frontendLogger) {
+            window.frontendLogger.info('Container found, processing requirements', {
+                modal: modal,
+                requirements: requirements,
+                containerFound: true
+            }, 'tray-requirements-debug');
+        }
+        if (window.frontendLogger) {
+            window.frontendLogger.info('Setting tray requirements in UI', {
+                modal: modal,
+                requirements: requirements,
+                requirementsLength: requirements?.length,
+                isArray: Array.isArray(requirements),
+                containerFound: !!container
+            }, 'tray-requirements-debug');
+        }
+
+        // Clear existing content
+        container.innerHTML = '';
+
+        if (requirements && requirements.length > 0) {
+            if (window.frontendLogger) {
+                window.frontendLogger.info('Starting to process requirements', {
+                    requirementsCount: requirements.length
+                }, 'tray-requirements-debug');
+            }
+            
+            for (let index = 0; index < requirements.length; index++) {
+                const req = requirements[index];
+                if (window.frontendLogger) {
+                    window.frontendLogger.info(`Processing requirement ${index + 1}`, {
+                        requirement: req,
+                        index: index,
+                        tray_id: req.tray_id,
+                        tray_name: req.tray_name,
+                        requirement_type: req.requirement_type,
+                        quantity: req.quantity,
+                        priority: req.priority
+                    }, 'tray-requirements-debug');
+                }
+                
+                const button = container.parentElement.querySelector('button');
+                await this.addTrayRequirement(button);
+                
+                // Re-query the container to get the updated DOM after addTrayRequirement
+                const updatedContainer = document.querySelector(`[data-modal="${modal}"].tray-requirements-list`);
+                const lastItem = updatedContainer ? updatedContainer.lastElementChild : null;
+                
+                if (window.frontendLogger) {
+                    window.frontendLogger.debug('Added tray requirement item to DOM', {
+                        index: index,
+                        hasLastItem: !!lastItem,
+                        originalContainerChildren: container.children.length,
+                        updatedContainerChildren: updatedContainer ? updatedContainer.children.length : 0,
+                        containerHTML: updatedContainer ? updatedContainer.innerHTML.substring(0, 200) : 'no container',
+                        containerSelector: `[data-modal="${modal}"].tray-requirements-list`
+                    }, 'tray-requirements-debug');
+                }
+                
+                // Set the values
+                const traySelect = lastItem.querySelector('.tray-select');
+                const requirementType = lastItem.querySelector('.requirement-type');
+                const quantity = lastItem.querySelector('.quantity');
+                const priority = lastItem.querySelector('.priority');
+                
+                if (traySelect && req.tray_id) {
+                    traySelect.value = req.tray_id;
+                    
+                    if (window.frontendLogger) {
+                        window.frontendLogger.info('Set tray select value', {
+                            expectedValue: req.tray_id,
+                            actualValue: traySelect.value,
+                            success: traySelect.value === req.tray_id,
+                            optionsCount: traySelect.options.length
+                        }, 'tray-requirements-debug');
+                    }
+                    
+                    // Trigger the change event to update item attributes
+                    this.updateTrayRequirement(traySelect);
+                }
+                
+                if (requirementType) {
+                    requirementType.value = req.requirement_type || 'required';
+                    if (window.frontendLogger) {
+                        window.frontendLogger.debug('Set requirement type', {
+                            value: req.requirement_type || 'required'
+                        }, 'tray-requirements-debug');
+                    }
+                }
+                
+                if (quantity) {
+                    quantity.value = req.quantity || 1;
+                    if (window.frontendLogger) {
+                        window.frontendLogger.debug('Set quantity', {
+                            value: req.quantity || 1
+                        }, 'tray-requirements-debug');
+                    }
+                }
+                
+                if (priority) {
+                    priority.value = req.priority || 1;
+                    if (window.frontendLogger) {
+                        window.frontendLogger.debug('Set priority', {
+                            value: req.priority || 1
+                        }, 'tray-requirements-debug');
+                    }
+                }
+            }
+        } else {
+            container.innerHTML = '<div class="text-muted small">Click "Add Tray Requirement" to specify required trays for this case</div>';
+        }
+    }
 }

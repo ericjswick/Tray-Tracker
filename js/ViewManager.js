@@ -1,11 +1,20 @@
 // js/ViewManager.js - Updated for Tray Tracker
+import { routingDetector } from './utils/RoutingDetector.js';
+
 export class ViewManager {
     constructor() {
         this.currentView = 'dashboard';
+        this.routingStrategy = 'hash'; // Default to hash, will be detected
+        this.isInitialLoad = true;
     }
 
-    showView(viewName) {
+    showView(viewName, updateUrl = true) {
         console.log('Switching to view:', viewName);
+
+        // Update URL if requested (avoid infinite loops during initial load)
+        if (updateUrl) {
+            this.updateUrl(viewName);
+        }
 
         // Update navigation active state
         this.updateNavigationState(viewName);
@@ -27,6 +36,21 @@ export class ViewManager {
 
         // Initialize specific view logic
         this.initializeViewLogic(viewName);
+    }
+
+    updateUrl(viewName) {
+        // Update browser URL without triggering page reload
+        let newUrl;
+        
+        if (this.routingStrategy === 'clean') {
+            // Clean URLs: /locations, /trays, etc.
+            newUrl = viewName === 'dashboard' ? '/' : `/${viewName}`;
+        } else {
+            // Hash URLs: /#locations, /#trays, etc.
+            newUrl = viewName === 'dashboard' ? '/' : `/#${viewName}`;
+        }
+        
+        window.history.pushState({ view: viewName }, '', newUrl);
     }
 
     updateNavigationState(activeView) {
@@ -71,6 +95,9 @@ export class ViewManager {
             case 'casetypes':
                 this.initializeCaseTypesView();
                 break;
+            case 'cases':
+                this.initializeCasesView();
+                break;
         }
     }
 
@@ -90,6 +117,23 @@ export class ViewManager {
         }, 100);
     }
 
+    initializeCasesView() {
+        console.log('Initializing cases view');
+        setTimeout(() => {
+            if (window.app.casesManager) {
+                try {
+                    window.app.casesManager.initializeViewMode();
+                    window.app.casesManager.loadCases();
+                    console.log('Cases view initialized');
+                } catch (error) {
+                    console.error('Error initializing cases view:', error);
+                }
+            } else {
+                console.error('CasesManager not found');
+            }
+        }, 100);
+    }
+
     initializeDashboard() {
         // Dashboard shows a subset of trays in the main content area
         // The existing tray manager will handle rendering
@@ -100,6 +144,16 @@ export class ViewManager {
                 if (window.app.trayManager.currentTrays) {
                     this.renderDashboardTrays(window.app.trayManager.currentTrays);
                 }
+            }
+            
+            // Set up dashboard filter listener
+            const dashboardFilter = document.getElementById('dashboardStatusFilter');
+            if (dashboardFilter) {
+                dashboardFilter.addEventListener('change', () => {
+                    if (window.app.trayManager && window.app.trayManager.currentTrays) {
+                        this.renderDashboardTrays(window.app.trayManager.currentTrays);
+                    }
+                });
             }
         }, 100);
     }
@@ -117,9 +171,12 @@ export class ViewManager {
         setTimeout(() => {
             if (window.app.mapManager) {
                 window.app.mapManager.initializeMap();
-                if (window.app.trayManager.currentTrays) {
-                    window.app.mapManager.updateMap(window.app.trayManager.currentTrays);
-                }
+                
+                // Set up combined filters for both facilities and trays
+                window.app.mapManager.setupLocationFilters();
+                
+                // Show both facility and tray markers with combined filters
+                window.app.mapManager.updateCombinedFilters();
             }
         }, 100);
     }
@@ -131,6 +188,16 @@ export class ViewManager {
                 if (window.app.trayManager.currentTrays) {
                     window.app.trayManager.renderTrays(window.app.trayManager.currentTrays);
                 }
+            }
+            
+            // Set up trays page filter listener
+            const traysFilter = document.getElementById('traysStatusFilter');
+            if (traysFilter) {
+                traysFilter.addEventListener('change', () => {
+                    if (window.app.trayManager && window.app.trayManager.currentTrays) {
+                        window.app.trayManager.renderTrays(window.app.trayManager.currentTrays);
+                    }
+                });
             }
         }, 100);
     }
@@ -209,18 +276,27 @@ export class ViewManager {
         const container = document.getElementById('dashboardTraysContent');
         if (!container) return;
 
-        if (trays.length === 0) {
+        // Apply dashboard status filter
+        const statusFilter = document.getElementById('dashboardStatusFilter')?.value || '';
+        const filteredTrays = statusFilter ? 
+            trays.filter(tray => tray.status === statusFilter) : 
+            trays;
+
+        if (filteredTrays.length === 0) {
+            const message = statusFilter ? 
+                `No trays found with status: ${statusFilter}` : 
+                'No trays found. Add a new tray to get started.';
             container.innerHTML = `
                 <div class="loading-state">
                     <i class="fas fa-box fa-3x mb-3" style="color: var(--gray-300);"></i>
-                    <p>No trays found. Add a new tray to get started.</p>
+                    <p>${message}</p>
                 </div>
             `;
             return;
         }
 
-        // Show recent trays (limit to 6 for dashboard)
-        const recentTrays = trays.slice(0, 6);
+        // Show recent filtered trays (limit to 6 for dashboard)
+        const recentTrays = filteredTrays.slice(0, 6);
         container.innerHTML = '';
 
         recentTrays.forEach(tray => {
@@ -714,5 +790,269 @@ export class ViewManager {
         if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
         if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
         return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    }
+
+    // Initialize URL routing
+    async initializeRouting() {
+        // Detect routing strategy first
+        this.routingStrategy = await routingDetector.detectRoutingStrategy();
+        
+        // Set up event listeners based on strategy
+        if (this.routingStrategy === 'clean') {
+            // Handle browser back/forward buttons for clean URLs
+            window.addEventListener('popstate', (event) => {
+                const viewName = this.getViewFromUrl();
+                this.showView(viewName, false);
+            });
+        } else {
+            // Handle hash changes for hash URLs
+            window.addEventListener('hashchange', (event) => {
+                const viewName = this.getViewFromUrl();
+                this.showView(viewName, false);
+            });
+            
+            // Also handle popstate for hash URLs
+            window.addEventListener('popstate', (event) => {
+                const viewName = this.getViewFromUrl();
+                this.showView(viewName, false);
+            });
+        }
+
+        // Update navigation links based on detected strategy
+        this.updateNavigationStrategy();
+
+        // Handle initial page load routing
+        const initialView = this.getViewFromUrl();
+        if (initialView !== 'dashboard') {
+            setTimeout(() => {
+                this.showView(initialView, false); // Don't update URL on initial load
+            }, 100);
+        }
+    }
+
+    // Get view name from current URL
+    getViewFromUrl() {
+        const validViews = ['dashboard', 'team', 'locations', 'trays', 'users', 'locationadmin', 'surgeons', 'map', 'casetypes', 'cases'];
+        
+        if (this.routingStrategy === 'clean') {
+            // Clean URLs: check pathname
+            const path = window.location.pathname;
+            if (path === '/') {
+                return 'dashboard';
+            }
+            
+            // Remove leading slash and check if it's a valid view
+            const viewName = path.substring(1);
+            if (validViews.includes(viewName)) {
+                return viewName;
+            }
+        } else {
+            // Hash URLs: check hash
+            const hash = window.location.hash;
+            if (hash && hash.length > 1) {
+                const viewName = hash.substring(1); // Remove the # symbol
+                if (validViews.includes(viewName)) {
+                    return viewName;
+                }
+            }
+        }
+        
+        return 'dashboard'; // Default view
+    }
+
+    // Update navigation links based on detected routing strategy
+    updateNavigationStrategy() {
+        const navItems = [
+            { id: 'nav-dashboard', view: 'dashboard' },
+            { id: 'nav-team', view: 'team' },
+            { id: 'nav-locations', view: 'locations' },
+            { id: 'nav-trays', view: 'trays' },
+            { id: 'nav-users', view: 'users' },
+            { id: 'nav-locationadmin', view: 'locationadmin' },
+            { id: 'nav-surgeons', view: 'surgeons' },
+            { id: 'nav-map', view: 'map' },
+            { id: 'nav-casetypes', view: 'casetypes' },
+            { id: 'nav-cases', view: 'cases' }
+        ];
+
+        navItems.forEach(item => {
+            const element = document.getElementById(item.id);
+            if (element) {
+                // Update href attribute based on routing strategy
+                if (this.routingStrategy === 'clean') {
+                    const href = item.view === 'dashboard' ? '/' : `/${item.view}`;
+                    element.setAttribute('href', href);
+                } else {
+                    const href = item.view === 'dashboard' ? '/' : `#${item.view}`;
+                    element.setAttribute('href', href);
+                }
+                
+                // Remove any existing click handlers by cloning the element
+                const newElement = element.cloneNode(true);
+                element.parentNode.replaceChild(newElement, element);
+                
+                // Add click handler to prevent default behavior and handle routing properly
+                newElement.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    console.log(`Navigation clicked: ${item.view}, strategy: ${this.routingStrategy}`);
+                    this.showView(item.view, true);
+                });
+            }
+        });
+
+        // Also update dropdown items without navigation IDs
+        const dropdownViews = ['users', 'locationadmin', 'surgeons', 'cases', 'casetypes'];
+        dropdownViews.forEach(view => {
+            const elements = document.querySelectorAll(`a[href="#${view}"], a[href="/${view}"]`);
+            elements.forEach(element => {
+                // Skip if this element already has a nav-id (handled above)
+                if (!element.id || !element.id.startsWith('nav-')) {
+                    if (this.routingStrategy === 'clean') {
+                        element.setAttribute('href', `/${view}`);
+                    } else {
+                        element.setAttribute('href', `#${view}`);
+                    }
+                    
+                    // Add click handler for dropdown items too
+                    element.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        console.log(`Dropdown navigation clicked: ${view}`);
+                        this.showView(view, true);
+                    });
+                }
+            });
+        });
+
+        console.log(`🔗 Updated navigation links for ${this.routingStrategy} URLs`);
+    }
+
+    async initializeRouting() {
+        console.log('Initializing routing system...');
+        
+        // Detect routing strategy
+        this.routingStrategy = await routingDetector.detectRoutingStrategy();
+        console.log(`Routing strategy detected: ${this.routingStrategy}`);
+        
+        // Set up navigation with the detected strategy
+        this.updateNavigationStrategy();
+        
+        // Handle initial page load - check URL and navigate to correct view
+        this.handleInitialLoad();
+        
+        // Set up browser history listeners
+        this.setupHistoryListeners();
+    }
+    
+    handleInitialLoad() {
+        console.log('🚀 Handling initial page load...');
+        console.log('Current URL:', window.location.href);
+        console.log('Current pathname:', window.location.pathname);
+        console.log('Current hash:', window.location.hash);
+        console.log('Routing strategy:', this.routingStrategy);
+        
+        let initialView = 'dashboard';
+        
+        // Check current URL to determine initial view
+        const currentPath = window.location.pathname;
+        const currentHash = window.location.hash;
+        
+        if (this.routingStrategy === 'clean') {
+            // Clean URLs: /cases, /trays, etc.
+            console.log('Using clean URL detection...');
+            if (currentPath !== '/' && currentPath !== '') {
+                const pathView = currentPath.substring(1); // Remove leading slash
+                console.log('Path view detected:', pathView);
+                if (this.isValidView(pathView)) {
+                    initialView = pathView;
+                    console.log('✅ Valid path view accepted:', pathView);
+                } else {
+                    console.log('❌ Invalid path view rejected:', pathView);
+                }
+            }
+        } else {
+            // Hash URLs: #cases, #trays, etc.
+            console.log('Using hash URL detection...');
+            if (currentHash && currentHash.length > 1) {
+                const hashView = currentHash.substring(1); // Remove leading #
+                console.log('Hash view detected:', hashView);
+                if (this.isValidView(hashView)) {
+                    initialView = hashView;
+                    console.log('✅ Valid hash view accepted:', hashView);
+                } else {
+                    console.log('❌ Invalid hash view rejected:', hashView);
+                }
+            }
+        }
+        
+        console.log(`🎯 Final initial view determined: ${initialView} (from ${this.routingStrategy === 'clean' ? 'path' : 'hash'})`);
+        
+        // Navigate to the determined view without updating URL (to avoid double navigation)
+        this.isInitialLoad = true;
+        this.showView(initialView, false);
+        this.isInitialLoad = false;
+        
+        console.log('✅ Initial load completed');
+    }
+    
+    isValidView(viewName) {
+        const validViews = [
+            'dashboard', 'team', 'locations', 'trays', 'users', 
+            'locationadmin', 'surgeons', 'map', 'casetypes', 'cases'
+        ];
+        return validViews.includes(viewName);
+    }
+    
+    setupHistoryListeners() {
+        // Handle browser back/forward buttons
+        window.addEventListener('popstate', (event) => {
+            console.log('Browser navigation detected (popstate)');
+            
+            let targetView = 'dashboard';
+            
+            if (this.routingStrategy === 'clean') {
+                const path = window.location.pathname;
+                if (path !== '/' && path !== '') {
+                    const pathView = path.substring(1);
+                    if (this.isValidView(pathView)) {
+                        targetView = pathView;
+                    }
+                }
+            } else {
+                const hash = window.location.hash;
+                if (hash && hash.length > 1) {
+                    const hashView = hash.substring(1);
+                    if (this.isValidView(hashView)) {
+                        targetView = hashView;
+                    }
+                }
+            }
+            
+            // Navigate without updating URL (it's already changed by browser)
+            this.showView(targetView, false);
+        });
+        
+        // Handle hash changes for hash-based routing
+        if (this.routingStrategy === 'hash') {
+            window.addEventListener('hashchange', (event) => {
+                console.log('Hash change detected');
+                
+                const hash = window.location.hash;
+                let targetView = 'dashboard';
+                
+                if (hash && hash.length > 1) {
+                    const hashView = hash.substring(1);
+                    if (this.isValidView(hashView)) {
+                        targetView = hashView;
+                    }
+                }
+                
+                // Navigate without updating URL (it's already changed)
+                this.showView(targetView, false);
+            });
+        }
+        
+        console.log('History listeners set up for', this.routingStrategy, 'routing');
     }
 }

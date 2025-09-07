@@ -13,6 +13,9 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
     <link rel="manifest" href="/images/site.webmanifest">
+    
+    <!-- Environment configuration - will be replaced by Docker/other environments -->
+    <script src="js/config/environment.js"></script>
 </head>
 <body>
 <!-- Loading Screen -->
@@ -113,7 +116,7 @@
         <div class="container-fluid">
             <div class="d-flex justify-content-between align-items-center">
                 <!-- Brand -->
-                <a href="#" class="nav-brand" onclick="app.viewManager.showView('dashboard')">
+                <a href="/" class="nav-brand">
                     <i class="fas fa-cube"></i>
                     Tray Tracker
                 </a>
@@ -122,21 +125,27 @@
                 <nav>
                     <ul class="nav-items">
                         <li>
-                            <a href="#" class="nav-item active" id="nav-dashboard" onclick="app.viewManager.showView('dashboard')">
+                            <a href="/" class="nav-item active" id="nav-dashboard">
                                 <i class="fas fa-chart-line"></i>
                                 <span>Dashboard</span>
                             </a>
                         </li>
                         <li>
-                            <a href="#" class="nav-item" id="nav-locations" onclick="app.viewManager.showView('locations')">
+                            <a href="#locations" class="nav-item" id="nav-locations">
                                 <i class="fas fa-map-marker-alt"></i>
                                 <span>Locations</span>
                             </a>
                         </li>
                         <li>
-                            <a href="#" class="nav-item" id="nav-trays" onclick="app.viewManager.showView('trays')">
+                            <a href="#trays" class="nav-item" id="nav-trays">
                                 <i class="fas fa-box"></i>
                                 <span>Trays</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#cases" class="nav-item" id="nav-cases">
+                                <i class="fas fa-calendar-alt"></i>
+                                <span>Cases</span>
                             </a>
                         </li>
                         <li class="dropdown">
@@ -145,16 +154,19 @@
                                 <span>Admin</span>
                             </a>
                             <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="#" onclick="app.viewManager.showView('users')">
+                                <li><a class="dropdown-item" href="#users">
                                     <i class="fas fa-user-cog"></i> User Management
                                 </a></li>
-                                <li><a class="dropdown-item" href="#" onclick="app.viewManager.showView('locationadmin')">
+                                <li><a class="dropdown-item" href="#locationadmin">
                                     <i class="fas fa-map-marker-alt"></i> Location Admin
                                 </a></li>
-                                <li><a class="dropdown-item" href="#" onclick="app.viewManager.showView('surgeons')">
+                                <li><a class="dropdown-item" href="#surgeons">
                                     <i class="fas fa-user-md"></i> Surgeon Management
                                 </a></li>
-                                <li><a class="dropdown-item" href="#" onclick="app.viewManager.showView('casetypes')">
+                                <li><a class="dropdown-item" href="#cases">
+                                    <i class="fas fa-calendar-alt"></i> Surgical Cases
+                                </a></li>
+                                <li><a class="dropdown-item" href="#casetypes">
                                     <i class="fas fa-clipboard-list"></i> Case Types
                                 </a></li>
                                 <li><hr class="dropdown-divider"></li>
@@ -236,6 +248,20 @@
                         </button>
                     </div>
 
+                    <!-- Dashboard Filters -->
+                    <div class="dashboard-filters mb-3">
+                        <div class="d-flex gap-2 align-items-center">
+                            <span class="filter-label"><i class="fas fa-filter"></i> Filter by:</span>
+                            <select class="filter-select" id="dashboardStatusFilter">
+                                <option value="">All Status</option>
+                                <option value="available">Available</option>
+                                <option value="in-use">In Use</option>
+                                <option value="checked-in">Checked In</option>
+                                <option value="picked-up">Picked Up</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <!-- Tray Cards Container -->
                     <div id="dashboardTraysContent" class="tray-cards-grid">
                         <div class="loading-state">
@@ -293,27 +319,74 @@
         <div id="locationsView" class="view d-none">
             <div class="page-header">
                 <h1 class="page-title">
-                    <i class="fas fa-map-marker-alt"></i>
-                    Location Management
+                    <i class="fas fa-map-marked-alt"></i>
+                    Tray Tracker Map
                 </h1>
             </div>
 
             <!-- Search and Filters -->
             <div class="location-controls">
+                <!-- First Row: Search -->
                 <div class="search-section">
                     <div class="search-group">
-                        <input type="text" class="search-input" placeholder="Search Tray Locations" id="locationSearch">
+                        <input type="text" class="search-input" placeholder="Search Facilities & Trays" id="locationSearch">
+                    </div>
+                </div>
+                
+                <!-- Second Row: All Filters -->
+                <div class="filters-section d-flex flex-wrap gap-2 mt-2">
+                    <!-- Facility Filters -->
+                    <div class="filter-group">
+                        <select class="filter-select" id="locationTypeFilter">
+                            <option value="">All Location Types</option>
+                            <option value="medical_facility">Medical Facilities</option>
+                            <option value="corporate">Corporate</option>
+                            <option value="warehouse">Warehouse</option>
+                            <option value="distribution">Distribution Center</option>
+                        </select>
                     </div>
                     <div class="filter-group">
-                        <input type="date" class="date-input" placeholder="Tray Available Date" id="availableDate">
+                        <select class="filter-select" id="locationStatusFilter">
+                            <option value="">All Facility Status</option>
+                            <option value="active">Active Facilities</option>
+                            <option value="inactive">Inactive Facilities</option>
+                        </select>
                     </div>
                     <div class="filter-group">
-                        <select class="filter-select" id="caseTypeFilter">
-                            <option value="">All Types</option>
-                            <option value="fusion">Fusion</option>
-                            <option value="revision">Revision</option>
-                            <option value="mi">MI</option>
-                            <option value="complete">Complete</option>
+                        <select class="filter-select" id="locationRegionFilter">
+                            <option value="">All Regions</option>
+                            <option value="Wisconsin East">Wisconsin East</option>
+                            <option value="Wisconsin West">Wisconsin West</option>
+                            <option value="Illinois">Illinois</option>
+                            <option value="Minnesota">Minnesota</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Tray Status Filters -->
+                    <div class="filter-group">
+                        <select class="filter-select" id="trayStatusFilter">
+                            <option value="">All Tray Status</option>
+                            <option value="available">Available</option>
+                            <option value="in-use">In Use</option>
+                            <option value="checked-in">Checked In</option>
+                            <option value="picked-up">Picked Up</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <select class="filter-select" id="trayLocationFilter">
+                            <option value="">All Tray Locations</option>
+                            <option value="facility">At Facility</option>
+                            <option value="corporate">At Corporate</option>
+                            <option value="trunk">In Trunk</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Show Options -->
+                    <div class="filter-group">
+                        <select class="filter-select" id="mapDisplayFilter">
+                            <option value="both">Show Both</option>
+                            <option value="facilities">Facilities Only</option>
+                            <option value="trays">Trays Only</option>
                         </select>
                     </div>
                 </div>
@@ -350,6 +423,20 @@
                     <button type="button" class="btn-view" id="listViewBtn" onclick="app.trayManager.setViewMode('list')">
                         <i class="fas fa-list"></i> List
                     </button>
+                </div>
+            </div>
+            
+            <!-- Tray Filters -->
+            <div class="tray-filters mb-3">
+                <div class="d-flex gap-2 align-items-center">
+                    <span class="filter-label"><i class="fas fa-filter"></i> Filter by:</span>
+                    <select class="filter-select" id="traysStatusFilter">
+                        <option value="">All Status</option>
+                        <option value="available">Available</option>
+                        <option value="in-use">In Use</option>
+                        <option value="checked-in">Checked In</option>
+                        <option value="picked-up">Picked Up</option>
+                    </select>
                 </div>
             </div>
 
@@ -550,6 +637,74 @@
                 <div id="caseTypeHorizontalCards">
                     <!-- List view content -->
                 </div>
+            </div>
+        </div>
+
+        <!-- Surgical Cases View -->
+        <div id="casesView" class="view d-none">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">
+                        <i class="fas fa-calendar-alt"></i>
+                        Surgical Cases Management
+                    </h1>
+                    <p class="page-subtitle">Schedule and manage surgical cases with tray requirements</p>
+                </div>
+                <button class="btn-primary-custom" onclick="app.modalManager.showAddCaseModal()">
+                    <i class="fas fa-plus"></i>
+                    Add Case
+                </button>
+            </div>
+
+            <!-- Cases Stats -->
+            <div id="casesStats" class="metrics-grid mb-4">
+                <div class="metric-card">
+                    <div class="metric-value metric-active">0</div>
+                    <div class="metric-label">Total Cases</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value metric-available">0</div>
+                    <div class="metric-label">Today</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value metric-in-use">0</div>
+                    <div class="metric-label">Urgent</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value metric-upcoming">0</div>
+                    <div class="metric-label">Completed</div>
+                </div>
+            </div>
+
+            <!-- View Toggle -->
+            <div class="view-controls">
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn-view" id="casesCardViewBtn" onclick="app.casesManager.setViewMode('card')">
+                        <i class="fas fa-th-large"></i> Cards
+                    </button>
+                    <button type="button" class="btn-view active" id="casesListViewBtn" onclick="app.casesManager.setViewMode('list')">
+                        <i class="fas fa-list"></i> List
+                    </button>
+                    <button type="button" class="btn-view" id="casesCalendarViewBtn" onclick="app.casesManager.setViewMode('calendar')">
+                        <i class="fas fa-calendar"></i> Calendar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Cases Content -->
+            <div id="casesListView" class="cases-list-view">
+                <div class="loading-state">
+                    <div class="spinner-border" role="status"></div>
+                    <p class="mt-2">Loading cases...</p>
+                </div>
+            </div>
+
+            <div id="casesCardView" class="d-none cases-cards-view">
+                <!-- Cases cards will be rendered here -->
+            </div>
+
+            <div id="casesCalendarView" class="d-none cases-calendar-view">
+                <!-- Cases calendar will be rendered here -->
             </div>
         </div>
 
@@ -820,8 +975,8 @@
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label for="caseType" class="form-label">Case Type (Optional)</label>
-                                    <input type="text" class="form-control" id="caseType">
+                                    <label for="caseTypeText" class="form-label">Case Type (Optional)</label>
+                                    <input type="text" class="form-control" id="caseTypeText">
                                 </div>
                             </div>
                         </div>
@@ -1444,6 +1599,240 @@
             <div class="modal-footer">
                 <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn-primary-custom" onclick="app.caseTypeManager.updateCaseType()">Update Case Type</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Case Modal -->
+<div class="modal fade" id="addCaseModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Surgical Case</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addCaseForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="patientName" class="form-label">Patient Name</label>
+                                <input type="text" class="form-control" id="patientName" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="addCaseSurgeon" class="form-label">Surgeon</label>
+                                <select class="form-select" id="addCaseSurgeon" required>
+                                    <option value="">Select Surgeon</option>
+                                    <!-- Options will be populated dynamically -->
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="addCaseFacility" class="form-label">Facility</label>
+                                <select class="form-select" id="addCaseFacility" required>
+                                    <option value="">Select Facility</option>
+                                    <!-- Options will be populated dynamically -->
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="addCaseCaseType" class="form-label">Case Type</label>
+                                <select class="form-select" id="addCaseCaseType" required>
+                                    <option value="">Select Case Type</option>
+                                    <!-- Options will be populated dynamically -->
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="scheduledDate" class="form-label">Scheduled Date</label>
+                                <input type="date" class="form-control" id="scheduledDate" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="scheduledTime" class="form-label">Scheduled Time</label>
+                                <input type="time" class="form-control" id="scheduledTime" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="estimatedDuration" class="form-label">Duration (minutes)</label>
+                                <input type="number" class="form-control" id="estimatedDuration" min="15" max="600" value="60">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="casePriority" class="form-label">Priority</label>
+                                <select class="form-select" id="casePriority">
+                                    <option value="normal">Normal</option>
+                                    <option value="urgent">Urgent</option>
+                                    <option value="elective">Elective</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label class="form-label">Tray Requirements</label>
+                                <div id="trayRequirements" class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
+                                    <small class="text-muted">Configure required trays for this case</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="caseNotes" class="form-label">Notes</label>
+                        <textarea class="form-control" id="caseNotes" rows="3" placeholder="Optional notes about the case"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="app.casesManager.addCase()">Add Case</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Case Modal -->
+<div class="modal fade" id="editCaseModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Surgical Case</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editCaseForm">
+                    <input type="hidden" id="editCaseId">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="editPatientName" class="form-label">Patient Name</label>
+                                <input type="text" class="form-control" id="editPatientName" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="editCaseSurgeon" class="form-label">Surgeon</label>
+                                <select class="form-select" id="editCaseSurgeon" required>
+                                    <option value="">Select Surgeon</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="editCaseFacility" class="form-label">Facility</label>
+                                <select class="form-select" id="editCaseFacility" required>
+                                    <option value="">Select Facility</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="editCaseType" class="form-label">Case Type</label>
+                                <select class="form-select" id="editCaseType" required>
+                                    <option value="">Select Case Type</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="editScheduledDate" class="form-label">Scheduled Date</label>
+                                <input type="date" class="form-control" id="editScheduledDate" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="editScheduledTime" class="form-label">Scheduled Time</label>
+                                <input type="time" class="form-control" id="editScheduledTime" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="editEstimatedDuration" class="form-label">Duration (minutes)</label>
+                                <input type="number" class="form-control" id="editEstimatedDuration" min="15" max="600">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="editCaseStatus" class="form-label">Status</label>
+                                <select class="form-select" id="editCaseStatus">
+                                    <option value="scheduled">Scheduled</option>
+                                    <option value="in-progress">In Progress</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="cancelled">Cancelled</option>
+                                    <option value="postponed">Postponed</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="editCasePriority" class="form-label">Priority</label>
+                                <select class="form-select" id="editCasePriority">
+                                    <option value="normal">Normal</option>
+                                    <option value="urgent">Urgent</option>
+                                    <option value="elective">Elective</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label class="form-label">Tray Requirements</label>
+                                <div id="editTrayRequirements" class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
+                                    <small class="text-muted">Configure required trays for this case</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editCaseNotes" class="form-label">Notes</label>
+                        <textarea class="form-control" id="editCaseNotes" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="app.casesManager.updateCase()">Update Case</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Case Details Modal -->
+<div class="modal fade" id="caseDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Case Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="caseDetailsModalBody">
+                <!-- Case details will be populated here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>

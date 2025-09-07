@@ -76,11 +76,17 @@ export class DataManager {
         // Listen to Location collection
         const facilityQuery = query(collection(this.db, 'locations'));
         this.facilityUnsubscribe = onSnapshot(facilityQuery, (snapshot) => {
-            const locations = new Map();
+            const facilities = [];
             snapshot.forEach((doc) => {
-                locations.set(doc.id, { id: doc.id, ...doc.data() });
+                const facilityData = doc.data();
+                if (facilityData.active !== false) { // Only include active facilities
+                    facilities.push({ id: doc.id, ...facilityData });
+                }
             });
-            this.facilities = locations;
+            this.facilities = facilities;
+            console.log('Facilities updated from Firebase:', this.facilities.length);
+        }, (error) => {
+            console.error('Error listening to facilities:', error);
         });
 
         // Listen to surgeons collection
@@ -100,17 +106,51 @@ export class DataManager {
             console.error('Error listening to surgeons:', error);
         });
 
+        console.log('Setting up case types listener...');
+        if (window.frontendLogger) {
+            window.frontendLogger.logFirebaseEvent('Setting up case types listener', { collection: 'casetypes' });
+        }
+        
         const caseTypesQuery = query(collection(this.db, 'casetypes'), orderBy('name', 'asc'));
         this.caseTypesUnsubscribe = onSnapshot(caseTypesQuery, (snapshot) => {
+            console.log('Case types snapshot received, size:', snapshot.size);
+            
+            if (window.frontendLogger) {
+                window.frontendLogger.logFirebaseEvent('Case types snapshot received', { 
+                    snapshotSize: snapshot.size,
+                    isEmpty: snapshot.empty
+                });
+            }
+            
             const caseTypes = [];
             snapshot.forEach((doc) => {
                 const caseTypeData = doc.data();
+                console.log(`Case type found: ${caseTypeData.name || 'Unknown'}, active: ${caseTypeData.active}`);
+                
+                if (window.frontendLogger) {
+                    window.frontendLogger.debug('Processing case type document', {
+                        id: doc.id,
+                        name: caseTypeData.name,
+                        active: caseTypeData.active,
+                        hasData: !!caseTypeData
+                    }, 'case-types');
+                }
+                
                 if (caseTypeData.active !== false) { // Only include active case types
                     caseTypes.push({ id: doc.id, ...caseTypeData });
                 }
             });
 
             this.caseTypes = caseTypes;
+            console.log('✅ Case types updated from Firebase:', this.caseTypes.length);
+            
+            if (window.frontendLogger) {
+                window.frontendLogger.logDataManagerEvent('Case types updated', {
+                    totalCount: this.caseTypes.length,
+                    caseTypeNames: this.caseTypes.map(ct => ct.name),
+                    snapshotSize: snapshot.size
+                });
+            }
 
             // Trigger re-render of surgeons if they're already loaded
             if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons && window.app.surgeonManager.currentSurgeons.length > 0) {
@@ -120,9 +160,9 @@ export class DataManager {
                 }, 100);
             }
 
-            console.log('Case types updated from Firebase:', this.caseTypes.length);
         }, (error) => {
-            console.error('Error listening to case types:', error);
+            console.error('❌ Error listening to case types:', error);
+            console.error('Error details:', error.code, error.message);
         });
     }
 
@@ -261,7 +301,7 @@ export class DataManager {
     }
 
     getFacilities() {
-        return this.facilities;
+        return this.facilities || [];
     }
 
     getSurgeons() {
@@ -270,7 +310,279 @@ export class DataManager {
     }
 
     getCaseTypes() {
-        return this.caseTypes || [];
+        const caseTypes = this.caseTypes || [];
+        
+        if (window.frontendLogger) {
+            window.frontendLogger.debug('getCaseTypes() called', {
+                count: caseTypes.length,
+                isArray: Array.isArray(caseTypes),
+                caseTypeNames: caseTypes.map(ct => ct.name || 'Unnamed')
+            }, 'case-types');
+            
+            // Test log to confirm updated JS is loaded
+            window.frontendLogger.info('Updated JavaScript loaded with tray requirements debugging', {
+                timestamp: new Date().toISOString(),
+                testMessage: 'This confirms the updated JS files are being served'
+            }, 'js-update-test');
+        }
+        
+        return caseTypes;
+    }
+
+    // ==================== CASES CRUD OPERATIONS ====================
+    
+    async saveCase(caseData) {
+        try {
+            // Log detailed Firebase operation info
+            if (window.frontendLogger) {
+                window.frontendLogger.debug('Starting saveCase operation', {
+                    hasData: !!caseData,
+                    isUpdate: !!caseData.id,
+                    userId: window.app.authManager.getCurrentUser()?.uid,
+                    userEmail: window.app.authManager.getCurrentUser()?.email,
+                    dataKeys: Object.keys(caseData || {}),
+                    firebaseConnected: !!this.db
+                }, 'firebase-case-save');
+            }
+
+            const currentUser = window.app.authManager.getCurrentUser();
+            if (!currentUser) {
+                const error = new Error('User not authenticated');
+                if (window.frontendLogger) {
+                    window.frontendLogger.error('saveCase failed - no user', { error: error.message }, 'firebase-case-save');
+                }
+                throw error;
+            }
+
+            const caseDataWithTimestamp = {
+                ...caseData,
+                lastModified: serverTimestamp(),
+                modifiedBy: currentUser.uid
+            };
+
+            if (window.frontendLogger) {
+                window.frontendLogger.debug('Prepared case data for Firebase', {
+                    hasTimestamp: !!caseDataWithTimestamp.lastModified,
+                    modifiedBy: caseDataWithTimestamp.modifiedBy,
+                    dataSize: JSON.stringify(caseDataWithTimestamp).length
+                }, 'firebase-case-save');
+            }
+
+            if (caseData.id) {
+                if (window.frontendLogger) {
+                    window.frontendLogger.debug('Updating existing case', { caseId: caseData.id }, 'firebase-case-save');
+                }
+                await updateDoc(doc(this.db, 'cases', caseData.id), caseDataWithTimestamp);
+            } else {
+                if (window.frontendLogger) {
+                    window.frontendLogger.debug('Creating new case document', {}, 'firebase-case-save');
+                }
+                caseDataWithTimestamp.createdAt = serverTimestamp();
+                caseDataWithTimestamp.createdBy = currentUser.uid;
+                
+                try {
+                    const docRef = await addDoc(collection(this.db, 'cases'), caseDataWithTimestamp);
+                    caseData.id = docRef.id;
+                    
+                    if (window.frontendLogger) {
+                        window.frontendLogger.info('Successfully created case', {
+                            caseId: docRef.id,
+                            collection: 'cases'
+                        }, 'firebase-case-save');
+                    }
+                } catch (addDocError) {
+                    if (window.frontendLogger) {
+                        window.frontendLogger.error('addDoc failed for cases collection', {
+                            error: addDocError.message,
+                            code: addDocError.code,
+                            stack: addDocError.stack,
+                            collectionPath: 'cases'
+                        }, 'firebase-case-save');
+                    }
+                    throw addDocError;
+                }
+            }
+
+            if (window.frontendLogger) {
+                window.frontendLogger.info('saveCase completed successfully', {
+                    caseId: caseData.id,
+                    wasUpdate: !!caseData.id
+                }, 'firebase-case-save');
+            }
+
+            return caseData;
+        } catch (error) {
+            console.error('Error saving case:', error);
+            if (window.frontendLogger) {
+                window.frontendLogger.error('saveCase operation failed', {
+                    error: error.message,
+                    code: error.code,
+                    stack: error.stack,
+                    userId: window.app.authManager.getCurrentUser()?.uid
+                }, 'firebase-case-save');
+            }
+            throw error;
+        }
+    }
+
+    async getCase(id) {
+        try {
+            if (window.frontendLogger) {
+                window.frontendLogger.info('DataManager.getCase() called', { caseId: id }, 'case-retrieval');
+            }
+            
+            const caseDoc = await getDoc(doc(this.db, 'cases', id));
+            
+            if (caseDoc.exists()) {
+                const caseData = { id: caseDoc.id, ...caseDoc.data() };
+                
+                if (window.frontendLogger) {
+                    window.frontendLogger.info('Case data retrieved from Firestore', {
+                        caseId: id,
+                        patientName: caseData.patientName,
+                        hasData: !!caseData
+                    }, 'case-retrieval');
+                    
+                    // Log tray requirements specifically
+                    window.frontendLogger.info('Tray requirements analysis', {
+                        caseId: id,
+                        tray_requirements: caseData.tray_requirements,
+                        trayRequirements: caseData.trayRequirements,
+                        tray_requirements_type: typeof caseData.tray_requirements,
+                        tray_requirements_length: caseData.tray_requirements?.length,
+                        trayRequirements_type: typeof caseData.trayRequirements,
+                        trayRequirements_length: caseData.trayRequirements?.length,
+                        hasEitherField: !!(caseData.tray_requirements || caseData.trayRequirements)
+                    }, 'tray-requirements-debug');
+                }
+                
+                return caseData;
+            } else {
+                if (window.frontendLogger) {
+                    window.frontendLogger.warn('No case found', { caseId: id }, 'case-retrieval');
+                }
+                return null;
+            }
+        } catch (error) {
+            console.error('Error getting case:', error);
+            if (window.frontendLogger) {
+                window.frontendLogger.error('Error getting case', { 
+                    caseId: id, 
+                    error: error.message 
+                }, 'case-retrieval');
+            }
+            return null;
+        }
+    }
+
+    async getAllCases() {
+        try {
+            const casesSnapshot = await getDocs(collection(this.db, 'cases'));
+            const cases = [];
+            casesSnapshot.forEach((doc) => {
+                cases.push({ id: doc.id, ...doc.data() });
+            });
+            return cases;
+        } catch (error) {
+            console.error('Error getting all cases:', error);
+            return [];
+        }
+    }
+
+    async updateCase(id, updates) {
+        try {
+            const updateData = {
+                ...updates,
+                lastModified: serverTimestamp(),
+                modifiedBy: window.app.authManager.getCurrentUser()?.uid
+            };
+
+            await updateDoc(doc(this.db, 'cases', id), updateData);
+            return true;
+        } catch (error) {
+            console.error('Error updating case:', error);
+            throw error;
+        }
+    }
+
+    async deleteCase(id) {
+        try {
+            await deleteDoc(doc(this.db, 'cases', id));
+            return true;
+        } catch (error) {
+            console.error('Error deleting case:', error);
+            throw error;
+        }
+    }
+
+    async getCasesByDateRange(startDate, endDate) {
+        try {
+            const casesQuery = query(
+                collection(this.db, 'cases'),
+                orderBy('scheduledDate', 'asc')
+            );
+            const snapshot = await getDocs(casesQuery);
+            const cases = [];
+            
+            snapshot.forEach((doc) => {
+                const caseData = { id: doc.id, ...doc.data() };
+                const caseDate = new Date(caseData.scheduledDate);
+                if (caseDate >= startDate && caseDate <= endDate) {
+                    cases.push(caseData);
+                }
+            });
+            
+            return cases;
+        } catch (error) {
+            console.error('Error getting cases by date range:', error);
+            return [];
+        }
+    }
+
+    async getCasesBySurgeon(surgeonId) {
+        try {
+            const casesQuery = query(
+                collection(this.db, 'cases'),
+                orderBy('scheduledDate', 'desc')
+            );
+            const snapshot = await getDocs(casesQuery);
+            const cases = [];
+            
+            snapshot.forEach((doc) => {
+                const caseData = { id: doc.id, ...doc.data() };
+                if (caseData.surgeonId === surgeonId) {
+                    cases.push(caseData);
+                }
+            });
+            
+            return cases;
+        } catch (error) {
+            console.error('Error getting cases by surgeon:', error);
+            return [];
+        }
+    }
+
+    async getCasesByFacility(facilityId) {
+        try {
+            const casesQuery = query(
+                collection(this.db, 'cases'),
+                orderBy('scheduledDate', 'desc')
+            );
+            const snapshot = await getDocs(casesQuery);
+            const cases = [];
+            
+            snapshot.forEach((doc) => {
+                const caseData = { id: doc.id, ...doc.data() };
+                if (caseData.facilityId === facilityId) {
+                    cases.push(caseData);
+                }
+            });
+            
+            return cases;
+        } catch (error) {
+            console.error('Error getting cases by facility:', error);
+            return [];
+        }
     }
 
 

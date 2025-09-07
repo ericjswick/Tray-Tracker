@@ -11,6 +11,21 @@ export class DemoManager {
 
     async checkAndInitializeData() {
         try {
+            // First, clean up any existing duplicates before checking data
+            console.log('🧹 Cleaning up duplicate data...');
+            if (window.app && window.app.duplicateRemover) {
+                try {
+                    const duplicatesRemoved = await window.app.duplicateRemover.removeAllDuplicates();
+                    if (duplicatesRemoved.total > 0) {
+                        console.log(`✅ Removed ${duplicatesRemoved.total} duplicates (${duplicatesRemoved.locations} locations, ${duplicatesRemoved.surgeons} surgeons)`);
+                    } else {
+                        console.log('✅ No duplicates found - data is clean');
+                    }
+                } catch (error) {
+                    console.warn('Duplicate removal failed, continuing with initialization:', error);
+                }
+            }
+
             // Check if users exist
             const usersExist = await this.checkUsersExist();
 
@@ -124,6 +139,48 @@ export class DemoManager {
         } catch (error) {
             console.error('Error checking surgeons:', error);
             return false;
+        }
+    }
+
+    // Helper method to get existing location names
+    async getExistingLocationNames() {
+        try {
+            const locationsSnapshot = await getDocs(collection(this.db, 'locations'));
+            const existingNames = new Set();
+            locationsSnapshot.forEach((doc) => {
+                const name = doc.data().name;
+                if (name) {
+                    existingNames.add(name.toLowerCase().trim());
+                }
+            });
+            return existingNames;
+        } catch (error) {
+            console.error('Error getting existing location names:', error);
+            return new Set();
+        }
+    }
+
+    // Helper method to get existing surgeon names and emails
+    async getExistingSurgeonIdentifiers() {
+        try {
+            const surgeonsSnapshot = await getDocs(collection(this.db, 'surgeons'));
+            const existingNames = new Set();
+            const existingEmails = new Set();
+            
+            surgeonsSnapshot.forEach((doc) => {
+                const data = doc.data();
+                if (data.name) {
+                    existingNames.add(data.name.toLowerCase().trim());
+                }
+                if (data.email) {
+                    existingEmails.add(data.email.toLowerCase().trim());
+                }
+            });
+            
+            return { names: existingNames, emails: existingEmails };
+        } catch (error) {
+            console.error('Error getting existing surgeon identifiers:', error);
+            return { names: new Set(), emails: new Set() };
         }
     }
 
@@ -430,8 +487,17 @@ export class DemoManager {
             }
         ];
 
+        // Check which locations already exist
+        const existingNames = await this.getExistingLocationNames();
+
         for (const location of demoLocations) {
             try {
+                // Skip if location already exists
+                if (existingNames.has(location.name.toLowerCase().trim())) {
+                    console.log(`Location already exists, skipping: ${location.name}`);
+                    continue;
+                }
+
                 location.createdAt = serverTimestamp();
                 location.createdBy = window.app?.authManager?.getCurrentUser()?.uid || 'demo-user';
 
@@ -537,8 +603,20 @@ export class DemoManager {
             }
         ];
 
+        // Check which surgeons already exist
+        const existingIdentifiers = await this.getExistingSurgeonIdentifiers();
+
         for (const surgeon of demoSurgeons) {
             try {
+                // Skip if surgeon already exists by name or email
+                const nameExists = existingIdentifiers.names.has(surgeon.name.toLowerCase().trim());
+                const emailExists = surgeon.email && existingIdentifiers.emails.has(surgeon.email.toLowerCase().trim());
+                
+                if (nameExists || emailExists) {
+                    console.log(`Surgeon already exists, skipping: ${surgeon.name}${surgeon.email ? ` (${surgeon.email})` : ''}`);
+                    continue;
+                }
+
                 surgeon.createdAt = serverTimestamp();
                 surgeon.createdBy = window.app?.authManager?.getCurrentUser()?.uid || 'demo-user';
 
@@ -603,16 +681,59 @@ export class DemoManager {
             }
         ];
 
+        // First, check for existing case types to prevent duplicates
+        console.log('Checking for existing case types...');
+        const existingCaseTypesSnapshot = await getDocs(collection(this.db, 'casetypes'));
+        const existingCaseTypeNames = new Set();
+        
+        existingCaseTypesSnapshot.forEach((doc) => {
+            const data = doc.data();
+            if (data.name) {
+                existingCaseTypeNames.add(data.name.trim().toLowerCase());
+            }
+        });
+
+        console.log(`Found ${existingCaseTypeNames.size} existing case types`);
+        console.log('Creating demo case types...', demoCaseTypes.length);
+        
+        let created = 0;
+        let skipped = 0;
+        
         for (const caseType of demoCaseTypes) {
             try {
+                const caseTypeName = caseType.name.trim().toLowerCase();
+                
+                // Check if case type already exists (case-insensitive)
+                if (existingCaseTypeNames.has(caseTypeName)) {
+                    console.log(`⏭️  Skipping case type "${caseType.name}" - already exists`);
+                    skipped++;
+                    continue;
+                }
+
                 caseType.createdAt = serverTimestamp();
                 caseType.createdBy = window.app?.authManager?.getCurrentUser()?.uid || 'demo-user';
 
-                await addDoc(collection(this.db, 'casetypes'), caseType);
-                console.log(`Created demo case type: ${caseType.name}`);
+                console.log(`Attempting to create case type: ${caseType.name}`);
+                const docRef = await addDoc(collection(this.db, 'casetypes'), caseType);
+                console.log(`✅ Created demo case type: ${caseType.name} with ID: ${docRef.id}`);
+                
+                // Add to existing names set to prevent duplicates within this batch
+                existingCaseTypeNames.add(caseTypeName);
+                created++;
+                
             } catch (error) {
-                console.error(`Error creating demo case type ${caseType.name}:`, error);
+                console.error(`❌ Error creating demo case type ${caseType.name}:`, error);
+                console.error('Error details:', error.code, error.message);
             }
+        }
+        
+        console.log(`Finished creating demo case types: ${created} created, ${skipped} skipped`);
+        
+        // Refresh case types data if any were created
+        if (created > 0 && window.app?.caseTypeManager?.loadCaseTypes) {
+            setTimeout(() => {
+                window.app.caseTypeManager.loadCaseTypes();
+            }, 1000);
         }
     }
 
