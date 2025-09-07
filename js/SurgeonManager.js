@@ -105,6 +105,8 @@ export class SurgeonManager {
     }
 
     setupRealtimeListeners() {
+        console.log('Setting up realtime listeners for physicians...');
+        
         if (!this.db) {
             console.error('Database not initialized in SurgeonManager');
             this.handleSurgeonsUpdate([]);
@@ -112,8 +114,12 @@ export class SurgeonManager {
         }
 
         try {
+            console.log('Creating physicians query...');
             const surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('createdAt', 'desc'));
+            
+            console.log('Setting up onSnapshot listener...');
             this.surgeonsUnsubscribe = onSnapshot(surgeonsQuery, (snapshot) => {
+                console.log('Received snapshot update, document count:', snapshot.size);
                 const surgeons = [];
                 snapshot.forEach((doc) => {
                     surgeons.push({ id: doc.id, ...doc.data() });
@@ -125,6 +131,8 @@ export class SurgeonManager {
                 this.showErrorNotification('Error loading physicians: ' + error.message);
                 this.handleSurgeonsUpdate([]);
             });
+            
+            console.log('Realtime listener setup complete');
         } catch (error) {
             console.error('Error setting up surgeons listener:', error);
             this.handleSurgeonsUpdate([]);
@@ -211,9 +219,22 @@ export class SurgeonManager {
 
     handleSurgeonsUpdate(surgeons) {
         console.log('SurgeonManager received surgeons update:', surgeons.length);
+        console.log('Surgeons data:', surgeons);
         this.currentSurgeons = surgeons;
-        this.renderSurgeons(surgeons);
-        this.updateStats(surgeons);
+        
+        try {
+            this.renderSurgeons(surgeons);
+            console.log('Successfully rendered surgeons');
+        } catch (error) {
+            console.error('Error rendering surgeons:', error);
+        }
+        
+        try {
+            this.updateStats(surgeons);
+            console.log('Successfully updated stats');
+        } catch (error) {
+            console.error('Error updating stats:', error);
+        }
 
         // Update DataManager with surgeon names for dropdowns
         if (window.app.dataManager) {
@@ -436,14 +457,21 @@ export class SurgeonManager {
     scheduleCaseTypesUpdate() {
         if (!this.caseTypesUpdateScheduled) {
             this.caseTypesUpdateScheduled = true;
+            let attempts = 0;
+            const maxAttempts = 10;
 
             const checkForCaseTypes = () => {
+                attempts++;
                 if (window.app.dataManager && window.app.dataManager.caseTypes && window.app.dataManager.caseTypes.length > 0) {
                     console.log('Case types loaded, re-rendering surgeons...');
                     this.caseTypesUpdateScheduled = false;
                     this.renderSurgeons(this.currentSurgeons);
-                } else {
+                } else if (attempts < maxAttempts) {
                     setTimeout(checkForCaseTypes, 1000);
+                } else {
+                    console.log('Timeout waiting for case types, rendering surgeons without them');
+                    this.caseTypesUpdateScheduled = false;
+                    this.renderSurgeons(this.currentSurgeons);
                 }
             };
 
