@@ -1,13 +1,12 @@
 // config/production.config.js - Production Configuration
-export const firebaseConfig = {
-    // Production Firebase configuration would go here
-    apiKey: "PRODUCTION_API_KEY",
-    authDomain: "your-production-project.firebaseapp.com",
-    projectId: "your-production-project",
-    storageBucket: "your-production-project.appspot.com",
-    messagingSenderId: "000000000000",
-    appId: "1:000000000000:web:your-production-app-id",
-    measurementId: "G-PRODUCTION-ID"
+const firebaseConfig = {
+  apiKey: "AIzaSyDnZS8Fqn30r0NUd3OfgaxvhwBxIrRcYWw",
+  authDomain: "myrepdata.firebaseapp.com",
+  projectId: "myrepdata",
+  storageBucket: "myrepdata.firebasestorage.app",
+  messagingSenderId: "885636146139",
+  appId: "1:885636146139:web:885864bcbc57b50f7bfdfe",
+  measurementId: "G-PT1CLEXX5X"
 };
 
 // Production environment settings
