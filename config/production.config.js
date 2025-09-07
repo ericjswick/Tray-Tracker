@@ -1,5 +1,5 @@
 // config/production.config.js - Production Configuration
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyDnZS8Fqn30r0NUd3OfgaxvhwBxIrRcYWw",
   authDomain: "myrepdata.firebaseapp.com",
   projectId: "myrepdata",
