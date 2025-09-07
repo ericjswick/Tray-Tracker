@@ -21,6 +21,9 @@ import { UserManager } from './UserManager.js';
 import { LocationManager } from './LocationManager.js';
 import { SurgeonManager } from './SurgeonManager.js';
 import { CaseTypeManager } from './CaseTypeManager.js';
+import { CasesManager } from './CasesManager.js';
+import { FrontendLogger } from './utils/FrontendLogger.js';
+import { DuplicateRemover } from './utils/DuplicateRemover.js';
 
 
 // Initialize Firebase
@@ -40,6 +43,16 @@ try {
 // Main Application Class
 class SIBoneApp {
     constructor() {
+        // Initialize frontend logger first
+        this.logger = new FrontendLogger();
+        window.frontendLogger = this.logger;
+        
+        // Log app initialization
+        this.logger.info('Tray Tracker frontend starting', {
+            userAgent: navigator.userAgent,
+            url: window.location.href
+        }, 'app-init');
+        
         // Initialize all managers with their dependencies
         this.authManager = new AuthManager(auth, db);
         this.dataManager = new DataManager(db);
@@ -54,6 +67,8 @@ class SIBoneApp {
         this.locationManager = new LocationManager(db);
         this.surgeonManager = new SurgeonManager(db);
         this.caseTypeManager = new CaseTypeManager(db);
+        this.casesManager = new CasesManager(this.dataManager);
+        this.duplicateRemover = new DuplicateRemover(db);
     }
 
     init() {
@@ -364,11 +379,42 @@ class SIBoneApp {
             .role-manager { background: #FFFBEB; color: var(--warning-orange); }
             .role-rep { background: #ECFDF5; color: var(--success-green); }
             .role-specialist { background: #EFF6FF; color: var(--primary-blue); }
+
+            /* Tray Requirements Builder */
+            .tray-requirements-builder .tray-requirement-item {
+                background: #f8f9fa;
+                transition: all 0.2s ease;
+            }
+
+            .tray-requirements-builder .tray-requirement-item:hover {
+                background: #e9ecef;
+            }
+
+            .tray-requirements-builder .form-label.small {
+                font-weight: 600;
+                color: #495057;
+                margin-bottom: 0.25rem;
+            }
+
+            .tray-requirements-builder .form-select-sm,
+            .tray-requirements-builder .form-control-sm {
+                font-size: 0.875rem;
+            }
+
+            .tray-requirements-builder .btn-outline-danger:hover {
+                transform: translateY(-1px);
+            }
         `;
         document.head.appendChild(customStyles);
     }
 
     initializeUI() {
+        // Initialize DataManager first - this sets up Firebase listeners
+        if (this.dataManager) {
+            console.log('Initializing DataManager and Firebase listeners...');
+            this.dataManager.initializeData();
+        }
+
         // Initialize managers in the correct order
         if (this.trayManager) {
             this.trayManager.initializeViewMode();
@@ -392,6 +438,13 @@ class SIBoneApp {
             setTimeout(() => {
                 this.userManager.initializeViewMode();
             }, 200);
+        }
+
+        // Initialize URL routing FIRST (before other managers that might navigate)
+        if (this.viewManager) {
+            this.viewManager.initializeRouting().then(() => {
+                console.log('✅ Routing initialized - ready for authentication flows');
+            });
         }
 
         // Setup global click handlers for photo expansion
@@ -504,6 +557,9 @@ app.init();
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {
     app.cleanup();
+    if (window.frontendLogger) {
+        window.frontendLogger.cleanup();
+    }
 });
 
 // Export for debugging purposes

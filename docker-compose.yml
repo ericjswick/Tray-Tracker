@@ -5,7 +5,56 @@ services:
     image: nginx:alpine
     container_name: html-js-server
     ports:
-      - "8080:80"
+      - "9090:80"
     volumes:
       - ./:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx-simple.conf:/etc/nginx/conf.d/default.conf:ro
+      # Mount Docker-specific config to override default behavior
+      - ./js/config/docker-config.js:/usr/share/nginx/html/js/config/environment.js:ro
+    environment:
+      # Environment indicator (visible in container logs)
+      - TRAY_TRACKER_ENV=docker
+      - CLEAN_URLS_ENABLED=true
+      # Configuration environment variable (uncomment to use specific config)
+      # - ENVIRONMENT_VARIABLE_FILE=dino-dev-1
+    depends_on:
+      - api-server
+    networks:
+      - tray-tracker-network
+
+  api-server:
+    build:
+      context: ../server
+      dockerfile: Dockerfile
+    container_name: tray-tracker-api
+    ports:
+      - "9180:3000"
+    volumes:
+      - ../server/logs:/app/logs
+      - ../shared_backend:/app/shared_backend:ro
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - ALLOWED_ORIGINS=http://localhost:9090,http://localhost:9180
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-si-bone-tracking}
+      - FIREBASE_CLIENT_EMAIL=${FIREBASE_CLIENT_EMAIL}
+      - FIREBASE_PRIVATE_KEY=${FIREBASE_PRIVATE_KEY}
+    env_file:
+      - ../server/.env
+    networks:
+      - tray-tracker-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  tray-tracker-network:
+    driver: bridge
+
+volumes:
+  api-logs:
+    driver: local

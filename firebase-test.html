@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firebase Test</title>
+</head>
+<body>
+    <h1>Firebase Connection Test</h1>
+    <button id="testBtn">Test Firebase Connection</button>
+    <button id="createCaseTypeBtn">Create Test Case Type</button>
+    <button id="readCaseTypesBtn">Read Case Types</button>
+    <div id="output"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
+
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyD3Tc8crUqOXEg4rKIIYvsyT-LJPEpTIcA",
+            authDomain: "si-bone-tracking.firebaseapp.com",
+            projectId: "si-bone-tracking",
+            storageBucket: "si-bone-tracking.firebasestorage.app",
+            messagingSenderId: "1065056003859",
+            appId: "1:1065056003859:web:aaae14ed73ec3dcae51ce6",
+            measurementId: "G-99MZFWPBJR"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        function log(message) {
+            document.getElementById('output').innerHTML += '<div>' + message + '</div>';
+            console.log(message);
+        }
+
+        document.getElementById('testBtn').addEventListener('click', async () => {
+            try {
+                log('Testing Firebase connection...');
+                await signInAnonymously(auth);
+                log('✅ Firebase connection successful!');
+                log('User authenticated: ' + auth.currentUser?.uid);
+            } catch (error) {
+                log('❌ Firebase connection failed: ' + error.message);
+                console.error(error);
+            }
+        });
+
+        document.getElementById('createCaseTypeBtn').addEventListener('click', async () => {
+            try {
+                log('Creating test case type...');
+                const testCaseType = {
+                    name: 'Test Case Type',
+                    description: 'This is a test case type',
+                    active: true,
+                    createdAt: serverTimestamp(),
+                    isTestCaseType: true
+                };
+                
+                const docRef = await addDoc(collection(db, 'casetypes'), testCaseType);
+                log('✅ Test case type created with ID: ' + docRef.id);
+            } catch (error) {
+                log('❌ Error creating case type: ' + error.message);
+                console.error('Error details:', error);
+            }
+        });
+
+        document.getElementById('readCaseTypesBtn').addEventListener('click', async () => {
+            try {
+                log('Reading case types from Firebase...');
+                const querySnapshot = await getDocs(collection(db, 'casetypes'));
+                log('Found ' + querySnapshot.size + ' case types:');
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    log('- ' + data.name + ' (ID: ' + doc.id + ')');
+                });
+                if (querySnapshot.size === 0) {
+                    log('No case types found in database.');
+                }
+            } catch (error) {
+                log('❌ Error reading case types: ' + error.message);
+                console.error('Error details:', error);
+            }
+        });
+    </script>
+</body>
+</html>

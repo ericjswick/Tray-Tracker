@@ -50,4 +50,66 @@ export class NotificationManager {
             alert('Error sending notifications: ' + error.message);
         }
     }
+
+    // UI notification methods for showing toast messages
+    show(message, type = 'info') {
+        this.showNotification(message, type);
+    }
+
+    showError(message) {
+        this.showNotification(message, 'error');
+    }
+
+    showSuccess(message) {
+        this.showNotification(message, 'success');
+    }
+
+    showNotification(message, type = 'info') {
+        // Create a toast notification
+        const notification = document.createElement('div');
+        notification.className = `alert alert-${this.getBootstrapClass(type)} alert-dismissible fade show`;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            min-width: 300px;
+            max-width: 500px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        `;
+        
+        notification.innerHTML = `
+            <strong>${this.getTypeIcon(type)}</strong> ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 5000);
+    }
+
+    getBootstrapClass(type) {
+        switch (type) {
+            case 'error': return 'danger';
+            case 'success': return 'success';
+            case 'warning': return 'warning';
+            case 'info': 
+            default: return 'info';
+        }
+    }
+
+    getTypeIcon(type) {
+        switch (type) {
+            case 'error': return '❌';
+            case 'success': return '✅';
+            case 'warning': return '⚠️';
+            case 'info':
+            default: return 'ℹ️';
+        }
+    }
 }

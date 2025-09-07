@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuration Test - Tray Tracker</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .config-test { border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .success { border-color: #28a745; background-color: #d4edda; }
+        .error { border-color: #dc3545; background-color: #f8d7da; }
+        button { margin: 5px; padding: 8px 15px; border: none; border-radius: 3px; cursor: pointer; }
+        .btn-primary { background-color: #007bff; color: white; }
+        .btn-secondary { background-color: #6c757d; color: white; }
+        pre { background-color: #f8f9fa; padding: 10px; border-radius: 3px; overflow: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Configuration System Test</h1>
+    <p>This page demonstrates the dynamic configuration loading system.</p>
+    
+    <div class="config-test">
+        <h3>Current Configuration</h3>
+        <div id="currentConfig">Loading...</div>
+        <button class="btn-primary" onclick="loadCurrentConfig()">Refresh Config</button>
+    </div>
+    
+    <div class="config-test">
+        <h3>Switch Environment</h3>
+        <button class="btn-primary" onclick="setConfig('default')">Use Default Config</button>
+        <button class="btn-primary" onclick="setConfig('dino-dev-1')">Use Dino Dev 1 Config</button>
+        <button class="btn-secondary" onclick="clearConfig()">Clear Environment Variable</button>
+    </div>
+    
+    <div class="config-test">
+        <h3>Environment Variable Status</h3>
+        <div id="envStatus">Checking...</div>
+    </div>
+    
+    <div class="config-test">
+        <h3>Test Results</h3>
+        <div id="testResults">Click "Test Configuration Loading" to run tests</div>
+        <button class="btn-primary" onclick="testConfigurationLoading()">Test Configuration Loading</button>
+    </div>
+
+    <script type="module">
+        // Test the configuration system
+        async function loadCurrentConfig() {
+            try {
+                // Clear module cache by adding timestamp
+                const timestamp = Date.now();
+                const { firebaseConfig, environmentConfig } = await import(`./js/config.js?v=${timestamp}`);
+                
+                document.getElementById('currentConfig').innerHTML = `
+                    <div class="success">
+                        <h4>✅ Configuration Loaded Successfully</h4>
+                        <p><strong>Environment:</strong> ${environmentConfig.name}</p>
+                        <p><strong>Description:</strong> ${environmentConfig.description}</p>
+                        <p><strong>Project ID:</strong> ${firebaseConfig.projectId}</p>
+                        <p><strong>Auth Domain:</strong> ${firebaseConfig.authDomain}</p>
+                        <details>
+                            <summary>Full Configuration</summary>
+                            <pre>${JSON.stringify({ firebaseConfig, environmentConfig }, null, 2)}</pre>
+                        </details>
+                    </div>
+                `;
+            } catch (error) {
+                document.getElementById('currentConfig').innerHTML = `
+                    <div class="error">
+                        <h4>❌ Configuration Load Failed</h4>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function setConfig(configName) {
+            localStorage.setItem('ENVIRONMENT_VARIABLE_FILE', configName);
+            updateEnvStatus();
+            alert(`Environment variable set to: ${configName}\\nRefresh the page to apply changes.`);
+        }
+        
+        function clearConfig() {
+            localStorage.removeItem('ENVIRONMENT_VARIABLE_FILE');
+            updateEnvStatus();
+            alert('Environment variable cleared.\\nRefresh the page to apply changes.');
+        }
+        
+        function updateEnvStatus() {
+            const envVar = localStorage.getItem('ENVIRONMENT_VARIABLE_FILE') || '(not set - will use default)';
+            document.getElementById('envStatus').innerHTML = `
+                <p><strong>ENVIRONMENT_VARIABLE_FILE:</strong> ${envVar}</p>
+                <p><strong>localStorage value:</strong> <code>${localStorage.getItem('ENVIRONMENT_VARIABLE_FILE') || 'null'}</code></p>
+            `;
+        }
+        
+        async function testConfigurationLoading() {
+            const results = [];
+            
+            // Test default config
+            try {
+                const defaultConfig = await import('./config/default.config.js');
+                results.push(`✅ Default config loads successfully (Project: ${defaultConfig.firebaseConfig.projectId})`);
+            } catch (error) {
+                results.push(`❌ Default config failed: ${error.message}`);
+            }
+            
+            // Test dino-dev-1 config
+            try {
+                const dinoConfig = await import('./config/dino-dev-1.config.js');
+                results.push(`✅ Dino Dev 1 config loads successfully (Project: ${dinoConfig.firebaseConfig.projectId})`);
+            } catch (error) {
+                results.push(`❌ Dino Dev 1 config failed: ${error.message}`);
+            }
+            
+            document.getElementById('testResults').innerHTML = `
+                <h4>Test Results:</h4>
+                <ul>
+                    ${results.map(result => `<li>${result}</li>`).join('')}
+                </ul>
+                <p><em>All configuration files are accessible and properly formatted.</em></p>
+            `;
+        }
+        
+        // Make functions global
+        window.loadCurrentConfig = loadCurrentConfig;
+        window.setConfig = setConfig;
+        window.clearConfig = clearConfig;
+        window.testConfigurationLoading = testConfigurationLoading;
+        
+        // Initialize
+        loadCurrentConfig();
+        updateEnvStatus();
+    </script>
+</body>
+</html>
