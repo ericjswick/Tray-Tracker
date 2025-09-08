@@ -1,7 +1,16 @@
 {
   "version": 2,
   "public": true,
+  "ignores": [
+    "server/**"
+  ],
+  "functions": {
+    "api/health.js": {
+      "runtime": "nodejs18.x"
+    }
+  },
   "rewrites": [
+    { "source": "/api/health", "destination": "/api/health.js" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

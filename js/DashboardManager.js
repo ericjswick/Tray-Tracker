@@ -1,7 +1,7 @@
 /**
  * Dashboard Manager - Handles dashboard functionality including upcoming cases
  */
-import { CASE_STATUS, CASE_STATUS_OPTIONS, getCaseStatusClass } from './constants/CaseStatus.js';
+import { CASE_STATUS, CASE_STATUS_OPTIONS, getCaseStatusClass, populateCaseStatusDropdown } from './constants/CaseStatus.js';
 import { TRAY_STATUS, normalizeStatus, isInUseStatus, isAvailableStatus, isCheckedInStatus, getStatusDisplayText } from './constants/TrayStatus.js';
 
 export class DashboardManager {
@@ -1784,6 +1784,10 @@ export class DashboardManager {
             
             if (surgeons !== null && facilities !== null && caseTypes !== null) {
                 console.log('✅ Dashboard: Essential data loaded, loading upcoming cases');
+                
+                // Initialize case status dropdown
+                this.initializeCaseStatusDropdown();
+                
                 this.updateSectionTitle();
                 this.loadUpcomingCases();
                 this.setupDataListeners();
@@ -1867,6 +1871,19 @@ export class DashboardManager {
             setTimeout(() => {
                 this.refresh();
             }, 100);
+        }
+    }
+    
+    initializeCaseStatusDropdown() {
+        const statusFilter = document.getElementById('dashboardCasesStatusFilter');
+        if (statusFilter) {
+            populateCaseStatusDropdown(statusFilter, {
+                includeAllOption: true,
+                allOptionText: 'All Status'
+            });
+            console.log('✅ Dashboard: Case status dropdown initialized');
+        } else {
+            console.warn('⚠️ Dashboard: Case status dropdown element not found');
         }
     }
 }

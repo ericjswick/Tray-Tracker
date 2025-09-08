@@ -1,5 +1,5 @@
 // js/CasesManager.js - Cases Management for Tray Tracker
-import { CASE_STATUS, CASE_STATUS_OPTIONS, DEFAULT_CASE_STATUS, getCaseStatusClass, isValidCaseStatus } from './constants/CaseStatus.js';
+import { CASE_STATUS, CASE_STATUS_OPTIONS, DEFAULT_CASE_STATUS, getCaseStatusClass, isValidCaseStatus, populateCaseStatusDropdown } from './constants/CaseStatus.js';
 
 export class CasesManager {
     constructor(dataManager) {
@@ -631,7 +631,17 @@ export class CasesManager {
         document.getElementById('editScheduledDate').value = caseData.scheduledDate || '';
         document.getElementById('editScheduledTime').value = caseData.scheduledTime || '';
         document.getElementById('editEstimatedDuration').value = caseData.estimatedDuration || '';
-        document.getElementById('editCaseStatus').value = caseData.status || '';
+        
+        // Initialize and populate case status dropdown using central function
+        const statusDropdown = document.getElementById('editCaseStatus');
+        if (statusDropdown) {
+            populateCaseStatusDropdown(statusDropdown, {
+                includeAllOption: false,
+                includeEmptyOption: false,
+                selectedValue: caseData.status || DEFAULT_CASE_STATUS
+            });
+        }
+        
         document.getElementById('editCasePriority').value = caseData.priority || '';
         document.getElementById('editCaseNotes').value = caseData.notes || '';
         

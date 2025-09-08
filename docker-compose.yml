@@ -24,23 +24,20 @@ services:
 
   api-server:
     build:
-      context: ../server
+      context: ./server
       dockerfile: Dockerfile
     container_name: tray-tracker-api
     ports:
       - "9180:3000"
     volumes:
-      - ../server/logs:/app/logs
-      - ../shared_backend:/app/shared_backend:ro
+      - ./server/logs:/app/logs
+      - ./shared_backend:/app/shared_backend:ro
     environment:
       - NODE_ENV=development
       - PORT=3000
       - ALLOWED_ORIGINS=http://localhost:9090,http://localhost:9180
-      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-si-bone-tracking}
-      - FIREBASE_CLIENT_EMAIL=${FIREBASE_CLIENT_EMAIL}
-      - FIREBASE_PRIVATE_KEY=${FIREBASE_PRIVATE_KEY}
     env_file:
-      - ../server/.env
+      - ./server/.env
     networks:
       - tray-tracker-network
     restart: unless-stopped
