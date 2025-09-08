@@ -648,9 +648,8 @@ export class ModalManager {
     }
 
     showAddSurgeonModal() {
-        // Preferred cases functionality removed - no longer populate dropdown
-
-        const modal = new bootstrap.Modal(document.getElementById('addSurgeonModal'));
+        // Show add physician modal
+        const modal = new bootstrap.Modal(document.getElementById('addPhysicianModal'));
         modal.show();
     }
 
@@ -688,24 +687,20 @@ export class ModalManager {
 
             await this.logToAPI('Found surgeon', { surgeonId, surgeonName: surgeon.name }, 'surgeon-modal');
 
-            // Preferred cases functionality removed - no longer populate dropdown
-
-            // Populate form fields
+            // Populate form fields with correct physician modal IDs
             await this.logToAPI('Populating form fields...', null, 'surgeon-modal');
-            document.getElementById('editSurgeonId').value = surgeonId;
-            document.getElementById('editSurgeonTitle').value = surgeon.title || 'Dr.';
-            document.getElementById('editSurgeonName').value = surgeon.name || '';
-            document.getElementById('editSurgeonSpecialty').value = surgeon.specialty || '';
-            document.getElementById('editSurgeonHospital').value = surgeon.hospital || '';
-            document.getElementById('editSurgeonEmail').value = surgeon.email || '';
-            document.getElementById('editSurgeonPhone').value = surgeon.phone || '';
-            document.getElementById('editSurgeonNotes').value = surgeon.notes || '';
-            document.getElementById('editSurgeonActive').checked = surgeon.active !== false;
-
-            // Preferred cases functionality removed - no longer handle selections
+            document.getElementById('editPhysicianId').value = surgeonId;
+            document.getElementById('editPhysicianTitle').value = surgeon.title || 'Dr.';
+            document.getElementById('editPhysicianName').value = surgeon.name || '';
+            document.getElementById('editPhysicianSpecialty').value = surgeon.specialty || '';
+            document.getElementById('editPhysicianHospital').value = surgeon.hospital || '';
+            document.getElementById('editPhysicianEmail').value = surgeon.email || '';
+            document.getElementById('editPhysicianPhone').value = surgeon.phone || '';
+            document.getElementById('editPhysicianNotes').value = surgeon.notes || '';
+            document.getElementById('editPhysicianActive').checked = surgeon.active !== false;
 
             await this.logToAPI('Showing modal...', null, 'surgeon-modal');
-            const modal = new bootstrap.Modal(document.getElementById('editSurgeonModal'));
+            const modal = new bootstrap.Modal(document.getElementById('editPhysicianModal'));
             modal.show();
 
             // Load surgeon's tray preferences after modal is shown

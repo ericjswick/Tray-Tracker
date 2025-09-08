@@ -15,9 +15,6 @@ export class SurgeonManager {
         // Storage for current surgeon's preferences during editing
         this.currentSurgeonPreferences = [];
         
-        // Store collection name for consistent usage
-        this.collectionName = 'physicians'; // Will be updated by determineCollectionName
-        
         // Log initialization immediately
         this.logToAPI('SurgeonManager initialized', { 
             timestamp: new Date().toISOString(),
@@ -46,8 +43,8 @@ export class SurgeonManager {
         this.viewMode = mode;
         localStorage.setItem('surgeonViewMode', mode);
 
-        const cardBtn = document.getElementById('surgeonCardViewBtn');
-        const listBtn = document.getElementById('surgeonListViewBtn');
+        const cardBtn = document.getElementById('physicianCardViewBtn');
+        const listBtn = document.getElementById('physicianListViewBtn');
 
         if (cardBtn && listBtn) {
             if (mode === 'card') {
@@ -59,8 +56,8 @@ export class SurgeonManager {
             }
         }
 
-        const cardView = document.getElementById('surgeonCardView');
-        const listView = document.getElementById('surgeonListView');
+        const cardView = document.getElementById('physicianCardView');
+        const listView = document.getElementById('physicianListView');
 
         if (cardView && listView) {
             if (mode === 'card') {
@@ -82,89 +79,44 @@ export class SurgeonManager {
     }
 
     showLoadingState() {
-        const surgeonCardView = document.getElementById('surgeonCardView');
-        const surgeonListView = document.getElementById('surgeonListView');
+        const physicianCardView = document.getElementById('physicianCardView');
+        const physicianListView = document.getElementById('physicianListView');
 
-        if (surgeonCardView) {
-            surgeonCardView.innerHTML = `
+        if (physicianCardView) {
+            physicianCardView.innerHTML = `
                 <div class="loading-state">
                     <div class="spinner-border" role="status"></div>
-                    <p class="mt-2">Loading surgeons...</p>
+                    <p class="mt-2">Loading physicians...</p>
                 </div>
             `;
         }
 
-        if (surgeonListView) {
-            const surgeonHorizontalCards = document.getElementById('surgeonHorizontalCards');
-            if (surgeonHorizontalCards) {
-                surgeonHorizontalCards.innerHTML = `
+        if (physicianListView) {
+            const physicianHorizontalCards = document.getElementById('physicianHorizontalCards');
+            if (physicianHorizontalCards) {
+                physicianHorizontalCards.innerHTML = `
                     <div class="loading-state">
                         <div class="spinner-border" role="status"></div>
-                        <p class="mt-2">Loading surgeons...</p>
+                        <p class="mt-2">Loading physicians...</p>
                     </div>
                 `;
             }
         }
     }
 
-    async determineCollectionName() {
-        try {
-            // First try physicians collection
-            const physiciansSnapshot = await getDocs(collection(this.db, 'physicians'));
-            if (physiciansSnapshot.size > 0) {
-                console.log('Using physicians collection');
-                return 'physicians';
-            }
-            
-            // Fallback to surgeons collection
-            console.log('Physicians collection empty, using surgeons collection');
-            return 'surgeons';
-        } catch (error) {
-            console.error('Error determining collection name:', error);
-            return 'surgeons'; // Default fallback
-        }
-    }
-
     setupRealtimeListeners() {
-        console.log('Setting up realtime listeners for physicians...');
-        
-        if (!this.db) {
-            console.error('Database not initialized in SurgeonManager');
-            this.handleSurgeonsUpdate([]);
-            return;
-        }
+        if (!this.db) return;
 
-        // Determine collection name asynchronously and then set up listener
-        this.determineCollectionName().then(collectionName => {
-            this.collectionName = collectionName;
-            
-            try {
-                console.log(`Using collection: ${collectionName}`);
-                const surgeonsQuery = query(collection(this.db, this.collectionName), orderBy('createdAt', 'desc'));
-                
-                console.log('Setting up onSnapshot listener...');
-                this.surgeonsUnsubscribe = onSnapshot(surgeonsQuery, (snapshot) => {
-                    console.log('Received snapshot update, document count:', snapshot.size);
-                    const surgeons = [];
-                    snapshot.forEach((doc) => {
-                        surgeons.push({ id: doc.id, ...doc.data() });
-                    });
+        const surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('createdAt', 'desc'));
+        this.surgeonsUnsubscribe = onSnapshot(surgeonsQuery, (snapshot) => {
+            const surgeons = [];
+            snapshot.forEach((doc) => {
+                surgeons.push({ id: doc.id, ...doc.data() });
+            });
 
-                    this.handleSurgeonsUpdate(surgeons);
-                }, (error) => {
-                    console.error('Error listening to surgeons:', error);
-                    this.showErrorNotification('Error loading physicians: ' + error.message);
-                    this.handleSurgeonsUpdate([]);
-                });
-                
-                console.log('Realtime listener setup complete');
-            } catch (error) {
-                console.error('Error setting up surgeons listener:', error);
-                this.handleSurgeonsUpdate([]);
-            }
-        }).catch(error => {
-            console.error('Error determining collection name:', error);
-            this.handleSurgeonsUpdate([]);
+            this.handleSurgeonsUpdate(surgeons);
+        }, (error) => {
+            console.error('Error listening to surgeons:', error);
         });
     }
 
@@ -175,26 +127,26 @@ export class SurgeonManager {
             const preferredCasesString = '';
 
             const surgeon = {
-                name: document.getElementById('surgeonName').value,
-                title: document.getElementById('surgeonTitle').value,
-                specialty: document.getElementById('surgeonSpecialty').value,
-                hospital: document.getElementById('surgeonHospital').value,
-                email: document.getElementById('surgeonEmail').value,
-                phone: document.getElementById('surgeonPhone').value,
+                name: document.getElementById('addPhysicianName').value,
+                title: document.getElementById('addPhysicianTitle').value,
+                specialty: document.getElementById('addPhysicianSpecialty').value,
+                hospital: document.getElementById('addPhysicianHospital').value,
+                email: document.getElementById('addPhysicianEmail').value,
+                phone: document.getElementById('addPhysicianPhone').value,
                 preferredCases: preferredCasesString,
-                notes: document.getElementById('surgeonNotes').value,
-                active: document.getElementById('surgeonActive').checked,
+                notes: document.getElementById('addPhysicianNotes').value,
+                active: document.getElementById('addPhysicianActive').checked,
                 createdAt: serverTimestamp(),
                 createdBy: window.app.authManager.getCurrentUser()?.uid,
                 isDemoSurgeon: false
             };
 
-            await addDoc(collection(this.db, this.collectionName), surgeon);
+            await addDoc(collection(this.db, 'physicians'), surgeon);
 
-            bootstrap.Modal.getInstance(document.getElementById('addSurgeonModal')).hide();
-            document.getElementById('addSurgeonForm').reset();
+            bootstrap.Modal.getInstance(document.getElementById('addPhysicianModal')).hide();
+            document.getElementById('addPhysicianForm').reset();
 
-            this.showSuccessNotification('Surgeon added successfully!');
+            this.showSuccessNotification('Physician added successfully!');
         } catch (error) {
             console.error('Error adding surgeon:', error);
             this.showErrorNotification('Error adding surgeon: ' + error.message);
@@ -203,32 +155,32 @@ export class SurgeonManager {
 
     async updateSurgeon() {
         try {
-            const surgeonId = document.getElementById('editSurgeonId').value;
+            const surgeonId = document.getElementById('editPhysicianId').value;
 
             // Preferred cases functionality removed - set to empty string
             const preferredCasesString = '';
 
             const updates = {
-                name: document.getElementById('editSurgeonName').value,
-                title: document.getElementById('editSurgeonTitle').value,
-                specialty: document.getElementById('editSurgeonSpecialty').value,
-                hospital: document.getElementById('editSurgeonHospital').value,
-                email: document.getElementById('editSurgeonEmail').value,
-                phone: document.getElementById('editSurgeonPhone').value,
+                name: document.getElementById('editPhysicianName').value,
+                title: document.getElementById('editPhysicianTitle').value,
+                specialty: document.getElementById('editPhysicianSpecialty').value,
+                hospital: document.getElementById('editPhysicianHospital').value,
+                email: document.getElementById('editPhysicianEmail').value,
+                phone: document.getElementById('editPhysicianPhone').value,
                 preferredCases: preferredCasesString,
-                notes: document.getElementById('editSurgeonNotes').value,
-                active: document.getElementById('editSurgeonActive').checked,
+                notes: document.getElementById('editPhysicianNotes').value,
+                active: document.getElementById('editPhysicianActive').checked,
                 lastModified: serverTimestamp(),
                 modifiedBy: window.app.authManager.getCurrentUser()?.uid
             };
 
             await updateDoc(doc(this.db, 'physicians', surgeonId), updates);
 
-            bootstrap.Modal.getInstance(document.getElementById('editSurgeonModal')).hide();
-            this.showSuccessNotification('Surgeon updated successfully!');
+            bootstrap.Modal.getInstance(document.getElementById('editPhysicianModal')).hide();
+            this.showSuccessNotification('Physician updated successfully!');
         } catch (error) {
             console.error('Error updating surgeon:', error);
-            this.showErrorNotification('Error updating surgeon: ' + error.message);
+            this.showErrorNotification('Error updating physician: ' + error.message);
         }
     }
 
@@ -238,7 +190,7 @@ export class SurgeonManager {
         }
 
         try {
-            await deleteDoc(doc(this.db, this.collectionName, surgeonId));
+            await deleteDoc(doc(this.db, 'physicians', surgeonId));
             this.showSuccessNotification('Surgeon deleted successfully!');
         } catch (error) {
             console.error('Error deleting surgeon:', error);
@@ -248,22 +200,9 @@ export class SurgeonManager {
 
     handleSurgeonsUpdate(surgeons) {
         console.log('SurgeonManager received surgeons update:', surgeons.length);
-        console.log('Surgeons data:', surgeons);
         this.currentSurgeons = surgeons;
-        
-        try {
-            this.renderSurgeons(surgeons);
-            console.log('Successfully rendered surgeons');
-        } catch (error) {
-            console.error('Error rendering surgeons:', error);
-        }
-        
-        try {
-            this.updateStats(surgeons);
-            console.log('Successfully updated stats');
-        } catch (error) {
-            console.error('Error updating stats:', error);
-        }
+        this.renderSurgeons(surgeons);
+        this.updateStats(surgeons);
 
         // Update DataManager with surgeon names for dropdowns
         if (window.app.dataManager) {
@@ -312,44 +251,44 @@ export class SurgeonManager {
     }
 
     renderCardView(surgeons) {
-        const surgeonCardView = document.getElementById('surgeonCardView');
-        if (!surgeonCardView) return;
+        const physicianCardView = document.getElementById('physicianCardView');
+        if (!physicianCardView) return;
 
         if (surgeons.length === 0) {
-            surgeonCardView.innerHTML = `
+            physicianCardView.innerHTML = `
                 <div class="loading-state">
                     <i class="fas fa-user-md fa-3x mb-3" style="color: var(--gray-300);"></i>
-                    <p>No surgeons found. Add a new surgeon to get started.</p>
+                    <p>No physicians found. Add a new physician to get started.</p>
                 </div>
             `;
             return;
         }
 
-        surgeonCardView.innerHTML = '';
+        physicianCardView.innerHTML = '';
         surgeons.forEach(surgeon => {
             const surgeonCard = this.createSurgeonCard(surgeon);
-            surgeonCardView.appendChild(surgeonCard);
+            physicianCardView.appendChild(surgeonCard);
         });
     }
 
     renderListView(surgeons) {
-        const surgeonHorizontalCards = document.getElementById('surgeonHorizontalCards');
-        if (!surgeonHorizontalCards) return;
+        const physicianHorizontalCards = document.getElementById('physicianHorizontalCards');
+        if (!physicianHorizontalCards) return;
 
         if (surgeons.length === 0) {
-            surgeonHorizontalCards.innerHTML = `
+            physicianHorizontalCards.innerHTML = `
                 <div class="loading-state">
                     <i class="fas fa-user-md fa-3x mb-3" style="color: var(--gray-300);"></i>
-                    <p>No surgeons found. Add a new surgeon to get started.</p>
+                    <p>No physicians found. Add a new physician to get started.</p>
                 </div>
             `;
             return;
         }
 
-        surgeonHorizontalCards.innerHTML = '';
+        physicianHorizontalCards.innerHTML = '';
         surgeons.forEach(surgeon => {
             const surgeonCard = this.createHorizontalSurgeonCard(surgeon);
-            surgeonHorizontalCards.appendChild(surgeonCard);
+            physicianHorizontalCards.appendChild(surgeonCard);
         });
     }
 
@@ -486,21 +425,14 @@ export class SurgeonManager {
     scheduleCaseTypesUpdate() {
         if (!this.caseTypesUpdateScheduled) {
             this.caseTypesUpdateScheduled = true;
-            let attempts = 0;
-            const maxAttempts = 10;
 
             const checkForCaseTypes = () => {
-                attempts++;
                 if (window.app.dataManager && window.app.dataManager.caseTypes && window.app.dataManager.caseTypes.length > 0) {
                     console.log('Case types loaded, re-rendering surgeons...');
                     this.caseTypesUpdateScheduled = false;
                     this.renderSurgeons(this.currentSurgeons);
-                } else if (attempts < maxAttempts) {
-                    setTimeout(checkForCaseTypes, 1000);
                 } else {
-                    console.log('Timeout waiting for case types, rendering surgeons without them');
-                    this.caseTypesUpdateScheduled = false;
-                    this.renderSurgeons(this.currentSurgeons);
+                    setTimeout(checkForCaseTypes, 1000);
                 }
             };
 
@@ -529,10 +461,10 @@ export class SurgeonManager {
             general: surgeons.filter(s => !s.specialty || s.specialty === 'General').length
         };
 
-        const totalElement = document.getElementById('totalSurgeonsCount');
-        const activeElement = document.getElementById('activeSurgeonsCount');
-        const orthopedicElement = document.getElementById('orthopedicSurgeonsCount');
-        const generalElement = document.getElementById('generalSurgeonsCount');
+        const totalElement = document.getElementById('totalPhysiciansCount');
+        const activeElement = document.getElementById('activePhysiciansCount');
+        const orthopedicElement = document.getElementById('orthopedicPhysiciansCount');
+        const generalElement = document.getElementById('generalPhysiciansCount');
 
         if (totalElement) totalElement.textContent = stats.total;
         if (activeElement) activeElement.textContent = stats.active;
@@ -622,7 +554,7 @@ export class SurgeonManager {
             await this.loadSurgeonTrayPreferencesDirectly(surgeonId);
             
             // Check if tray ID dropdown exists before populating case types
-            const trayDropdown = document.getElementById('surgeonPreferenceTrayIdDropdown');
+            const trayDropdown = document.getElementById('physicianPreferenceTrayIdDropdown');
             console.log('🔥 INITIAL CHECK: Tray ID dropdown exists on modal load:', !!trayDropdown);
             console.log('🔥 INITIAL CHECK: Tray ID dropdown element:', trayDropdown);
             
@@ -648,7 +580,7 @@ export class SurgeonManager {
     }
 
     async renderTrayPreferencesAccordion() {
-        const accordion = document.getElementById('surgeonTrayPreferencesAccordion');
+        const accordion = document.getElementById('physicianTrayPreferencesAccordion');
         if (!accordion) return;
 
         // Group preferences by case type
@@ -686,7 +618,7 @@ export class SurgeonManager {
                         </button>
                     </h2>
                     <div id="${accordionId}" class="accordion-collapse collapse ${isFirst ? 'show' : ''}" 
-                         data-bs-parent="#surgeonTrayPreferencesAccordion">
+                         data-bs-parent="#physicianTrayPreferencesAccordion">
                         <div class="accordion-body">
                             ${prefs.map(pref => {
                                 const trayName = trayMap[pref.tray_id] || pref.tray_name || pref.tray_id;
@@ -725,11 +657,11 @@ export class SurgeonManager {
     }
 
     async populateCaseTypeDropdown() {
-        const dropdown = document.getElementById('surgeonPrefCaseType');
+        const dropdown = document.getElementById('physicianPrefCaseType');
         console.log('populateCaseTypeDropdown called, dropdown element:', dropdown);
         
         if (!dropdown) {
-            console.error('surgeonPrefCaseType dropdown not found in DOM');
+            console.error('physicianPrefCaseType dropdown not found in DOM');
             return;
         }
 
@@ -923,11 +855,11 @@ export class SurgeonManager {
         });
         
         // Check if element exists in DOM
-        const dropdown = document.getElementById('surgeonPreferenceTrayIdDropdown');
+        const dropdown = document.getElementById('physicianPreferenceTrayIdDropdown');
         await this.logToAPI(`Tray ID dropdown element found: ${!!dropdown}`, { exists: !!dropdown, elementId: dropdown?.id });
         
         if (!dropdown) {
-            await this.logToAPI('ERROR: surgeonPreferenceTrayIdDropdown not found in DOM');
+            await this.logToAPI('ERROR: physicianPreferenceTrayIdDropdown not found in DOM');
             return;
         }
 
@@ -1189,17 +1121,17 @@ export class SurgeonManager {
     async addTrayPreference() {
         try {
             // Ensure case type dropdown is populated
-            const dropdown = document.getElementById('surgeonPrefCaseType');
+            const dropdown = document.getElementById('physicianPrefCaseType');
             if (dropdown && dropdown.children.length <= 1) {
                 await this.populateCaseTypeDropdown();
             }
 
-            const caseType = document.getElementById('surgeonPrefCaseType').value.trim();
-            const trayId = document.getElementById('surgeonPreferenceTrayIdDropdown').value.trim();
-            const requirementType = document.getElementById('surgeonPrefRequirementType').value;
-            const quantity = parseInt(document.getElementById('surgeonPrefQuantity').value) || 1;
-            const notes = document.getElementById('surgeonPrefNotes').value.trim();
-            const surgeonId = document.getElementById('editSurgeonId').value;
+            const caseType = document.getElementById('physicianPrefCaseType').value.trim();
+            const trayId = document.getElementById('physicianPreferenceTrayIdDropdown').value.trim();
+            const requirementType = document.getElementById('physicianPrefRequirementType').value;
+            const quantity = parseInt(document.getElementById('physicianPrefQuantity').value) || 1;
+            const notes = document.getElementById('physicianPrefNotes').value.trim();
+            const surgeonId = document.getElementById('editPhysicianId').value;
 
             if (!caseType || !trayId || !surgeonId) {
                 alert('Please fill in all required fields (Case Type and Tray ID are required)');
@@ -1244,11 +1176,11 @@ export class SurgeonManager {
             await this.loadSurgeonTrayPreferences(surgeonId);
 
             // Clear form
-            document.getElementById('surgeonPrefCaseType').value = '';
-            document.getElementById('surgeonPreferenceTrayIdDropdown').innerHTML = '<option value="">Select Tray ID...</option>';
-            document.getElementById('surgeonPrefRequirementType').value = 'preferred';
-            document.getElementById('surgeonPrefQuantity').value = '1';
-            document.getElementById('surgeonPrefNotes').value = '';
+            document.getElementById('physicianPrefCaseType').value = '';
+            document.getElementById('physicianPreferenceTrayIdDropdown').innerHTML = '<option value="">Select Tray ID...</option>';
+            document.getElementById('physicianPrefRequirementType').value = 'preferred';
+            document.getElementById('physicianPrefQuantity').value = '1';
+            document.getElementById('physicianPrefNotes').value = '';
 
             this.showSuccessNotification('Tray preference added successfully!');
         } catch (error) {
@@ -1266,15 +1198,15 @@ export class SurgeonManager {
             }
 
             // Populate the form with current values for editing
-            document.getElementById('surgeonPrefCaseType').value = preference.case_type;
-            document.getElementById('surgeonPrefRequirementType').value = preference.requirement_type || 'preferred';
-            document.getElementById('surgeonPrefQuantity').value = preference.quantity || '1';
-            document.getElementById('surgeonPrefNotes').value = preference.notes || '';
+            document.getElementById('physicianPrefCaseType').value = preference.case_type;
+            document.getElementById('physicianPrefRequirementType').value = preference.requirement_type || 'preferred';
+            document.getElementById('physicianPrefQuantity').value = preference.quantity || '1';
+            document.getElementById('physicianPrefNotes').value = preference.notes || '';
 
             // Populate tray dropdown filtered by case type and select the current tray
             await this.populateTrayIdDropdown(preference.case_type);
             setTimeout(() => {
-                document.getElementById('surgeonPreferenceTrayIdDropdown').value = preference.tray_id;
+                document.getElementById('physicianPreferenceTrayIdDropdown').value = preference.tray_id;
             }, 100);
 
             // Store the preference ID for updating instead of creating new
@@ -1307,7 +1239,7 @@ export class SurgeonManager {
                 await this.deleteTrayPreferenceDirectly(preferenceId);
             }
 
-            const surgeonId = document.getElementById('editSurgeonId').value;
+            const surgeonId = document.getElementById('editPhysicianId').value;
             await this.loadSurgeonTrayPreferences(surgeonId);
 
             this.showSuccessNotification('Tray preference removed successfully!');
@@ -1340,11 +1272,11 @@ export class SurgeonManager {
             await this.loadSurgeonTrayPreferences(surgeonId);
 
             // Clear form
-            document.getElementById('surgeonPrefCaseType').value = '';
-            document.getElementById('surgeonPreferenceTrayIdDropdown').innerHTML = '<option value="">Select Tray ID...</option>';
-            document.getElementById('surgeonPrefRequirementType').value = 'preferred';
-            document.getElementById('surgeonPrefQuantity').value = '1';
-            document.getElementById('surgeonPrefNotes').value = '';
+            document.getElementById('physicianPrefCaseType').value = '';
+            document.getElementById('physicianPreferenceTrayIdDropdown').innerHTML = '<option value="">Select Tray ID...</option>';
+            document.getElementById('physicianPrefRequirementType').value = 'preferred';
+            document.getElementById('physicianPrefQuantity').value = '1';
+            document.getElementById('physicianPrefNotes').value = '';
 
             this.showSuccessNotification('Tray preference updated successfully!');
         } catch (error) {
@@ -1379,11 +1311,11 @@ export class SurgeonManager {
             await this.loadSurgeonTrayPreferences(surgeonId);
 
             // Clear form
-            document.getElementById('surgeonPrefCaseType').value = '';
-            document.getElementById('surgeonPreferenceTrayIdDropdown').innerHTML = '<option value="">Select Tray ID...</option>';
-            document.getElementById('surgeonPrefRequirementType').value = 'preferred';
-            document.getElementById('surgeonPrefQuantity').value = '1';
-            document.getElementById('surgeonPrefNotes').value = '';
+            document.getElementById('physicianPrefCaseType').value = '';
+            document.getElementById('physicianPreferenceTrayIdDropdown').innerHTML = '<option value="">Select Tray ID...</option>';
+            document.getElementById('physicianPrefRequirementType').value = 'preferred';
+            document.getElementById('physicianPrefQuantity').value = '1';
+            document.getElementById('physicianPrefNotes').value = '';
 
             this.showSuccessNotification('Tray preference added successfully!');
         } catch (error) {

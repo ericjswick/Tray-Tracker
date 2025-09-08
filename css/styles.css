@@ -390,10 +390,50 @@ body {
 .team-grid,
 .user-cards-grid,
 .location-cards-grid,
-.surgeon-cards-grid {
+.surgeon-cards-grid,
+.physician-cards-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 1.5rem;
+}
+
+/* Responsive breakpoints for card grids */
+@media (max-width: 768px) {
+    .tray-cards-grid,
+    .cases-cards-grid,
+    .team-grid,
+    .user-cards-grid,
+    .location-cards-grid,
+    .surgeon-cards-grid,
+    .physician-cards-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1200px) {
+    .tray-cards-grid,
+    .cases-cards-grid,
+    .team-grid,
+    .user-cards-grid,
+    .location-cards-grid,
+    .surgeon-cards-grid,
+    .physician-cards-grid {
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    }
+}
+
+@media (min-width: 1201px) {
+    .tray-cards-grid,
+    .cases-cards-grid,
+    .team-grid,
+    .user-cards-grid,
+    .location-cards-grid,
+    .surgeon-cards-grid,
+    .physician-cards-grid {
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        max-width: none;
+    }
 }
 
 .loading-state {
@@ -497,7 +537,7 @@ body {
     color: #8B5CF6;
 }
 
-/* Case Status Classes */
+/* Case Status Classes - Order: Scheduled, Set, Cancelled, Complete, Removed */
 .status-scheduled {
     background: #DBEAFE;
     color: #1E40AF;
@@ -507,7 +547,16 @@ body {
     font-weight: 500;
 }
 
-.status-canceled {
+.status-set {
+    background: #FEF3C7;
+    color: #D97706;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-cancelled {
     background: #FEE2E2;
     color: #DC2626;
     padding: 0.25rem 0.75rem;
@@ -519,6 +568,25 @@ body {
 .status-complete {
     background: #D1FAE5;
     color: #065F46;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-removed {
+    background: #F3F4F6;
+    color: #6B7280;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+/* Legacy support for old status name */
+.status-canceled {
+    background: #FEE2E2;
+    color: #DC2626;
     padding: 0.25rem 0.75rem;
     border-radius: 9999px;
     font-size: 0.875rem;
@@ -1491,11 +1559,19 @@ button:focus,
 }
 
 
-/* ========== SURGEON MANAGEMENT ========== */
+/* ========== SURGEON/PHYSICIAN MANAGEMENT ========== */
 
 .surgeon-card,
-.surgeon-cards-grid {
-    /* Use same styles as user cards */
+.physician-card {
+    /* Cards inherit styles from user cards and use responsive grid layout */
+    width: 100%;
+    max-width: none;
+}
+
+/* Ensure surgeon/physician cards don't override grid layout */
+.surgeon-cards-grid .surgeon-card,
+.physician-cards-grid .surgeon-card {
+    margin-bottom: 0; /* Remove any bottom margin that might interfere with grid gap */
 }
 
 /* ========== TRAY STATUS DETAILS ========== */
