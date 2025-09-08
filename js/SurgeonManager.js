@@ -107,7 +107,7 @@ export class SurgeonManager {
     setupRealtimeListeners() {
         if (!this.db) return;
 
-        const surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('createdAt', 'desc'));
+        const surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('created_at', 'desc'));
         this.surgeonsUnsubscribe = onSnapshot(surgeonsQuery, (snapshot) => {
             const surgeons = [];
             snapshot.forEach((doc) => {
