@@ -3,7 +3,7 @@
   "public": true,
   "functions": {
     "api/health.js": {
-      "runtime": "nodejs18.x"
+      "runtime": "@vercel/node"
     }
   },
   "rewrites": [
