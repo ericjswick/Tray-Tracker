@@ -209,7 +209,7 @@ export class DashboardManager {
                 <div class="tray-card-content">
                     <div class="tray-detail">
                         <i class="fas fa-user-md"></i>
-                        <span class="tray-detail-value">${surgeon ? surgeon.name : (surgeons.length === 0 ? 'Loading...' : 'Unknown Physician')}</span>
+                        <span class="tray-detail-value">${surgeon ? surgeon.full_name : (surgeons.length === 0 ? 'Loading...' : 'Unknown Physician')}</span>
                     </div>
                     <div class="tray-detail">
                         <i class="fas fa-hospital"></i>
@@ -1230,7 +1230,7 @@ export class DashboardManager {
         // Try to find surgeon by ID
         if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons) {
             const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === surgeonId);
-            return surgeon ? `${surgeon.title || 'Dr.'} ${surgeon.name}` : surgeonId; // Fallback to ID if not found
+            return surgeon ? `${surgeon.title || 'Dr.'} ${surgeon.full_name}` : surgeonId; // Fallback to ID if not found
         }
         
         return surgeonId; // Fallback to original value

@@ -76,7 +76,7 @@ export class MapManager {
                 let surgeonName = '';
                 if (tray.physician_id && window.app.surgeonManager) {
                     const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === tray.physician_id);
-                    surgeonName = surgeon ? surgeon.name : 'Unknown Surgeon';
+                    surgeonName = surgeon ? surgeon.full_name : 'Unknown Surgeon';
                 } else if (tray.surgeon) {
                     surgeonName = tray.surgeon; // Legacy format
                 }
@@ -183,8 +183,8 @@ export class MapManager {
         const statusFilter = document.getElementById('locationStatusFilter')?.value || '';
         const regionFilter = document.getElementById('locationRegionFilter')?.value || '';
 
-        // Get locations from LocationManager
-        const locations = window.app.locationManager?.currentLocations || [];
+        // Get facilities from FacilityManager  
+        const locations = window.app.facilityManager?.currentFacilities || [];
         
         // Apply filters
         const filteredLocations = locations.filter(location => {
@@ -206,8 +206,8 @@ export class MapManager {
                 return false;
             }
             
-            // Region filter
-            if (regionFilter && location.region !== regionFilter) {
+            // Territory/Region filter
+            if (regionFilter && location.territory !== regionFilter) {
                 return false;
             }
             
@@ -255,8 +255,10 @@ export class MapManager {
         const statusFilter = document.getElementById('locationStatusFilter')?.value || '';
         const regionFilter = document.getElementById('locationRegionFilter')?.value || '';
 
-        // Get locations from LocationManager
-        const locations = window.app.locationManager?.currentLocations || [];
+        // Get facilities from FacilityManager
+        const locations = window.app.facilityManager?.currentFacilities || [];
+        
+        console.log('🗺️ DEBUG: Facilities for map:', locations.length, locations);
         
         // Apply facility filters
         const filteredLocations = locations.filter(location => {
@@ -278,13 +280,17 @@ export class MapManager {
                 return false;
             }
             
-            // Region filter
-            if (regionFilter && location.region !== regionFilter) {
+            // Territory/Region filter
+            if (regionFilter && location.territory !== regionFilter) {
                 return false;
             }
             
             return true;
         });
+
+        console.log('🗺️ DEBUG: Filtered facilities:', filteredLocations.length);
+        const facilitiesWithCoords = filteredLocations.filter(loc => loc.latitude && loc.longitude);
+        console.log('🗺️ DEBUG: Facilities with coordinates:', facilitiesWithCoords.length, facilitiesWithCoords);
 
         // Display facility markers
         this.displayLocationMarkers(filteredLocations);
@@ -412,7 +418,7 @@ export class MapManager {
         
         const surgeons = window.app.surgeonManager?.currentSurgeons || [];
         const surgeon = surgeons.find(s => s.id === surgeonId);
-        return surgeon ? surgeon.name : 'Unknown Surgeon';
+        return surgeon ? surgeon.full_name : 'Unknown Surgeon';
     }
 
     // Display location markers on the map

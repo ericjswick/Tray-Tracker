@@ -1,4 +1,10 @@
 // js/ModalManager.js - Updated for Tray Tracker
+import { populateCaseStatusDropdown, DEFAULT_CASE_STATUS } from './constants/CaseStatus.js';
+import { populateFacilityTypeDropdown, DEFAULT_FACILITY_TYPE } from './constants/FacilityTypes.js';
+import { populateTrayStatusDropdown } from './constants/TrayStatus.js';
+import { populateTrayLocationDropdown, TRAY_LOCATIONS } from './constants/TrayLocations.js';
+import { googlePlacesAutocomplete } from './utils/GooglePlacesAutocomplete.js';
+
 export class ModalManager {
     constructor(dataManager) {
         this.dataManager = dataManager;
@@ -52,6 +58,14 @@ export class ModalManager {
                 if (window.app && window.app.photoManager) {
                     window.app.photoManager.stopCamera();
                 }
+                
+                // Clean up Google Places autocomplete for facility modals
+                // Now using smart cleanup that preserves address fields
+                if (modal.id === 'addFacilityModal') {
+                    googlePlacesAutocomplete.removeAutocomplete('facilityAddress');
+                } else if (modal.id === 'editFacilityModal') {
+                    googlePlacesAutocomplete.removeAutocomplete('editFacilityAddress');
+                }
             });
         });
     }
@@ -62,6 +76,8 @@ export class ModalManager {
         
         await this.populateInitialLocationDropdown();
         await this.populateCaseTypeCompatibilityDropdown();
+        await this.populateTrayStatusDropdown();
+        await window.app.trayManager.populateUserDropdown();
         const modal = new bootstrap.Modal(document.getElementById('addTrayModal'));
         modal.show();
     }
@@ -127,32 +143,35 @@ export class ModalManager {
                 return;
             }
 
-            initialLocationSelect.innerHTML = '<option value="">Select Location...</option>';
-
-            // Add static options
-            initialLocationSelect.innerHTML += `
-                <option value="corporate">SI-BONE Corporate</option>
-                <option value="trunk">Rep Trunk</option>
-            `;
-
-            // Add locations from Firebase if available
-            if (window.app.locationManager && window.app.locationManager.currentLocations) {
-                const activeLocations = window.app.locationManager.currentLocations
-                    .filter(location => location.active)
-                    .sort((a, b) => a.name.localeCompare(b.name));
-
-                if (activeLocations.length > 0) {
-                    // Add facility locations
-                    activeLocations.forEach(location => {
-                        const option = document.createElement('option');
-                        option.value = location.id;
-                        option.textContent = location.name;
-                        initialLocationSelect.appendChild(option);
-                    });
-                }
-            }
+            // Use the centralized location dropdown function
+            populateTrayLocationDropdown(initialLocationSelect, {
+                includeAllOption: false,
+                includeEmptyOption: true,
+                emptyOptionText: 'Select Location...',
+                includeFacilities: true,
+                staticLocationsOnly: false
+            });
         } catch (error) {
             console.error('Error populating initial location dropdown:', error);
+        }
+    }
+
+    async populateTrayStatusDropdown() {
+        try {
+            const trayStatusSelect = document.getElementById('trayStatus');
+            if (!trayStatusSelect) {
+                console.error('Tray status select element not found');
+                return;
+            }
+
+            // Use the centralized TrayStatus function
+            populateTrayStatusDropdown(trayStatusSelect, {
+                includeAllOption: false,
+                includeEmptyOption: false,
+                selectedValue: 'available' // Default to available for new trays
+            });
+        } catch (error) {
+            console.error('Error populating tray status dropdown:', error);
         }
     }
 
@@ -199,7 +218,7 @@ export class ModalManager {
                 .forEach(surgeon => {
                     const option = document.createElement('option');
                     option.value = surgeon.id; // Store surgeon ID
-                    option.textContent = `${surgeon.title || 'Dr.'} ${surgeon.name}`;
+                    option.textContent = `${surgeon.title || 'Dr.'} ${surgeon.full_name}`;
                     surgeonSelect.appendChild(option);
                 });
         } else {
@@ -366,7 +385,7 @@ export class ModalManager {
                 .forEach(surgeon => {
                     const option = document.createElement('option');
                     option.value = surgeon.id; // Store surgeon ID
-                    option.textContent = `${surgeon.title || 'Dr.'} ${surgeon.name}`;
+                    option.textContent = `${surgeon.title || 'Dr.'} ${surgeon.full_name}`;
                     newDoctorSelect.appendChild(option);
                 });
         } else {
@@ -447,7 +466,7 @@ export class ModalManager {
         if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons) {
             const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === surgeonId);
             if (surgeon) {
-                return `${surgeon.title || 'Dr.'} ${surgeon.name}`;
+                return `${surgeon.title || 'Dr.'} ${surgeon.full_name}`;
             }
         }
 
@@ -607,6 +626,28 @@ export class ModalManager {
         const prioritySelect = document.getElementById('facilityPriority');
         if (prioritySelect) prioritySelect.value = '3';
         
+        // Populate facility type dropdown
+        const facilityTypeSelect = document.getElementById('facilityType');
+        if (facilityTypeSelect) {
+            populateFacilityTypeDropdown(facilityTypeSelect, {
+                includeAllOption: false,
+                includeEmptyOption: true,
+                emptyOptionText: 'Select Type...',
+                selectedValue: DEFAULT_FACILITY_TYPE,
+                useShortLabels: false
+            });
+        }
+        
+        // Initialize Google Places autocomplete for address field
+        setTimeout(() => {
+            googlePlacesAutocomplete.initializeFacilityAutocomplete(
+                'facilityAddress',    // address field
+                'facilityCity',       // city field
+                'facilityState',      // state field
+                'facilityZip'         // zip field
+            );
+        }, 100);
+        
         const modal = new bootstrap.Modal(document.getElementById('addFacilityModal'));
         modal.show();
     }
@@ -622,25 +663,79 @@ export class ModalManager {
             // Populate form fields
             document.getElementById('editFacilityId').value = facilityId;
             document.getElementById('editFacilityName').value = facility.name || '';
-            document.getElementById('editFacilityType').value = facility.type || '';
-            document.getElementById('editFacilitySpecialty').value = facility.specialty || '';
-            document.getElementById('editFacilityAddress').value = facility.address || '';
-            document.getElementById('editFacilityCity').value = facility.city || '';
-            document.getElementById('editFacilityState').value = facility.state || '';
-            document.getElementById('editFacilityZip').value = facility.zip || '';
-            document.getElementById('editFacilityPhone').value = facility.phone || '';
-            document.getElementById('editFacilityTerritory').value = facility.territory || '';
-            document.getElementById('editFacilityPriority').value = facility.priority || '3';
-            document.getElementById('editFacilityContact').value = facility.contact?.primary || '';
-            document.getElementById('editFacilityContactEmail').value = facility.contact?.email || '';
-            document.getElementById('editFacilityNPI').value = facility.npi || '';
-            document.getElementById('editFacilityNotes').value = facility.notes || '';
-            document.getElementById('editFacilityActive').checked = facility.active !== false;
-            document.getElementById('editFacilityLatitude').value = facility.latitude || '';
-            document.getElementById('editFacilityLongitude').value = facility.longitude || '';
-
+            
+            // Populate facility type dropdown with current selection
+            const editFacilityTypeSelect = document.getElementById('editFacilityType');
+            if (editFacilityTypeSelect) {
+                populateFacilityTypeDropdown(editFacilityTypeSelect, {
+                    includeAllOption: false,
+                    includeEmptyOption: true,
+                    emptyOptionText: 'Select Type...',
+                    selectedValue: facility.type,
+                    useShortLabels: false
+                });
+            }
+            
+            // Show modal first, then initialize after DOM is ready
             const modal = new bootstrap.Modal(document.getElementById('editFacilityModal'));
             modal.show();
+            
+            // Wait for modal to be fully shown, then initialize
+            document.getElementById('editFacilityModal').addEventListener('shown.bs.modal', () => {
+                console.log('🔍 Modal shown, checking for editFacilityAddress field...');
+                
+                // Debug: List all input fields in the modal
+                const modal = document.getElementById('editFacilityModal');
+                const allInputs = modal.querySelectorAll('input, select, textarea');
+                console.log('🔍 All form fields in modal:');
+                allInputs.forEach(input => {
+                    console.log(`  - ${input.id || 'no-id'} (${input.tagName})`);
+                });
+                
+                const addressField = document.getElementById('editFacilityAddress');
+                console.log('🔍 editFacilityAddress field found:', !!addressField);
+                
+                if (addressField) {
+                    console.log('🔧 Initializing Google Places autocomplete...');
+                    // Initialize Google Places autocomplete
+                    googlePlacesAutocomplete.initializeFacilityAutocomplete(
+                        'editFacilityAddress',    // address field
+                        'editFacilityCity',       // city field
+                        'editFacilityState',      // state field
+                        'editFacilityZip'         // zip field
+                    );
+                    
+                    // Set form values after a brief delay
+                    setTimeout(() => {
+                        const specialtyField = document.getElementById('editFacilitySpecialty');
+                        const cityField = document.getElementById('editFacilityCity');
+                        const stateField = document.getElementById('editFacilityState');
+                        const zipField = document.getElementById('editFacilityZip');
+                        
+                        if (specialtyField) specialtyField.value = facility.specialty || '';
+                        if (addressField) {
+                            addressField.value = facility.address || '';
+                            console.log('✅ Set editFacilityAddress value:', facility.address);
+                        }
+                        if (cityField) cityField.value = facility.city || '';
+                        if (stateField) stateField.value = facility.state || '';
+                        if (zipField) zipField.value = facility.zip || '';
+                        
+                        document.getElementById('editFacilityPhone').value = facility.phone || '';
+                        document.getElementById('editFacilityTerritory').value = facility.territory || '';
+                        document.getElementById('editFacilityPriority').value = facility.priority || '3';
+                        document.getElementById('editFacilityContact').value = facility.contact?.primary || '';
+                        document.getElementById('editFacilityContactEmail').value = facility.contact?.email || '';
+                        document.getElementById('editFacilityNPI').value = facility.npi || '';
+                        document.getElementById('editFacilityNotes').value = facility.notes || '';
+                        document.getElementById('editFacilityActive').checked = facility.active !== false;
+                        document.getElementById('editFacilityLatitude').value = facility.latitude || '';
+                        document.getElementById('editFacilityLongitude').value = facility.longitude || '';
+                    }, 100);
+                } else {
+                    console.error('❌ editFacilityAddress field still not found after modal shown');
+                }
+            }, { once: true }); // Only run once
         } catch (error) {
             console.error('Error showing edit facility modal:', error);
             this.showErrorNotification('Error loading facility data: ' + error.message);
@@ -685,13 +780,13 @@ export class ModalManager {
                 return;
             }
 
-            await this.logToAPI('Found surgeon', { surgeonId, surgeonName: surgeon.name }, 'surgeon-modal');
+            await this.logToAPI('Found surgeon', { surgeonId, surgeonName: surgeon.full_name }, 'surgeon-modal');
 
             // Populate form fields with correct physician modal IDs
             await this.logToAPI('Populating form fields...', null, 'surgeon-modal');
             document.getElementById('editPhysicianId').value = surgeonId;
             document.getElementById('editPhysicianTitle').value = surgeon.title || 'Dr.';
-            document.getElementById('editPhysicianName').value = surgeon.name || '';
+            document.getElementById('editPhysicianName').value = surgeon.full_name || '';
             document.getElementById('editPhysicianSpecialty').value = surgeon.specialty || '';
             document.getElementById('editPhysicianHospital').value = surgeon.hospital || '';
             document.getElementById('editPhysicianEmail').value = surgeon.email || '';
@@ -884,6 +979,17 @@ export class ModalManager {
                         modalClass: modalElement.className
                     }, 'modal-shown');
                 }
+                
+                // Ensure case status dropdown is populated (backup)
+                const caseStatusSelect = document.getElementById('caseStatus');
+                if (caseStatusSelect && caseStatusSelect.options.length === 0) {
+                    console.log('🔍 DEBUG: Case status dropdown empty, repopulating...');
+                    populateCaseStatusDropdown(caseStatusSelect, {
+                        includeAllOption: false,
+                        includeEmptyOption: false,
+                        selectedValue: DEFAULT_CASE_STATUS
+                    });
+                }
             }, { once: true });
             
             // Then populate dropdowns - sometimes Firebase data takes time to load
@@ -920,7 +1026,7 @@ export class ModalManager {
                 const surgeons = this.dataManager.getSurgeons();
                 console.log('Loading surgeons for dropdown:', surgeons.length);
                 const surgeonOptions = '<option value="">Select Physician</option>' + 
-                    surgeons.map(surgeon => `<option value="${surgeon.id}">${surgeon.name}</option>`).join('');
+                    surgeons.map(surgeon => `<option value="${surgeon.id}">${surgeon.full_name}</option>`).join('');
                 surgeonSelect.innerHTML = surgeonOptions;
                 if (editSurgeonSelect) editSurgeonSelect.innerHTML = surgeonOptions;
             }
@@ -1119,6 +1225,42 @@ export class ModalManager {
                     }
                 }
             }
+            
+            // Populate case status dropdowns
+            const caseStatusSelect = document.getElementById('caseStatus');
+            const editCaseStatusSelect = document.getElementById('editCaseStatus');
+            
+            console.log('🔍 DEBUG: Case status dropdown elements:', {
+                caseStatusSelect: !!caseStatusSelect,
+                editCaseStatusSelect: !!editCaseStatusSelect,
+                caseStatusId: caseStatusSelect?.id,
+                editCaseStatusId: editCaseStatusSelect?.id
+            });
+            
+            if (caseStatusSelect) {
+                console.log('🔍 DEBUG: Populating case status dropdown for add modal');
+                populateCaseStatusDropdown(caseStatusSelect, {
+                    includeAllOption: false,
+                    includeEmptyOption: false,
+                    selectedValue: DEFAULT_CASE_STATUS
+                });
+                console.log('🔍 DEBUG: Case status dropdown populated, options count:', caseStatusSelect.options.length);
+            } else {
+                console.warn('⚠️ Case status dropdown (caseStatus) not found for add modal');
+            }
+            
+            if (editCaseStatusSelect) {
+                console.log('🔍 DEBUG: Populating case status dropdown for edit modal');
+                populateCaseStatusDropdown(editCaseStatusSelect, {
+                    includeAllOption: false,
+                    includeEmptyOption: false,
+                    selectedValue: DEFAULT_CASE_STATUS
+                });
+                console.log('🔍 DEBUG: Edit case status dropdown populated, options count:', editCaseStatusSelect.options.length);
+            } else {
+                console.warn('⚠️ Case status dropdown (editCaseStatus) not found for edit modal');
+            }
+            
         } catch (error) {
             console.error('Error populating case modal dropdowns:', error);
         }
@@ -1466,7 +1608,7 @@ export class ModalManager {
     getPhysicianName(physicianId) {
         if (window.app.dataManager && window.app.dataManager.physicians) {
             const physician = window.app.dataManager.physicians.find(p => p.id === physicianId);
-            return physician ? physician.name : 'Unknown Physician';
+            return physician ? physician.full_name : 'Unknown Physician';
         }
         return 'Unknown Physician';
     }

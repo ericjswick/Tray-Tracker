@@ -127,7 +127,7 @@ export class SurgeonManager {
             const preferredCasesString = '';
 
             const surgeon = {
-                name: document.getElementById('addPhysicianName').value,
+                full_name: document.getElementById('addPhysicianName').value,
                 title: document.getElementById('addPhysicianTitle').value,
                 specialty: document.getElementById('addPhysicianSpecialty').value,
                 hospital: document.getElementById('addPhysicianHospital').value,
@@ -161,7 +161,7 @@ export class SurgeonManager {
             const preferredCasesString = '';
 
             const updates = {
-                name: document.getElementById('editPhysicianName').value,
+                full_name: document.getElementById('editPhysicianName').value,
                 title: document.getElementById('editPhysicianTitle').value,
                 specialty: document.getElementById('editPhysicianSpecialty').value,
                 hospital: document.getElementById('editPhysicianHospital').value,
@@ -208,7 +208,7 @@ export class SurgeonManager {
         if (window.app.dataManager) {
             const surgeonNames = surgeons
                 .filter(surgeon => surgeon.active)
-                .map(surgeon => surgeon.name);
+                .map(surgeon => surgeon.full_name);
             window.app.dataManager.surgeons = surgeonNames;
         }
 
@@ -306,7 +306,7 @@ export class SurgeonManager {
                 <div class="surgeon-specialty-icon">
                     <i class="${specialtyIcon}"></i>
                 </div>
-                ${surgeon.title || 'Dr.'} ${surgeon.name}
+                ${surgeon.title || 'Dr.'} ${surgeon.full_name}
             </div>
             <span class="tray-status-badge ${statusClass}">${statusText}</span>
         </div>
@@ -357,7 +357,7 @@ export class SurgeonManager {
             <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditSurgeonModal('${surgeon.id}')">
                 <i class="fas fa-edit"></i> Edit
             </button>
-            <button class="btn-danger-custom btn-sm" onclick="app.surgeonManager.deleteSurgeon('${surgeon.id}', '${surgeon.name}')">
+            <button class="btn-danger-custom btn-sm" onclick="app.surgeonManager.deleteSurgeon('${surgeon.id}', '${surgeon.full_name}')">
                 <i class="fas fa-trash"></i> Delete
             </button>
         </div>
@@ -381,7 +381,7 @@ export class SurgeonManager {
                     <i class="${specialtyIcon}"></i>
                 </div>
                 <div>
-                    <h6>${surgeon.title || 'Dr.'} ${surgeon.name}</h6>
+                    <h6>${surgeon.title || 'Dr.'} ${surgeon.full_name}</h6>
                     <small class="text-muted">${surgeon.specialty || 'General'}</small>
                 </div>
             </div>
@@ -413,7 +413,7 @@ export class SurgeonManager {
             <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditSurgeonModal('${surgeon.id}')">
                 <i class="fas fa-edit"></i> Edit
             </button>
-            <button class="btn-danger-custom btn-sm" onclick="app.surgeonManager.deleteSurgeon('${surgeon.id}', '${surgeon.name}')">
+            <button class="btn-danger-custom btn-sm" onclick="app.surgeonManager.deleteSurgeon('${surgeon.id}', '${surgeon.full_name}')">
                 <i class="fas fa-trash"></i> Delete
             </button>
         </div>

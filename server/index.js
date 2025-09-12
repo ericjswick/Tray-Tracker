@@ -14,6 +14,9 @@ const physicianPreferencesRoutes = require('./routes/physicianPreferences');
 const authRoutes = require('./routes/auth');
 const debugRoutes = require('./routes/debug');
 const testRoutes = require('./routes/test');
+const migrationsRoutes = require('./routes/migrations');
+// const geocodingRoutes = require('./routes/geocoding'); // Broken - has sendSuccess/sendError issues
+const geocodingSimpleRoutes = require('./routes/geocoding-simple');
 
 // Import middleware
 const authMiddleware = require('./middleware/auth');
@@ -81,7 +84,9 @@ app.get('/', (req, res) => {
       facilities: '/api/facilities',
       caseTypes: '/api/case-types',
       trays: '/api/trays',
-      physicianPreferences: '/api/physician-preferences'
+      physicianPreferences: '/api/physician-preferences',
+      migrations: '/api/migrations',
+      geocoding: '/api/geocoding'
     }
   });
 });
@@ -102,7 +107,9 @@ const apiInfo = {
     facilities: '/api/facilities',
     caseTypes: '/api/case-types',
     trays: '/api/trays',
-    physicianPreferences: '/api/physician-preferences'
+    physicianPreferences: '/api/physician-preferences',
+    migrations: '/api/migrations',
+    geocoding: '/api/geocoding'
   }
 };
 
@@ -114,6 +121,20 @@ app.use('/api/debug', debugRoutes);
 
 // Test routes (for testing Firebase and Twilio connections)
 app.use('/api/test', testRoutes);
+
+// Geocoding routes (no auth required, no Firestore needed) - use working simple version
+app.use('/api/geocoding', geocodingSimpleRoutes);
+app.use('/api/geocoding-simple', geocodingSimpleRoutes);
+
+// Migrations routes (with Firestore middleware for database operations)
+app.use('/api/migrations', (req, res, next) => {
+  try {
+    firestoreMiddleware(req, res, next);
+  } catch (error) {
+    debugLogger.error('Firestore middleware error on migrations', error, 'middleware');
+    res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
+  }
+}, migrationsRoutes);
 
 // API routes with Firestore middleware
 app.use('/api/auth', (req, res, next) => {
