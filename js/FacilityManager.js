@@ -1,5 +1,6 @@
 // js/FacilityManager.js - MyRepData-compatible facility management
 import { collection, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, addDoc, getDocs, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+import { FACILITY_TYPES, getFacilityTypeLabel, getFacilityTypeIcon, getFacilityTypeColor, getFacilityTypeClass, isValidFacilityType } from './constants/FacilityTypes.js';
 
 export class FacilityManager {
     constructor(db) {
@@ -65,7 +66,13 @@ export class FacilityManager {
                 const facilityData = doc.data();
                 // Only include active facilities (not soft-deleted)
                 if (facilityData.active !== false && !facilityData.deletedAt) {
-                    facilities.push({ id: doc.id, ...facilityData });
+                    // Always use Firestore document ID, remove any id field from data
+                    const { id: dataId, ...cleanFacilityData } = facilityData;
+                    facilities.push({ 
+                        id: doc.id,  // Always use Firestore document ID
+                        customId: dataId, // Store original custom ID if it exists
+                        ...cleanFacilityData 
+                    });
                 }
             });
 
@@ -143,7 +150,7 @@ export class FacilityManager {
         const card = document.createElement('div');
         card.className = 'location-card';
         
-        const typeIcon = this.getTypeIcon(facility.type);
+        const typeIcon = getFacilityTypeIcon(facility.type);
         const statusText = facility.active ? 'Active' : 'Inactive';
         const statusClass = facility.active ? 'status-available' : 'status-in-use';
         
@@ -160,8 +167,14 @@ export class FacilityManager {
             <div class="location-card-content">
                 <div class="location-detail">
                     <i class="fas fa-building"></i>
-                    <span class="location-detail-value">${this.getTypeText(facility.type)}</span>
+                    <span class="location-detail-value">${getFacilityTypeLabel(facility.type)}</span>
                 </div>
+                ${facility.address ? `
+                    <div class="location-detail">
+                        <i class="fas fa-road"></i>
+                        <span class="location-detail-value">${facility.address}</span>
+                    </div>
+                ` : ''}
                 <div class="location-detail">
                     <i class="fas fa-map-marker-alt"></i>
                     <span class="location-detail-value">${facility.city || ''}, ${facility.state || ''}</span>
@@ -225,7 +238,7 @@ export class FacilityManager {
 
         const statusText = facility.active ? 'Active' : 'Inactive';
         const statusClass = facility.active ? 'status-available' : 'status-in-use';
-        const typeIcon = this.getTypeIcon(facility.type);
+        const typeIcon = getFacilityTypeIcon(facility.type);
 
         card.innerHTML = `
             <div class="location-horizontal-header">
@@ -235,7 +248,7 @@ export class FacilityManager {
                     </div>
                     <div>
                         <h6>${facility.name || 'Unnamed Facility'}</h6>
-                        <small class="text-muted">${this.getTypeText(facility.type)}</small>
+                        <small class="text-muted">${getFacilityTypeLabel(facility.type)}</small>
                     </div>
                 </div>
                 <div class="location-horizontal-status">
@@ -306,6 +319,27 @@ export class FacilityManager {
 
     async addFacility() {
         try {
+            // Check if all required elements exist
+            const requiredFields = [
+                'facilityName', 'facilityType', 'facilityAddress', 
+                'facilityCity', 'facilityState', 'facilityZip'
+            ];
+            
+            for (const fieldId of requiredFields) {
+                const element = document.getElementById(fieldId);
+                if (!element) {
+                    throw new Error(`Required field '${fieldId}' not found in form`);
+                }
+                if (!element.value.trim()) {
+                    throw new Error(`${fieldId.replace('facility', '').replace(/([A-Z])/g, ' $1').trim()} is required`);
+                }
+            }
+            
+            // Check database connection
+            if (!this.db) {
+                throw new Error('Database connection not available');
+            }
+            
             const facility = {
                 id: document.getElementById('facilityId').value.trim() || null,
                 name: document.getElementById('facilityName').value.trim(),
@@ -347,7 +381,16 @@ export class FacilityManager {
                 throw new Error('State is required');
             }
 
-            await addDoc(collection(this.db, this.collectionName), facility);
+            // Handle custom ID vs auto-generated ID
+            if (facility.id) {
+                // Use custom ID as document ID
+                const facilityWithoutId = { ...facility };
+                delete facilityWithoutId.id; // Remove id field since it becomes the document ID
+                await setDoc(doc(this.db, this.collectionName, facility.id), facilityWithoutId);
+            } else {
+                // Auto-generate document ID
+                await addDoc(collection(this.db, this.collectionName), facility);
+            }
             
             // Close modal
             const modal = document.getElementById('addFacilityModal');
@@ -364,13 +407,20 @@ export class FacilityManager {
             console.log('Facility added to MyRepData-compatible collection');
         } catch (error) {
             console.error('Error adding facility:', error);
-            window.app.notificationManager.show(`Error adding facility: ${error.message}`, 'error');
+            const errorMessage = error.message || 'Unknown error occurred';
+            window.app.notificationManager.show(`Error adding facility: ${errorMessage}`, 'error');
         }
     }
 
     async updateFacility() {
         try {
             const facilityId = document.getElementById('editFacilityId').value;
+            
+            // Verify the facility exists in our current facilities list
+            const existingFacility = this.currentFacilities.find(f => f.id === facilityId);
+            if (!existingFacility) {
+                throw new Error(`Facility with ID '${facilityId}' not found`);
+            }
             
             const updates = {
                 name: document.getElementById('editFacilityName').value.trim(),
@@ -423,7 +473,8 @@ export class FacilityManager {
             console.log('Facility updated in MyRepData-compatible collection');
         } catch (error) {
             console.error('Error updating facility:', error);
-            window.app.notificationManager.show(`Error updating facility: ${error.message}`, 'error');
+            const errorMessage = error.message || 'Unknown error occurred';
+            window.app.notificationManager.show(`Error updating facility: ${errorMessage}`, 'error');
         }
     }
 
@@ -535,23 +586,7 @@ export class FacilityManager {
         }
     }
 
-    getTypeIcon(type) {
-        const typeIcons = {
-            'ASC': 'fas fa-clinic-medical',
-            'Hospital': 'fas fa-hospital',
-            'OBL': 'fas fa-briefcase-medical'
-        };
-        return typeIcons[type] || 'fas fa-building';
-    }
-
-    getTypeText(type) {
-        const typeTexts = {
-            'ASC': 'Ambulatory Surgery Center',
-            'Hospital': 'Hospital',
-            'OBL': 'Office-Based Lab'
-        };
-        return typeTexts[type] || type || 'Unknown';
-    }
+    // Facility type functions moved to constants/FacilityTypes.js for central management
 
     cleanup() {
         if (this.facilitiesUnsubscribe) {
