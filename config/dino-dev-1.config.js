@@ -9,6 +9,11 @@ export const firebaseConfig = {
     measurementId: "G-97ZVXH82ZR"
 };
 
+// Google Places API configuration
+export const googlePlacesConfig = {
+    apiKey: "AIzaSyAG0BVldOukQNWUV-XiC5oDe2OTX33EYaA"
+};
+
 // Environment-specific settings
 export const environmentConfig = {
     name: "dino-dev-1",

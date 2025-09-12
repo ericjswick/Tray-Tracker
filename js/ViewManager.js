@@ -1,6 +1,7 @@
 // js/ViewManager.js - Updated for Tray Tracker
 import { routingDetector } from './utils/RoutingDetector.js';
-import { isInUseStatus, isCheckedInStatus } from './constants/TrayStatus.js';
+import { isInUseStatus, isCheckedInStatus, populateTrayStatusDropdown } from './constants/TrayStatus.js';
+import { populateFacilityTypeDropdown } from './constants/FacilityTypes.js';
 
 export class ViewManager {
     constructor() {
@@ -75,7 +76,7 @@ export class ViewManager {
             case 'team':
                 this.initializeTeamView();
                 break;
-            case 'facilities':
+            case 'map':
                 this.initializeFacilitiesView();
                 break;
             case 'trays':
@@ -101,6 +102,9 @@ export class ViewManager {
                 break;
             case 'cases':
                 this.initializeCasesView();
+                break;
+            case 'migrations':
+                this.initializeMigrationsView();
                 break;
         }
     }
@@ -136,6 +140,16 @@ export class ViewManager {
                 console.error('CasesManager not found');
             }
         }, 100);
+    }
+
+    initializeMigrationsView() {
+        console.log('Initializing migrations view');
+        if (window.app.migrationsManager) {
+            // Load migration status on view initialization
+            window.app.migrationsManager.checkMigrationStatus();
+        } else {
+            console.error('MigrationsManager not found');
+        }
     }
 
     initializeDashboard() {
@@ -184,6 +198,33 @@ export class ViewManager {
 
     initializeFacilitiesView() {
         setTimeout(() => {
+            // Populate facility type filter dropdown
+            const locationTypeFilter = document.getElementById('locationTypeFilter');
+            if (locationTypeFilter) {
+                populateFacilityTypeDropdown(locationTypeFilter, {
+                    includeAllOption: true,
+                    allOptionText: 'All Facility Types',
+                    includeEmptyOption: false,
+                    useShortLabels: true
+                });
+            }
+            
+            // Populate tray status filter dropdown
+            const trayStatusFilter = document.getElementById('trayStatusFilter');
+            if (trayStatusFilter) {
+                populateTrayStatusDropdown(trayStatusFilter, {
+                    includeAllOption: true,
+                    allOptionText: 'All Tray Status',
+                    includeEmptyOption: false
+                });
+            }
+            
+            // Initialize facility manager to load facilities
+            if (window.app.facilityManager) {
+                console.log('🏗️ Initializing facility manager for map view...');
+                window.app.facilityManager.initializeViewMode();
+            }
+            
             if (window.app.mapManager) {
                 window.app.mapManager.initializeMap();
                 
@@ -659,7 +700,7 @@ export class ViewManager {
         if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons) {
             const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === surgeonId);
             if (surgeon) {
-                return `${surgeon.title || 'Dr.'} ${surgeon.name}`;
+                return `${surgeon.title || 'Dr.'} ${surgeon.full_name}`;
             }
         }
 
@@ -1034,7 +1075,7 @@ export class ViewManager {
 
     // Get view name from current URL
     getViewFromUrl() {
-        const validViews = ['dashboard', 'team', 'facilities', 'trays', 'users', 'facilityAdmin', 'surgeons', 'physicians', 'map', 'casetypes', 'cases'];
+        const validViews = ['dashboard', 'team', 'map', 'trays', 'users', 'facilityAdmin', 'surgeons', 'physicians', 'casetypes', 'cases', 'migrations'];
         
         if (this.routingStrategy === 'clean') {
             // Clean URLs: check pathname
@@ -1067,7 +1108,7 @@ export class ViewManager {
         const navItems = [
             { id: 'nav-dashboard', view: 'dashboard' },
             { id: 'nav-team', view: 'team' },
-            { id: 'nav-facilities', view: 'facilities' },
+            { id: 'nav-facilities', view: 'map' },
             { id: 'nav-trays', view: 'trays' },
             { id: 'nav-users', view: 'users' },
             { id: 'nav-facilityAdmin', view: 'facilityAdmin' },
@@ -1201,7 +1242,7 @@ export class ViewManager {
     isValidView(viewName) {
         const validViews = [
             'dashboard', 'team', 'facilities', 'trays', 'users', 
-            'facilityAdmin', 'surgeons', 'physicians', 'map', 'casetypes', 'cases'
+            'facilityAdmin', 'surgeons', 'physicians', 'map', 'casetypes', 'cases', 'migrations'
         ];
         return validViews.includes(viewName);
     }

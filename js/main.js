@@ -1,10 +1,10 @@
 // js/main.js - Updated for Tray Tracker
 
 // Version logging for deployment verification (run first)
-const appVersion = '1.3.0-logging-cleanup';
+const appVersion = '1.4.0-google-places-widget';
 const buildDate = new Date().toISOString().split('T')[0];
 console.log(`🚀 TrayTracker App v${appVersion} (Build: ${buildDate})`);
-console.log('📦 Features: Real-time Firebase subscriptions, Cross-browser sync, Reduced logging noise');
+console.log('📦 Features: New Google Places widget, Street address separation, Enhanced debugging');
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
@@ -30,6 +30,7 @@ import { SurgeonManager } from './SurgeonManager.js';
 import { CaseTypeManager } from './CaseTypeManager.js';
 import { CasesManager } from './CasesManager.js';
 import { DashboardManager } from './DashboardManager.js';
+import { MigrationsManager } from './MigrationsManager.js';
 import { FrontendLogger } from './utils/FrontendLogger.js';
 import { FixTrayIdMigration } from './utils/FixTrayIdMigration.js';
 import { FacilityMigration } from './migration/migrateFacilities.js';
@@ -83,6 +84,7 @@ class SIBoneApp {
         this.caseTypeManager = new CaseTypeManager(db);
         this.casesManager = new CasesManager(this.dataManager);
         this.dashboardManager = new DashboardManager(this.dataManager);
+        this.migrationsManager = new MigrationsManager();
         
         // Initialize migration tools
         this.facilityMigration = new FacilityMigration(db);

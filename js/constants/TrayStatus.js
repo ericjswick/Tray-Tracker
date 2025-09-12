@@ -98,3 +98,110 @@ export function getStatusColor(status) {
 
 // All possible status values (for validation)
 export const ALL_STATUSES = Object.values(TRAY_STATUS);
+
+// Status options for dropdowns with display labels
+export const TRAY_STATUS_OPTIONS = [
+    { value: TRAY_STATUS.AVAILABLE, label: 'Available', description: 'Ready for use' },
+    { value: TRAY_STATUS.IN_USE, label: 'In Use', description: 'Currently in surgery' },
+    { value: TRAY_STATUS.CHECKED_IN, label: 'Checked In', description: 'Checked in for a specific case' },
+    { value: TRAY_STATUS.PICKED_UP, label: 'Picked Up', description: 'Picked up from storage' },
+    { value: TRAY_STATUS.CLEANING, label: 'Cleaning', description: 'Being processed/cleaned' },
+    { value: TRAY_STATUS.MAINTENANCE, label: 'Maintenance', description: 'Under repair' },
+    { value: TRAY_STATUS.MISSING, label: 'Missing', description: 'Lost/unaccounted for' },
+    { value: TRAY_STATUS.UNKNOWN, label: 'Unknown', description: 'Status could not be determined' }
+];
+
+// UI Population Helper - Central function to populate dropdowns
+export function populateTrayStatusDropdown(selectElement, options = {}) {
+    if (!selectElement) {
+        console.error('TrayStatus.populateTrayStatusDropdown: selectElement is null');
+        return;
+    }
+    
+    const {
+        includeAllOption = true,
+        allOptionText = 'All Tray Status',
+        includeEmptyOption = false,
+        emptyOptionText = 'Select Status...',
+        selectedValue = null,
+        filterStatuses = null // array of status values to include
+    } = options;
+    
+    // Clear existing options
+    selectElement.innerHTML = '';
+    
+    // Add "All" option if requested
+    if (includeAllOption) {
+        const allOption = document.createElement('option');
+        allOption.value = '';
+        allOption.textContent = allOptionText;
+        selectElement.appendChild(allOption);
+    }
+    
+    // Add empty/placeholder option if requested
+    if (includeEmptyOption) {
+        const emptyOption = document.createElement('option');
+        emptyOption.value = '';
+        emptyOption.textContent = emptyOptionText;
+        selectElement.appendChild(emptyOption);
+    }
+    
+    // Get status options to display
+    let statusesToShow = TRAY_STATUS_OPTIONS;
+    if (filterStatuses && Array.isArray(filterStatuses)) {
+        statusesToShow = TRAY_STATUS_OPTIONS.filter(option => 
+            filterStatuses.includes(option.value)
+        );
+    }
+    
+    // Add status options
+    statusesToShow.forEach(option => {
+        const optionElement = document.createElement('option');
+        optionElement.value = option.value;
+        optionElement.textContent = option.label;
+        if (selectedValue === option.value) {
+            optionElement.selected = true;
+        }
+        selectElement.appendChild(optionElement);
+    });
+}
+
+// Helper to get all status options as HTML string (for dynamic insertion)
+export function getTrayStatusOptionsHTML(options = {}) {
+    const {
+        includeAllOption = true,
+        allOptionText = 'All Tray Status',
+        includeEmptyOption = false,
+        emptyOptionText = 'Select Status...',
+        selectedValue = null,
+        filterStatuses = null
+    } = options;
+    
+    let html = '';
+    
+    // Add "All" option if requested
+    if (includeAllOption) {
+        html += `<option value="">${allOptionText}</option>`;
+    }
+    
+    // Add empty/placeholder option if requested  
+    if (includeEmptyOption) {
+        html += `<option value="">${emptyOptionText}</option>`;
+    }
+    
+    // Get status options to display
+    let statusesToShow = TRAY_STATUS_OPTIONS;
+    if (filterStatuses && Array.isArray(filterStatuses)) {
+        statusesToShow = TRAY_STATUS_OPTIONS.filter(option => 
+            filterStatuses.includes(option.value)
+        );
+    }
+    
+    // Add status options
+    statusesToShow.forEach(option => {
+        const selected = selectedValue === option.value ? ' selected' : '';
+        html += `<option value="${option.value}"${selected}>${option.label}</option>`;
+    });
+    
+    return html;
+}
