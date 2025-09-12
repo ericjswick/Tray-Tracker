@@ -1,6 +1,6 @@
 // js/TrayManager.js - Updated for Tray Tracker
 import { TRAY_STATUS, normalizeStatus, isInUseStatus, isAvailableStatus, isCheckedInStatus, getStatusDisplayText, getStatusColor } from './constants/TrayStatus.js';
-import { TRAY_LOCATIONS, getLocationDisplayText, getLocationIcon } from './constants/TrayLocations.js';
+import { TRAY_LOCATIONS, getLocationDisplayText, getLocationIcon, getLocationCoordinates } from './constants/TrayLocations.js';
 export class TrayManager {
     constructor(dataManager) {
         this.dataManager = dataManager;
@@ -70,7 +70,7 @@ export class TrayManager {
             const assignedTo = document.getElementById('trayAssignedTo').value || '';
             
             const trayData = {
-                name: document.getElementById('trayName').value,
+                tray_name: document.getElementById('trayName').value,
                 type: '', // Keep empty for legacy compatibility if no types selected
                 case_type_compatibility: selectedCaseTypes, // MyRepData format
                 status: document.getElementById('trayStatus').value || TRAY_STATUS.AVAILABLE, // Use selected status or default to available
@@ -81,6 +81,29 @@ export class TrayManager {
                 assignedTo: assignedTo,
                 notes: ''
             };
+
+            // Handle coordinate assignment - manual GPS coordinates take priority
+            const manualLatitude = document.getElementById('trayLatitude').value;
+            const manualLongitude = document.getElementById('trayLongitude').value;
+            
+            if (manualLatitude && manualLongitude) {
+                // Use manually entered GPS coordinates
+                trayData.latitude = parseFloat(manualLatitude);
+                trayData.longitude = parseFloat(manualLongitude);
+                trayData.locationSource = 'manual_gps';
+                trayData.locationTimestamp = new Date().toISOString();
+                console.log(`📍 Creating tray with manual GPS coordinates:`, trayData.latitude, trayData.longitude);
+            } else if (locationValue === TRAY_LOCATIONS.TRUNK || locationValue === TRAY_LOCATIONS.CORPORATE) {
+                // Fall back to predefined location coordinates if no manual GPS provided
+                const locationCoords = getLocationCoordinates(locationValue);
+                if (locationCoords) {
+                    trayData.latitude = locationCoords.latitude;
+                    trayData.longitude = locationCoords.longitude;
+                    trayData.locationSource = `tray_creation_${locationValue}`;
+                    trayData.locationTimestamp = new Date().toISOString();
+                    console.log(`📍 Creating tray with ${locationValue} coordinates:`, locationCoords.latitude, locationCoords.longitude);
+                }
+            }
 
             const savedTray = await this.dataManager.saveTray(trayData);
             if (savedTray && savedTray.id) {
@@ -120,15 +143,26 @@ export class TrayManager {
         await window.app.modalManager.populateTrayStatusDropdown();
         await this.populateUserDropdown();
 
+        console.log('🔧 All dropdowns populated, now setting tray data...');
+
         // Populate form with existing tray data
-        document.getElementById('trayName').value = tray.name || '';
+        document.getElementById('trayName').value = tray.tray_name || '';
         
         // Set case type compatibility
         const trayTypeSelect = document.getElementById('trayType');
         if (tray.case_type_compatibility && Array.isArray(tray.case_type_compatibility)) {
+            console.log('🔧 Setting case type compatibility for tray:', tray.tray_name, 'Compatibility:', tray.case_type_compatibility);
+            console.log('🔧 Available options:', Array.from(trayTypeSelect.options).map(o => o.value));
+            
             Array.from(trayTypeSelect.options).forEach(option => {
-                option.selected = tray.case_type_compatibility.includes(option.value);
+                const shouldSelect = tray.case_type_compatibility.includes(option.value);
+                option.selected = shouldSelect;
+                if (shouldSelect) {
+                    console.log('✅ Selected option:', option.value);
+                }
             });
+        } else {
+            console.log('⚠️ No case_type_compatibility found for tray:', tray.tray_name, 'Data:', tray.case_type_compatibility);
         }
         
         // Set location
@@ -139,6 +173,10 @@ export class TrayManager {
         
         // Set assigned user
         document.getElementById('trayAssignedTo').value = tray.assignedTo || '';
+        
+        // Set GPS coordinates if available
+        document.getElementById('trayLatitude').value = tray.latitude || '';
+        document.getElementById('trayLongitude').value = tray.longitude || '';
 
         // Show the modal
         new bootstrap.Modal(document.getElementById('addTrayModal')).show();
@@ -173,7 +211,7 @@ export class TrayManager {
             const assignedTo = document.getElementById('trayAssignedTo').value || '';
             
             const updateData = {
-                name: document.getElementById('trayName').value,
+                tray_name: document.getElementById('trayName').value,
                 case_type_compatibility: selectedCaseTypes,
                 status: document.getElementById('trayStatus').value,
                 location: locationValue,
@@ -181,6 +219,29 @@ export class TrayManager {
                 lastModified: new Date(),
                 modifiedBy: window.app.authManager.getCurrentUser()?.uid || ''
             };
+
+            // Handle coordinate updates - manual GPS coordinates take priority
+            const manualLatitude = document.getElementById('trayLatitude').value;
+            const manualLongitude = document.getElementById('trayLongitude').value;
+            
+            if (manualLatitude && manualLongitude) {
+                // Use manually entered GPS coordinates
+                updateData.latitude = parseFloat(manualLatitude);
+                updateData.longitude = parseFloat(manualLongitude);
+                updateData.locationSource = 'manual_gps';
+                updateData.locationTimestamp = new Date().toISOString();
+                console.log(`📍 Setting manual GPS coordinates:`, updateData.latitude, updateData.longitude);
+            } else if (locationValue === TRAY_LOCATIONS.TRUNK || locationValue === TRAY_LOCATIONS.CORPORATE) {
+                // Fall back to predefined location coordinates if no manual GPS provided
+                const locationCoords = getLocationCoordinates(locationValue);
+                if (locationCoords) {
+                    updateData.latitude = locationCoords.latitude;
+                    updateData.longitude = locationCoords.longitude;
+                    updateData.locationSource = `manual_${locationValue}`;
+                    updateData.locationTimestamp = new Date().toISOString();
+                    console.log(`📍 Setting ${locationValue} coordinates:`, locationCoords.latitude, locationCoords.longitude);
+                }
+            }
 
             // Check if assignment changed for history logging
             const tray = this.currentTrays.find(t => t.id === trayId);
@@ -226,6 +287,10 @@ export class TrayManager {
         document.getElementById('editTrayId').value = '';
         document.getElementById('addTrayForm').reset();
         
+        // Clear GPS coordinates explicitly
+        document.getElementById('trayLatitude').value = '';
+        document.getElementById('trayLongitude').value = '';
+        
         // Set default status to available for new trays
         document.getElementById('trayStatus').value = 'available';
     }
@@ -262,6 +327,12 @@ export class TrayManager {
                 photoUrl = await window.app.photoManager.uploadPhoto('checkin', 'checkin-photos');
             }
 
+            // Get facility coordinates for check-in location
+            const facilityCoordinates = this.getFacilityCoordinates(facility);
+            if (facilityCoordinates) {
+                console.log('📍 Using facility coordinates for tray check-in:', facilityCoordinates);
+            }
+
             const updates = {
                 status: TRAY_STATUS.IN_USE, // Use MyRepData compatible status
                 location: facility, // Keep legacy location field for backward compatibility
@@ -271,7 +342,14 @@ export class TrayManager {
                 surgeon: surgeon, // Keep legacy surgeon field for backward compatibility  
                 physician_id: surgeon, // Store physician ID for proper matching
                 notes: notes,
-                checkinPhotoUrl: photoUrl
+                checkinPhotoUrl: photoUrl,
+                // Add facility coordinates if available
+                ...(facilityCoordinates && {
+                    latitude: facilityCoordinates.latitude,
+                    longitude: facilityCoordinates.longitude,
+                    locationSource: facilityCoordinates.source,
+                    locationTimestamp: new Date().toISOString()
+                })
             };
 
             await this.dataManager.updateTray(trayId, updates);
@@ -321,6 +399,9 @@ export class TrayManager {
                 photoUrl = await window.app.photoManager.uploadPhoto('pickup', 'pickup-photos');
             }
 
+            // Get trunk coordinates from central function
+            const trunkCoords = getLocationCoordinates(TRAY_LOCATIONS.TRUNK);
+
             const updates = {
                 status: TRAY_STATUS.AVAILABLE,
                 location: TRAY_LOCATIONS.TRUNK,
@@ -328,7 +409,12 @@ export class TrayManager {
                 caseDate: '',
                 surgeon: '',
                 notes: notes,
-                pickupPhotoUrl: photoUrl
+                pickupPhotoUrl: photoUrl,
+                // Set coordinates to trunk location
+                latitude: trunkCoords?.latitude,
+                longitude: trunkCoords?.longitude,
+                locationSource: 'trunk_pickup',
+                locationTimestamp: new Date().toISOString()
             };
 
             await this.dataManager.updateTray(trayId, updates);
@@ -372,10 +458,18 @@ export class TrayManager {
                 const notes = document.getElementById('reassignNotes').value;
                 const newDoctor = document.getElementById('newDoctor').value;
 
+                // Get trunk coordinates from central function
+                const trunkCoords = getLocationCoordinates(TRAY_LOCATIONS.TRUNK);
+
                 const updates = {
                     assignedTo: whoPickedUp,
                     status: TRAY_STATUS.AVAILABLE,
-                    location: TRAY_LOCATIONS.TRUNK
+                    location: TRAY_LOCATIONS.TRUNK,
+                    // Set coordinates to trunk location
+                    latitude: trunkCoords?.latitude,
+                    longitude: trunkCoords?.longitude,
+                    locationSource: 'trunk_reassignment',
+                    locationTimestamp: new Date().toISOString()
                 };
 
                 if (newDoctor) {
@@ -412,7 +506,7 @@ export class TrayManager {
                 const updates = {
                     caseDate: newCaseDate, // Assume this is in CDT - will convert on display
                     status: TRAY_STATUS.IN_USE,
-                    location: 'facility',
+                    location: TRAY_LOCATIONS.FACILITY,
                     turnoverCheckinPhotoUrl: checkinPhotoUrl,
                     turnoverPhotoUrl: turnoverPhotoUrl
                 };
@@ -645,7 +739,7 @@ export class TrayManager {
                     <div class="tray-type-icon">
                         <i class="${typeIcon}"></i>
                     </div>
-                    ${tray.name}
+                    ${tray.tray_name}
                 </div>
                 <span class="tray-status-badge ${statusClass}">${tray.status}</span>
             </div>
@@ -721,7 +815,7 @@ export class TrayManager {
                         <i class="${trayTypeIcon}"></i>
                     </div>
                     <div>
-                        <h6>${tray.name}</h6>
+                        <h6>${tray.tray_name}</h6>
                         <small class="text-muted">${this.getTrayTypeText(tray)}</small>
                     </div>
                 </div>
@@ -942,7 +1036,7 @@ export class TrayManager {
             
             const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
             if (facility) {
-                return facility.name;
+                return facility.account_name;
             } else {
             }
         }
@@ -952,7 +1046,7 @@ export class TrayManager {
         if (facilities && facilities.length > 0) {
             const facility = facilities.find(f => f.id === facilityId);
             if (facility) {
-                return facility.name;
+                return facility.account_name;
             }
         }
         
@@ -990,6 +1084,45 @@ export class TrayManager {
         }
         
         return result;
+    }
+
+    /**
+     * Get facility coordinates for check-in location tracking
+     * @param {string} facilityId - The facility ID to look up
+     * @returns {object|null} - Object with latitude and longitude, or null if not found
+     */
+    getFacilityCoordinates(facilityId) {
+        if (!facilityId) {
+            return null;
+        }
+
+        // Try facilityManager first
+        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
+            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
+            if (facility && facility.latitude && facility.longitude) {
+                return {
+                    latitude: facility.latitude,
+                    longitude: facility.longitude,
+                    source: 'facility_coordinates'
+                };
+            }
+        }
+
+        // Fallback to dataManager
+        const facilities = this.dataManager.getFacilities();
+        if (facilities && facilities.length > 0) {
+            const facility = facilities.find(f => f.id === facilityId);
+            if (facility && facility.latitude && facility.longitude) {
+                return {
+                    latitude: facility.latitude,
+                    longitude: facility.longitude,
+                    source: 'facility_coordinates'
+                };
+            }
+        }
+
+        console.warn(`📍 No coordinates found for facility: ${facilityId}`);
+        return null;
     }
 
     getTrayActions(tray) {
@@ -1150,5 +1283,89 @@ export class TrayManager {
         } catch (error) {
             // Silent fail for non-critical timestamp updates
         }
+    }
+
+    /**
+     * Get the device's current location using GPS
+     */
+    async getCurrentLocation() {
+        const latitudeField = document.getElementById('trayLatitude');
+        const longitudeField = document.getElementById('trayLongitude');
+        const button = document.querySelector('[onclick="app.trayManager.getCurrentLocation()"]');
+
+        if (!navigator.geolocation) {
+            this.showErrorNotification('Geolocation is not supported by this device/browser');
+            return;
+        }
+
+        // Update button state to show loading
+        const originalButtonContent = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Getting Location...';
+        button.disabled = true;
+
+        try {
+            const position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(
+                    resolve,
+                    reject,
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 300000 // 5 minutes
+                    }
+                );
+            });
+
+            const latitude = position.coords.latitude;
+            const longitude = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+
+            // Set the field values
+            latitudeField.value = latitude.toFixed(6);
+            longitudeField.value = longitude.toFixed(6);
+
+            // Show success message with accuracy info
+            this.showSuccessNotification(
+                `Location captured successfully! Accuracy: ${Math.round(accuracy)}m`
+            );
+
+            console.log(`📍 Location captured: ${latitude}, ${longitude} (accuracy: ${accuracy}m)`);
+
+        } catch (error) {
+            let errorMessage = 'Unable to get location';
+            
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMessage = 'Location access denied. Please enable location permissions.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMessage = 'Location information is unavailable.';
+                    break;
+                case error.TIMEOUT:
+                    errorMessage = 'Location request timed out. Please try again.';
+                    break;
+            }
+
+            this.showErrorNotification(errorMessage);
+            console.error('Geolocation error:', error);
+
+        } finally {
+            // Restore button state
+            button.innerHTML = originalButtonContent;
+            button.disabled = false;
+        }
+    }
+
+    /**
+     * Clear the latitude and longitude fields
+     */
+    clearLocationFields() {
+        const latitudeField = document.getElementById('trayLatitude');
+        const longitudeField = document.getElementById('trayLongitude');
+        
+        latitudeField.value = '';
+        longitudeField.value = '';
+        
+        this.showSuccessNotification('Location fields cleared');
     }
 }

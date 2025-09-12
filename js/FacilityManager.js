@@ -59,7 +59,7 @@ export class FacilityManager {
             this.facilitiesUnsubscribe();
         }
 
-        const facilitiesQuery = query(collection(this.db, this.collectionName), orderBy('name', 'asc'));
+        const facilitiesQuery = query(collection(this.db, this.collectionName), orderBy('account_name', 'asc'));
         this.facilitiesUnsubscribe = onSnapshot(facilitiesQuery, (snapshot) => {
             const facilities = [];
             snapshot.forEach((doc) => {
@@ -150,7 +150,7 @@ export class FacilityManager {
         const card = document.createElement('div');
         card.className = 'location-card';
         
-        const typeIcon = getFacilityTypeIcon(facility.type);
+        const typeIcon = getFacilityTypeIcon(facility.account_record_type);
         const statusText = facility.active ? 'Active' : 'Inactive';
         const statusClass = facility.active ? 'status-available' : 'status-in-use';
         
@@ -160,24 +160,24 @@ export class FacilityManager {
                     <div class="location-type-icon">
                         <i class="${typeIcon}"></i>
                     </div>
-                    ${facility.name || 'Unnamed Facility'}
+                    ${facility.account_name || 'Unnamed Facility'}
                 </div>
                 <span class="tray-status-badge ${statusClass}">${statusText}</span>
             </div>
             <div class="location-card-content">
                 <div class="location-detail">
                     <i class="fas fa-building"></i>
-                    <span class="location-detail-value">${getFacilityTypeLabel(facility.type)}</span>
+                    <span class="location-detail-value">${getFacilityTypeLabel(facility.account_record_type)}</span>
                 </div>
-                ${facility.address ? `
+                ${facility.address?.street ? `
                     <div class="location-detail">
                         <i class="fas fa-road"></i>
-                        <span class="location-detail-value">${facility.address}</span>
+                        <span class="location-detail-value">${facility.address?.street}</span>
                     </div>
                 ` : ''}
                 <div class="location-detail">
                     <i class="fas fa-map-marker-alt"></i>
-                    <span class="location-detail-value">${facility.city || ''}, ${facility.state || ''}</span>
+                    <span class="location-detail-value">${facility.address?.city || ''}, ${facility.address?.state || ''}</span>
                 </div>
                 ${facility.phone ? `
                     <div class="location-detail">
@@ -223,7 +223,7 @@ export class FacilityManager {
                 <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditFacilityModal('${facility.id}')">
                     <i class="fas fa-edit"></i> Edit
                 </button>
-                <button class="btn-danger-custom btn-sm" onclick="app.facilityManager.deleteFacility('${facility.id}', '${facility.name}')">
+                <button class="btn-danger-custom btn-sm" onclick="app.facilityManager.deleteFacility('${facility.id}', '${facility.account_name}')">
                     <i class="fas fa-trash"></i> Delete
                 </button>
             </div>
@@ -238,7 +238,7 @@ export class FacilityManager {
 
         const statusText = facility.active ? 'Active' : 'Inactive';
         const statusClass = facility.active ? 'status-available' : 'status-in-use';
-        const typeIcon = getFacilityTypeIcon(facility.type);
+        const typeIcon = getFacilityTypeIcon(facility.account_record_type);
 
         card.innerHTML = `
             <div class="location-horizontal-header">
@@ -247,8 +247,8 @@ export class FacilityManager {
                         <i class="${typeIcon}"></i>
                     </div>
                     <div>
-                        <h6>${facility.name || 'Unnamed Facility'}</h6>
-                        <small class="text-muted">${getFacilityTypeLabel(facility.type)}</small>
+                        <h6>${facility.account_name || 'Unnamed Facility'}</h6>
+                        <small class="text-muted">${getFacilityTypeLabel(facility.account_record_type)}</small>
                     </div>
                 </div>
                 <div class="location-horizontal-status">
@@ -259,11 +259,11 @@ export class FacilityManager {
             <div class="location-horizontal-body">
                 <div class="location-horizontal-field">
                     <label>Address</label>
-                    <span>${facility.address || 'No address provided'}</span>
+                    <span>${facility.address?.street || 'No address provided'}</span>
                 </div>
                 <div class="location-horizontal-field">
                     <label>City, State</label>
-                    <span>${facility.city || ''}, ${facility.state || ''} ${facility.zip || ''}</span>
+                    <span>${facility.address?.city || ''}, ${facility.address?.state || ''} ${facility.address?.zip || ''}</span>
                 </div>
                 <div class="location-horizontal-field">
                     <label>Contact</label>
@@ -283,7 +283,7 @@ export class FacilityManager {
                 <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditFacilityModal('${facility.id}')">
                     <i class="fas fa-edit"></i> Edit
                 </button>
-                <button class="btn-danger-custom btn-sm" onclick="app.facilityManager.deleteFacility('${facility.id}', '${facility.name}')">
+                <button class="btn-danger-custom btn-sm" onclick="app.facilityManager.deleteFacility('${facility.id}', '${facility.account_name}')">
                     <i class="fas fa-trash"></i> Delete
                 </button>
             </div>
@@ -307,8 +307,8 @@ export class FacilityManager {
         };
 
         facilities.forEach(facility => {
-            if (stats[facility.type] !== undefined) {
-                stats[facility.type]++;
+            if (stats[facility.account_record_type] !== undefined) {
+                stats[facility.account_record_type]++;
             }
         });
 
@@ -342,13 +342,15 @@ export class FacilityManager {
             
             const facility = {
                 id: document.getElementById('facilityId').value.trim() || null,
-                name: document.getElementById('facilityName').value.trim(),
-                type: document.getElementById('facilityType').value,
+                account_name: document.getElementById('facilityName').value.trim(),
+                account_record_type: document.getElementById('facilityType').value,
                 specialty: document.getElementById('facilitySpecialty').value,
-                address: document.getElementById('facilityAddress').value.trim(),
-                city: document.getElementById('facilityCity').value.trim(),
-                state: document.getElementById('facilityState').value.trim(),
-                zip: document.getElementById('facilityZip').value.trim(),
+                address: {
+                    street: document.getElementById('facilityAddress').value.trim(),
+                    city: document.getElementById('facilityCity').value.trim(),
+                    state: document.getElementById('facilityState').value.trim(),
+                    zip: document.getElementById('facilityZip').value.trim()
+                },
                 phone: document.getElementById('facilityPhone').value.trim(),
                 territory: document.getElementById('facilityTerritory').value,
                 priority: parseInt(document.getElementById('facilityPriority').value) || 3,
@@ -368,16 +370,16 @@ export class FacilityManager {
             };
 
             // Basic validation
-            if (!facility.name) {
-                throw new Error('Facility name is required');
+            if (!facility.account_name) {
+                throw new Error('Facility account name is required');
             }
-            if (!facility.type) {
-                throw new Error('Facility type is required');
+            if (!facility.account_record_type) {
+                throw new Error('Facility account record type is required');
             }
-            if (!facility.city) {
+            if (!facility.address?.city) {
                 throw new Error('City is required');
             }
-            if (!facility.state) {
+            if (!facility.address?.state) {
                 throw new Error('State is required');
             }
 
@@ -423,13 +425,15 @@ export class FacilityManager {
             }
             
             const updates = {
-                name: document.getElementById('editFacilityName').value.trim(),
-                type: document.getElementById('editFacilityType').value,
+                account_name: document.getElementById('editFacilityName').value.trim(),
+                account_record_type: document.getElementById('editFacilityType').value,
                 specialty: document.getElementById('editFacilitySpecialty').value,
-                address: document.getElementById('editFacilityAddress').value.trim(),
-                city: document.getElementById('editFacilityCity').value.trim(),
-                state: document.getElementById('editFacilityState').value.trim(),
-                zip: document.getElementById('editFacilityZip').value.trim(),
+                address: {
+                    street: document.getElementById('editFacilityAddress').value.trim(),
+                    city: document.getElementById('editFacilityCity').value.trim(),
+                    state: document.getElementById('editFacilityState').value.trim(),
+                    zip: document.getElementById('editFacilityZip').value.trim()
+                },
                 phone: document.getElementById('editFacilityPhone').value.trim(),
                 territory: document.getElementById('editFacilityTerritory').value,
                 priority: parseInt(document.getElementById('editFacilityPriority').value) || 3,
@@ -447,16 +451,16 @@ export class FacilityManager {
             };
 
             // Basic validation
-            if (!updates.name) {
-                throw new Error('Facility name is required');
+            if (!updates.account_name) {
+                throw new Error('Facility account name is required');
             }
-            if (!updates.type) {
-                throw new Error('Facility type is required');
+            if (!updates.account_record_type) {
+                throw new Error('Facility account record type is required');
             }
-            if (!updates.city) {
+            if (!updates.address.city) {
                 throw new Error('City is required');
             }
-            if (!updates.state) {
+            if (!updates.address.state) {
                 throw new Error('State is required');
             }
 
@@ -505,13 +509,15 @@ export class FacilityManager {
             // Use the defaults from our MyRepData-compatible FacilityModel
             const defaults = [
                 {
-                    name: 'Advanced Spine Center',
-                    type: 'ASC',
+                    account_name: 'Advanced Spine Center',
+                    account_record_type: 'ASC',
                     specialty: 'Ortho Spine',
-                    address: '123 Medical Drive',
-                    city: 'Milwaukee',
-                    state: 'WI',
-                    zip: '53201',
+                    address: {
+                        street: '123 Medical Drive',
+                        city: 'Milwaukee',
+                        state: 'WI',
+                        zip: '53201'
+                    },
                     phone: '+1-555-0456',
                     territory: 'Wisconsin East',
                     priority: 1,
@@ -524,13 +530,15 @@ export class FacilityManager {
                     notes: 'Premier outpatient spine surgery center'
                 },
                 {
-                    name: 'Aurora Medical Center - Grafton',
-                    type: 'Hospital',
+                    account_name: 'Aurora Medical Center - Grafton',
+                    account_record_type: 'Hospital',
                     specialty: 'Ortho',
-                    address: '975 Port Washington Rd',
-                    city: 'Grafton',
-                    state: 'WI',
-                    zip: '53024',
+                    address: {
+                        street: '975 Port Washington Rd',
+                        city: 'Grafton',
+                        state: 'WI',
+                        zip: '53024'
+                    },
                     phone: '+1-262-329-1000',
                     territory: 'Wisconsin East',
                     priority: 1,
@@ -543,13 +551,15 @@ export class FacilityManager {
                     notes: 'Full-service hospital with advanced spine services'
                 },
                 {
-                    name: 'Pain Management Associates',
-                    type: 'OBL',
+                    account_name: 'Pain Management Associates',
+                    account_record_type: 'OBL',
                     specialty: 'Pain Management',
-                    address: '456 Wellness Blvd',
-                    city: 'Madison',
-                    state: 'WI',
-                    zip: '53719',
+                    address: {
+                        street: '456 Wellness Blvd',
+                        city: 'Madison',
+                        state: 'WI',
+                        zip: '53719'
+                    },
                     phone: '+1-608-555-0123',
                     territory: 'Wisconsin West',
                     priority: 3,

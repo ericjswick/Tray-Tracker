@@ -1,5 +1,6 @@
 // js/MapManager.js
 import { TRAY_STATUS, normalizeStatus, isInUseStatus, isAvailableStatus, getStatusDisplayText } from './constants/TrayStatus.js';
+import { TRAY_LOCATIONS, getLocationCoordinatesArray } from './constants/TrayLocations.js';
 export class MapManager {
     constructor() {
         this.map = null;
@@ -21,8 +22,9 @@ export class MapManager {
     initializeMap() {
         if (this.map) return;
 
-        // Initialize map centered on Wisconsin/Milwaukee area as default
-        this.map = L.map('map').setView([43.0389, -87.9065], 8);
+        // Initialize map centered on Milwaukee area as default
+        const defaultCenter = getLocationCoordinatesArray(TRAY_LOCATIONS.TRUNK) || [43.0389, -87.9065];
+        this.map = L.map('map').setView(defaultCenter, 8);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
@@ -31,6 +33,8 @@ export class MapManager {
 
     updateMap(trays) {
         if (!this.map) return;
+        
+        console.log('🗺️ DEBUG: updateMap called with', trays.length, 'trays');
 
         // Clear existing markers
         this.markers.forEach(marker => this.map.removeLayer(marker));
@@ -39,8 +43,16 @@ export class MapManager {
         // Apply filters
         const availabilityFilter = document.getElementById('trayStatusFilter')?.value || '';
         const typeFilter = document.getElementById('typeFilter')?.value || '';
+        const searchTerm = document.getElementById('locationSearch')?.value.toLowerCase() || '';
 
         const filteredTrays = trays.filter(tray => {
+            // Search filter (tray name or facility) - same logic as addFilteredTrayMarkers
+            if (searchTerm && 
+                !tray.tray_name?.toLowerCase().includes(searchTerm) && 
+                !tray.facility?.toLowerCase().includes(searchTerm)) {
+                return false;
+            }
+            
             if (availabilityFilter && tray.status !== availabilityFilter) return false;
             if (typeFilter) {
                 // Support both legacy type and MyRepData case type compatibility
@@ -54,17 +66,19 @@ export class MapManager {
             }
             return true;
         });
+        
+        console.log('🗺️ DEBUG: After filtering:', filteredTrays.length, 'trays remain');
+        console.log('🗺️ DEBUG: Filters applied - search:', searchTerm, 'status:', availabilityFilter, 'type:', typeFilter);
 
         filteredTrays.forEach(tray => {
             let position;
 
-            if (tray.location === 'facility' && tray.facility && this.facilityLocations[tray.facility]) {
+            if (tray.location === TRAY_LOCATIONS.FACILITY && tray.facility && this.facilityLocations[tray.facility]) {
                 position = this.facilityLocations[tray.facility];
-            } else if (tray.location === 'corporate') {
-                position = [37.4419, -122.1430]; // SI-BONE HQ (simulated)
-            } else if (tray.location === 'trunk') {
-                // Random position around Wisconsin for demo
-                position = [43.0389 + (Math.random() - 0.5) * 0.5, -87.9065 + (Math.random() - 0.5) * 0.5];
+            } else if (tray.location === TRAY_LOCATIONS.CORPORATE) {
+                position = getLocationCoordinatesArray(TRAY_LOCATIONS.CORPORATE);
+            } else if (tray.location === TRAY_LOCATIONS.TRUNK) {
+                position = getLocationCoordinatesArray(TRAY_LOCATIONS.TRUNK);
             }
 
             if (position) {
@@ -83,7 +97,7 @@ export class MapManager {
 
                 const popupContent = `
                 <div class="p-2">
-                    <h6>${tray.name}</h6>
+                    <h6>${tray.tray_name}</h6>
                     <p class="mb-1"><span class="badge ${statusClass}">${tray.status}</span></p>
                     <p class="mb-1"><strong>Type:</strong> ${window.app.trayManager.getTrayTypeText(tray)}</p>
                     <p class="mb-1"><strong>Location:</strong> ${window.app.trayManager.getLocationText(tray.location)}</p>
@@ -189,12 +203,12 @@ export class MapManager {
         // Apply filters
         const filteredLocations = locations.filter(location => {
             // Search filter
-            if (searchTerm && !location.name?.toLowerCase().includes(searchTerm)) {
+            if (searchTerm && !(location.account_name || location.name)?.toLowerCase().includes(searchTerm)) {
                 return false;
             }
             
             // Type filter
-            if (typeFilter && location.type !== typeFilter) {
+            if (typeFilter && (location.account_record_type || location.type) !== typeFilter) {
                 return false;
             }
             
@@ -263,12 +277,12 @@ export class MapManager {
         // Apply facility filters
         const filteredLocations = locations.filter(location => {
             // Search filter
-            if (searchTerm && !location.name?.toLowerCase().includes(searchTerm)) {
+            if (searchTerm && !(location.account_name || location.name)?.toLowerCase().includes(searchTerm)) {
                 return false;
             }
             
             // Type filter
-            if (typeFilter && location.type !== typeFilter) {
+            if (typeFilter && (location.account_record_type || location.type) !== typeFilter) {
                 return false;
             }
             
@@ -309,7 +323,7 @@ export class MapManager {
         const filteredTrays = trays.filter(tray => {
             // Search filter (tray name or facility)
             if (searchTerm && 
-                !tray.name?.toLowerCase().includes(searchTerm) && 
+                !tray.tray_name?.toLowerCase().includes(searchTerm) && 
                 !tray.facility?.toLowerCase().includes(searchTerm)) {
                 return false;
             }
@@ -334,17 +348,40 @@ export class MapManager {
     }
 
     displayTrayMarkers(trays) {
+        let coordinateTrays = 0;
+        let legacyTrays = 0; 
+        let corporateTrays = 0;
+        let trunkTrays = 0;
+        let noLocationTrays = 0;
+
         trays.forEach(tray => {
             let position = null;
 
-            // Determine marker position based on tray location
-            if (tray.location === 'facility' && tray.facility && this.facilityLocations[tray.facility]) {
+            // Use tray's stored coordinates first (from facility check-in)
+            if (tray.latitude && tray.longitude) {
+                position = [parseFloat(tray.latitude), parseFloat(tray.longitude)];
+                coordinateTrays++;
+                console.log(`📍 Using tray coordinates for ${tray.tray_name}: [${position[0]}, ${position[1]}]`);
+            }
+            // Fallback to legacy logic for trays without coordinates
+            else if (tray.location === TRAY_LOCATIONS.FACILITY && tray.facility && this.facilityLocations[tray.facility]) {
                 position = this.facilityLocations[tray.facility];
-            } else if (tray.location === 'corporate') {
-                position = [37.4419, -122.1430]; // SI-BONE HQ (simulated)
-            } else if (tray.location === 'trunk') {
-                // Random position around Wisconsin for demo
-                position = [43.0389 + (Math.random() - 0.5) * 0.5, -87.9065 + (Math.random() - 0.5) * 0.5];
+                legacyTrays++;
+                console.log(`📍 Using legacy facility coordinates for ${tray.tray_name}: [${position[0]}, ${position[1]}]`);
+            } else if (tray.location === TRAY_LOCATIONS.CORPORATE) {
+                position = getLocationCoordinatesArray(TRAY_LOCATIONS.CORPORATE);
+                corporateTrays++;
+                console.log(`📍 Using corporate location for ${tray.tray_name}`);
+            } else if (tray.location === TRAY_LOCATIONS.TRUNK) {
+                position = getLocationCoordinatesArray(TRAY_LOCATIONS.TRUNK);
+                trunkTrays++;
+                console.log(`📍 Using trunk location for ${tray.tray_name}`);
+            } else {
+                // Default fallback location for trays with no coordinates
+                // Use trunk location as default
+                position = getLocationCoordinatesArray(TRAY_LOCATIONS.TRUNK);
+                noLocationTrays++;
+                console.log(`📍 Using default location for ${tray.tray_name} (no coordinates available)`);
             }
 
             if (position) {
@@ -381,12 +418,36 @@ export class MapManager {
                     `;
                 }
 
+                // Create location info with coordinates if available
+                let locationInfo = window.app.trayManager.getLocationText(tray.location);
+                let coordinateInfo = '';
+                
+                if (tray.latitude && tray.longitude) {
+                    coordinateInfo = `
+                        <p class="mb-1">
+                            <strong>📍 Coordinates:</strong> 
+                            <small>${parseFloat(tray.latitude).toFixed(4)}, ${parseFloat(tray.longitude).toFixed(4)}</small>
+                        </p>
+                    `;
+                    if (tray.locationSource) {
+                        coordinateInfo += `<p class="mb-1"><small><strong>Source:</strong> ${tray.locationSource.replace('_', ' ')}</small></p>`;
+                    }
+                    if (tray.locationTimestamp) {
+                        const timestamp = new Date(tray.locationTimestamp).toLocaleString();
+                        coordinateInfo += `<p class="mb-1"><small><strong>Located:</strong> ${timestamp}</small></p>`;
+                    }
+                } else {
+                    // Show when using fallback/legacy location
+                    coordinateInfo = `<p class="mb-1"><small><strong>📍 Location:</strong> Using default area (no specific coordinates)</small></p>`;
+                }
+
                 const popupContent = `
                     <div class="tray-popup">
-                        <h6 class="popup-title">${tray.name}</h6>
+                        <h6 class="popup-title">${tray.tray_name}</h6>
                         <p class="mb-1"><strong>Status:</strong> <span class="status-${tray.status}">${tray.status.charAt(0).toUpperCase() + tray.status.slice(1)}</span></p>
-                        <p class="mb-1"><strong>Location:</strong> ${window.app.trayManager.getLocationText(tray.location)}</p>
+                        <p class="mb-1"><strong>Location:</strong> ${locationInfo}</p>
                         ${tray.facility ? `<p class="mb-1"><strong>Facility:</strong> ${tray.facility}</p>` : ''}
+                        ${coordinateInfo}
                         ${tray.caseDate ? `<p class="mb-1"><strong>Case Date:</strong> ${tray.caseDate}</p>` : ''}
                         ${surgeonName && surgeonName !== 'Not assigned' ? `<p class="mb-2"><strong>Surgeon:</strong> ${surgeonName}</p>` : ''}
                         ${actions ? `<div class="d-flex gap-2 mt-2">${actions}</div>` : ''}
@@ -395,8 +456,20 @@ export class MapManager {
 
                 marker.bindPopup(popupContent);
                 this.markers.push(marker);
+            } else {
+                // Log trays that couldn't be positioned on the map
+                console.warn(`📍 No coordinates available for tray ${tray.tray_name} (ID: ${tray.id}). Location: ${tray.location}, Facility: ${tray.facility || 'none'}`);
             }
         });
+
+        // Log location statistics
+        console.log(`📊 Map Tray Location Statistics:
+        📍 Facility Coordinates: ${coordinateTrays} trays
+        📍 Legacy Locations: ${legacyTrays} trays  
+        📍 Corporate: ${corporateTrays} trays
+        📍 Trunk: ${trunkTrays} trays
+        ❌ No Location: ${noLocationTrays} trays
+        📍 Total Mapped: ${coordinateTrays + legacyTrays + corporateTrays + trunkTrays} / ${trays.length} trays`);
     }
 
     getTrayMarkerColor(status) {
@@ -428,7 +501,7 @@ export class MapManager {
                 const position = [location.latitude, location.longitude];
                 
                 // Create different colored markers based on location type
-                const markerColor = this.getLocationMarkerColor(location.type);
+                const markerColor = this.getLocationMarkerColor(location.account_record_type || location.type);
                 const markerIcon = L.divIcon({
                     className: 'location-marker',
                     html: `<div class="marker-pin" style="background-color: ${markerColor}; width: 25px; height: 25px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"><i class="fas fa-map-marker-alt" style="transform: rotate(45deg); color: white; font-size: 12px;"></i></div>`,
@@ -441,15 +514,29 @@ export class MapManager {
                 const statusClass = location.active ? 'status-active' : 'status-inactive';
                 const statusText = location.active ? 'Active' : 'Inactive';
 
+                // Format address from nested object structure
+                let addressText = '';
+                if (location.address && typeof location.address === 'object') {
+                    const addressParts = [
+                        location.address.street,
+                        location.address.city,
+                        location.address.state,
+                        location.address.zip
+                    ].filter(Boolean);
+                    addressText = addressParts.join(', ');
+                } else if (location.address && typeof location.address === 'string') {
+                    // Fallback for legacy flat address
+                    addressText = location.address;
+                }
+
                 const popupContent = `
                     <div class="location-popup">
-                        <h6 class="popup-title">${location.name}</h6>
-                        <p class="mb-1"><strong>Type:</strong> ${location.type?.replace('_', ' ') || 'Unknown'}</p>
+                        <h6 class="popup-title">${location.account_name || location.name || 'Unnamed Facility'}</h6>
+                        <p class="mb-1"><strong>Type:</strong> ${(location.account_record_type || location.type || 'Unknown').replace('_', ' ')}</p>
                         <p class="mb-1"><strong>Status:</strong> <span class="${statusClass}">${statusText}</span></p>
-                        ${location.address ? `<p class="mb-1"><strong>Address:</strong> ${location.address}</p>` : ''}
-                        ${location.city && location.state ? `<p class="mb-1"><strong>Location:</strong> ${location.city}, ${location.state}</p>` : ''}
+                        ${addressText ? `<p class="mb-1"><strong>Address:</strong> ${addressText}</p>` : ''}
                         ${location.phone ? `<p class="mb-1"><strong>Phone:</strong> ${location.phone}</p>` : ''}
-                        ${location.region ? `<p class="mb-0"><strong>Region:</strong> ${location.region}</p>` : ''}
+                        ${location.territory || location.region ? `<p class="mb-0"><strong>Territory:</strong> ${location.territory || location.region}</p>` : ''}
                     </div>
                 `;
 

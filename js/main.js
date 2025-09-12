@@ -31,6 +31,7 @@ import { CaseTypeManager } from './CaseTypeManager.js';
 import { CasesManager } from './CasesManager.js';
 import { DashboardManager } from './DashboardManager.js';
 import { MigrationsManager } from './MigrationsManager.js';
+import { emailNotifications } from './utils/EmailNotifications.js';
 import { FrontendLogger } from './utils/FrontendLogger.js';
 import { FixTrayIdMigration } from './utils/FixTrayIdMigration.js';
 import { FacilityMigration } from './migration/migrateFacilities.js';
@@ -85,6 +86,7 @@ class SIBoneApp {
         this.casesManager = new CasesManager(this.dataManager);
         this.dashboardManager = new DashboardManager(this.dataManager);
         this.migrationsManager = new MigrationsManager();
+        this.emailNotifications = emailNotifications;
         
         // Initialize migration tools
         this.facilityMigration = new FacilityMigration(db);

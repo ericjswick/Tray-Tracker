@@ -208,8 +208,8 @@ export function getFacilityTypeStats(facilities) {
     
     // Count facilities by type
     facilities.forEach(facility => {
-        if (facility.type && stats.byType.hasOwnProperty(facility.type)) {
-            stats.byType[facility.type]++;
+        if (facility.account_record_type && stats.byType.hasOwnProperty(facility.account_record_type)) {
+            stats.byType[facility.account_record_type]++;
         }
     });
     

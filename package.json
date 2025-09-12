@@ -1,0 +1,16 @@
+{
+  "name": "tray-tracker-api",
+  "version": "1.0.0",
+  "description": "TrayTracker serverless API functions",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "vercel build",
+    "deploy": "vercel deploy"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

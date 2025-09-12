@@ -2,6 +2,7 @@
 import { routingDetector } from './utils/RoutingDetector.js';
 import { isInUseStatus, isCheckedInStatus, populateTrayStatusDropdown } from './constants/TrayStatus.js';
 import { populateFacilityTypeDropdown } from './constants/FacilityTypes.js';
+import { TRAY_LOCATIONS } from './constants/TrayLocations.js';
 
 export class ViewManager {
     constructor() {
@@ -105,6 +106,9 @@ export class ViewManager {
                 break;
             case 'migrations':
                 this.initializeMigrationsView();
+                break;
+            case 'admin_data_migrations':
+                this.initializeAdminDataMigrationsView();
                 break;
         }
     }
@@ -397,7 +401,7 @@ export class ViewManager {
                     <div class="tray-type-icon">
                         <i class="${typeIcon}"></i>
                     </div>
-                    ${tray.name}
+                    ${tray.tray_name}
                 </div>
                 <span class="tray-status-badge ${statusClass}">${tray.status}</span>
             </div>
@@ -724,7 +728,7 @@ export class ViewManager {
         if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
             const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
             if (facility) {
-                return facility.name;
+                return facility.account_name;
             }
         }
         
@@ -734,7 +738,7 @@ export class ViewManager {
             if (facilities && facilities.length > 0) {
                 const facility = facilities.find(f => f.id === facilityId);
                 if (facility) {
-                    return facility.name;
+                    return facility.account_name;
                 }
             }
         }
@@ -837,7 +841,7 @@ export class ViewManager {
             active: trays.length,
             available: trays.filter(t => t.status === 'available').length,
             inUse: trays.filter(t => t.status === 'in-use' || t.status === 'in_use').length,
-            corporate: trays.filter(t => t.location === 'corporate').length
+            corporate: trays.filter(t => t.location === TRAY_LOCATIONS.CORPORATE).length
         };
 
         // Update dashboard metrics
@@ -1075,7 +1079,7 @@ export class ViewManager {
 
     // Get view name from current URL
     getViewFromUrl() {
-        const validViews = ['dashboard', 'team', 'map', 'trays', 'users', 'facilityAdmin', 'surgeons', 'physicians', 'casetypes', 'cases', 'migrations'];
+        const validViews = ['dashboard', 'team', 'map', 'trays', 'users', 'facilityAdmin', 'surgeons', 'physicians', 'casetypes', 'cases', 'migrations', 'admin_data_migrations'];
         
         if (this.routingStrategy === 'clean') {
             // Clean URLs: check pathname
@@ -1146,7 +1150,7 @@ export class ViewManager {
         });
 
         // Also update dropdown items without navigation IDs
-        const dropdownViews = ['users', 'facilityAdmin', 'surgeons', 'physicians', 'cases', 'casetypes'];
+        const dropdownViews = ['users', 'facilityAdmin', 'surgeons', 'physicians', 'cases', 'casetypes', 'admin_data_migrations'];
         dropdownViews.forEach(view => {
             const elements = document.querySelectorAll(`a[href="#${view}"], a[href="/${view}"]`);
             elements.forEach(element => {
@@ -1242,7 +1246,7 @@ export class ViewManager {
     isValidView(viewName) {
         const validViews = [
             'dashboard', 'team', 'facilities', 'trays', 'users', 
-            'facilityAdmin', 'surgeons', 'physicians', 'map', 'casetypes', 'cases', 'migrations'
+            'facilityAdmin', 'surgeons', 'physicians', 'map', 'casetypes', 'cases', 'migrations', 'admin_data_migrations'
         ];
         return validViews.includes(viewName);
     }
@@ -1297,5 +1301,125 @@ export class ViewManager {
         }
         
         console.log('History listeners set up for', this.routingStrategy, 'routing');
+    }
+
+    initializeAdminDataMigrationsView() {
+        console.log('Initializing admin data migrations view');
+        
+        // Create the migrations interface
+        const migrationsView = document.getElementById('admin_data_migrationsView');
+        if (migrationsView) {
+            migrationsView.innerHTML = `
+                <div class="container-fluid">
+                    <div class="row mb-4">
+                        <div class="col">
+                            <h2><i class="fas fa-database"></i> Data Migrations</h2>
+                            <p class="text-muted">Manage and execute data migrations for the system</p>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="fas fa-tag"></i> Tray Name Migration</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p>Migrates tray <code>name</code> field to <code>tray_name</code> to match MyRepData format.</p>
+                                    <div class="mb-3">
+                                        <button class="btn btn-info btn-sm" onclick="checkTrayNameMigrationStatus()">
+                                            <i class="fas fa-search"></i> Check Status
+                                        </button>
+                                        <button class="btn btn-primary" onclick="runTrayNameMigrationFromUI()">
+                                            <i class="fas fa-play"></i> Run Migration
+                                        </button>
+                                    </div>
+                                    <div id="trayNameMigrationStatus" class="alert alert-secondary d-none"></div>
+                                    <div id="trayNameMigrationResult" class="alert d-none"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="fas fa-clock"></i> Tray Timestamp Migration</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p>Migrates tray timestamps from <code>createdAt/updatedAt</code> to <code>created_at/updated_at</code>.</p>
+                                    <div class="mb-3">
+                                        <button class="btn btn-info btn-sm" onclick="checkTrayTimestampMigrationStatus()">
+                                            <i class="fas fa-search"></i> Check Status
+                                        </button>
+                                        <button class="btn btn-primary" onclick="runTrayTimestampMigrationFromUI()">
+                                            <i class="fas fa-play"></i> Run Migration
+                                        </button>
+                                    </div>
+                                    <div id="trayTimestampMigrationStatus" class="alert alert-secondary d-none"></div>
+                                    <div id="trayTimestampMigrationResult" class="alert d-none"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-4">
+                        <div class="col">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="fas fa-terminal"></i> Console Output</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="migrationConsoleOutput" style="background: #1e1e1e; color: #fff; padding: 15px; border-radius: 4px; height: 300px; overflow-y: auto; font-family: 'Courier New', monospace;">
+                                        Migration console output will appear here...
+                                    </div>
+                                    <button class="btn btn-secondary btn-sm mt-2" onclick="clearMigrationConsole()">
+                                        <i class="fas fa-trash"></i> Clear Console
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Override console.log temporarily to capture output
+            this.setupMigrationConsoleCapture();
+        }
+    }
+    
+    setupMigrationConsoleCapture() {
+        // Store original console methods
+        const originalLog = console.log;
+        const originalError = console.error;
+        
+        // Override console methods to also display in UI
+        console.log = (...args) => {
+            originalLog.apply(console, args);
+            this.appendToMigrationConsole('log', args.join(' '));
+        };
+        
+        console.error = (...args) => {
+            originalError.apply(console, args);
+            this.appendToMigrationConsole('error', args.join(' '));
+        };
+        
+        // Store originals for restoration
+        window._originalConsole = { log: originalLog, error: originalError };
+    }
+    
+    appendToMigrationConsole(type, message) {
+        const consoleOutput = document.getElementById('migrationConsoleOutput');
+        if (consoleOutput) {
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? '#ff6b6b' : '#4ecdc4';
+            const prefix = type === 'error' ? '❌' : '📝';
+            
+            consoleOutput.innerHTML += `
+                <div style="color: ${color}; margin-bottom: 5px;">
+                    [${timestamp}] ${prefix} ${message}
+                </div>
+            `;
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
     }
 }

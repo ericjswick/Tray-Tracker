@@ -5,18 +5,19 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 
 // Import routes
-const caseRoutes = require('./routes/cases');
-const surgeonRoutes = require('./routes/surgeons');
-const facilityRoutes = require('./routes/facilities');
-const caseTypeRoutes = require('./routes/caseTypes');
-const trayRoutes = require('./routes/trays');
-const physicianPreferencesRoutes = require('./routes/physicianPreferences');
-const authRoutes = require('./routes/auth');
+// const caseRoutes = require('./routes/cases'); // TEMP DISABLED - missing CaseService
+// const surgeonRoutes = require('./routes/surgeons'); // TEMP DISABLED
+// const facilityRoutes = require('./routes/facilities'); // TEMP DISABLED
+// const caseTypeRoutes = require('./routes/caseTypes'); // TEMP DISABLED
+// const trayRoutes = require('./routes/trays'); // TEMP DISABLED
+// const physicianPreferencesRoutes = require('./routes/physicianPreferences'); // TEMP DISABLED
+// const authRoutes = require('./routes/auth'); // TEMP DISABLED
 const debugRoutes = require('./routes/debug');
 const testRoutes = require('./routes/test');
-const migrationsRoutes = require('./routes/migrations');
+// const migrationsRoutes = require('./routes/migrations'); // TEMP DISABLED
 // const geocodingRoutes = require('./routes/geocoding'); // Broken - has sendSuccess/sendError issues
 const geocodingSimpleRoutes = require('./routes/geocoding-simple');
+const notificationsRoutes = require('./routes/notifications');
 
 // Import middleware
 const authMiddleware = require('./middleware/auth');
@@ -126,80 +127,82 @@ app.use('/api/test', testRoutes);
 app.use('/api/geocoding', geocodingSimpleRoutes);
 app.use('/api/geocoding-simple', geocodingSimpleRoutes);
 
-// Migrations routes (with Firestore middleware for database operations)
-app.use('/api/migrations', (req, res, next) => {
-  try {
-    firestoreMiddleware(req, res, next);
-  } catch (error) {
-    debugLogger.error('Firestore middleware error on migrations', error, 'middleware');
-    res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
-  }
-}, migrationsRoutes);
+// TEMP DISABLED - Migrations routes (with Firestore middleware for database operations)
+// app.use('/api/migrations', (req, res, next) => {
+//   try {
+//     firestoreMiddleware(req, res, next);
+//   } catch (error) {
+//     debugLogger.error('Firestore middleware error on migrations', error, 'middleware');
+//     res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
+//   }
+// }, migrationsRoutes);
 
-// API routes with Firestore middleware
-app.use('/api/auth', (req, res, next) => {
-  try {
-    firestoreMiddleware(req, res, next);
-  } catch (error) {
-    debugLogger.error('Firestore middleware error on auth', error, 'middleware');
-    res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
-  }
-}, authRoutes);
+// TEMP DISABLED - API routes with Firestore middleware
+// app.use('/api/auth', (req, res, next) => {
+//   try {
+//     firestoreMiddleware(req, res, next);
+//   } catch (error) {
+//     debugLogger.error('Firestore middleware error on auth', error, 'middleware');
+//     res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
+//   }
+// }, authRoutes);
 
-app.use('/api/cases', (req, res, next) => {
-  try {
-    firestoreMiddleware(req, res, next);
-  } catch (error) {
-    debugLogger.error('Firestore middleware error on cases', error, 'middleware');
-    res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
-  }
-}, authMiddleware, caseRoutes);
+// app.use('/api/cases', (req, res, next) => {
+//   try {
+//     firestoreMiddleware(req, res, next);
+//   } catch (error) {
+//     debugLogger.error('Firestore middleware error on cases', error, 'middleware');
+//     res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
+//   }
+// }, authMiddleware, caseRoutes);
 
-app.use('/api/surgeons', (req, res, next) => {
-  try {
-    firestoreMiddleware(req, res, next);
-  } catch (error) {
-    debugLogger.error('Firestore middleware error on surgeons', error, 'middleware');
-    res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
-  }
-}, authMiddleware, surgeonRoutes);
+// app.use('/api/surgeons', (req, res, next) => {
+//   try {
+//     firestoreMiddleware(req, res, next);
+//   } catch (error) {
+//     debugLogger.error('Firestore middleware error on surgeons', error, 'middleware');
+//     res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
+//   }
+// }, authMiddleware, surgeonRoutes);
 
-app.use('/api/facilities', (req, res, next) => {
-  try {
-    firestoreMiddleware(req, res, next);
-  } catch (error) {
-    debugLogger.error('Firestore middleware error on facilities', error, 'middleware');
-    res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
-  }
-}, authMiddleware, facilityRoutes);
+// app.use('/api/facilities', (req, res, next) => {
+//   try {
+//     firestoreMiddleware(req, res, next);
+//   } catch (error) {
+//     debugLogger.error('Firestore middleware error on facilities', error, 'middleware');
+//     res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
+//   }
+// }, authMiddleware, facilityRoutes);
 
-app.use('/api/case-types', (req, res, next) => {
-  try {
-    firestoreMiddleware(req, res, next);
-  } catch (error) {
-    debugLogger.error('Firestore middleware error on case-types', error, 'middleware');
-    res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
-  }
-}, authMiddleware, caseTypeRoutes);
+// app.use('/api/case-types', (req, res, next) => {
+//   try {
+//     firestoreMiddleware(req, res, next);
+//   } catch (error) {
+//     debugLogger.error('Firestore middleware error on case-types', error, 'middleware');
+//     res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
+//   }
+// }, authMiddleware, caseTypeRoutes);
 
-app.use('/api/trays', (req, res, next) => {
-  try {
-    firestoreMiddleware(req, res, next);
-  } catch (error) {
-    debugLogger.error('Firestore middleware error on trays', error, 'middleware');
-    res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
-  }
-}, authMiddleware, trayRoutes);
+// app.use('/api/trays', (req, res, next) => {
+//   try {
+//     firestoreMiddleware(req, res, next);
+//   } catch (error) {
+//     debugLogger.error('Firestore middleware error on trays', error, 'middleware');
+//     res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
+//   }
+// }, authMiddleware, trayRoutes);
 
-app.use('/api/physician-preferences', (req, res, next) => {
-  try {
-    firestoreMiddleware(req, res, next);
-  } catch (error) {
-    debugLogger.error('Firestore middleware error on physician preferences', error, 'middleware');
-    res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
-  }
-}, authMiddleware, physicianPreferencesRoutes);
+// app.use('/api/physician-preferences', (req, res, next) => {
+//   try {
+//     firestoreMiddleware(req, res, next);
+//   } catch (error) {
+//     debugLogger.error('Firestore middleware error on physician preferences', error, 'middleware');
+//     res.status(500).json({ success: false, error: { message: 'Database connection failed' } });
+//   }
+// }, authMiddleware, physicianPreferencesRoutes);
 
+// Notifications routes (email, etc.) - no middleware like debug routes
+app.use('/api/notifications', notificationsRoutes);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);

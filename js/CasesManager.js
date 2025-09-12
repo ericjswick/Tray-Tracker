@@ -349,7 +349,7 @@ export class CasesManager {
                     ${caseItem.priority === 'urgent' ? '<span class="badge bg-danger ms-2">Urgent</span>' : ''}
                 </td>
                 <td>${surgeon ? surgeon.full_name : (surgeons.length === 0 ? 'Loading...' : 'Unknown')}</td>
-                <td>${facility ? facility.name : (facilities.length === 0 ? 'Loading...' : 'Unknown')}</td>
+                <td>${facility ? facility.account_name : (facilities.length === 0 ? 'Loading...' : 'Unknown')}</td>
                 <td>
                     <div>${dateStr}</div>
                     <small class="text-muted">${timeStr}</small>
@@ -437,7 +437,7 @@ export class CasesManager {
                         </div>
                         <div class="tray-detail">
                             <i class="fas fa-hospital"></i>
-                            <span class="tray-detail-value">${facility ? facility.name : (facilities.length === 0 ? 'Loading...' : 'Unknown Facility')}</span>
+                            <span class="tray-detail-value">${facility ? facility.account_name : (facilities.length === 0 ? 'Loading...' : 'Unknown Facility')}</span>
                         </div>
                         <div class="tray-detail">
                             <i class="fas fa-calendar"></i>
@@ -938,7 +938,7 @@ export class CasesManager {
                         <div class="col-md-6">
                             <strong>Patient:</strong> ${caseData.patientName || 'N/A'}<br>
                             <strong>Surgeon:</strong> ${surgeon ? surgeon.full_name : 'Unknown'}<br>
-                            <strong>Facility:</strong> ${facility ? facility.name : 'Unknown'}<br>
+                            <strong>Facility:</strong> ${facility ? facility.account_name : 'Unknown'}<br>
                             <strong>Case Type:</strong> ${caseType ? caseType.name : 'Unknown'}
                         </div>
                         <div class="col-md-6">
@@ -1162,7 +1162,7 @@ export class CasesManager {
     getFacilityName(facilityId) {
         if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
             const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
-            return facility ? facility.name : null;
+            return facility ? facility.account_name : null;
         }
         return null;
     }

@@ -182,13 +182,13 @@ function getFacilityLocations() {
         if (window.app?.facilityManager?.currentFacilities) {
             const activeFacilities = window.app.facilityManager.currentFacilities
                 .filter(facility => facility.active !== false)
-                .sort((a, b) => a.name.localeCompare(b.name));
+                .sort((a, b) => a.account_name.localeCompare(b.account_name));
             
             activeFacilities.forEach(facility => {
                 facilities.push({
                     value: facility.id,
-                    label: facility.name,
-                    description: facility.type || 'Medical Facility'
+                    label: facility.account_name,
+                    description: facility.account_record_type || 'Medical Facility'
                 });
             });
         }
@@ -197,13 +197,13 @@ function getFacilityLocations() {
         else if (window.app?.dataManager?.facilities) {
             const activeFacilities = window.app.dataManager.facilities
                 .filter(facility => facility.active !== false)
-                .sort((a, b) => a.name.localeCompare(b.name));
+                .sort((a, b) => a.account_name.localeCompare(b.account_name));
             
             activeFacilities.forEach(facility => {
                 facilities.push({
                     value: facility.id,
-                    label: facility.name,
-                    description: facility.type || 'Medical Facility'
+                    label: facility.account_name,
+                    description: facility.account_record_type || 'Medical Facility'
                 });
             });
         }
@@ -269,3 +269,72 @@ export function getTrayLocationOptionsHTML(options = {}) {
 
 // All possible static location values (for validation)
 export const ALL_STATIC_LOCATIONS = Object.values(TRAY_LOCATIONS);
+
+// Centralized coordinates for static locations
+export const LOCATION_COORDINATES = {
+    [TRAY_LOCATIONS.CORPORATE]: {
+        latitude: 37.4419,
+        longitude: -122.1430,
+        description: 'SI-BONE Corporate HQ, Santa Clara, CA'
+    },
+    [TRAY_LOCATIONS.TRUNK]: {
+        latitude: 43.0389,
+        longitude: -87.9065,
+        description: 'Milwaukee, WI - Rep Trunk Location'
+    },
+    [TRAY_LOCATIONS.CLEANING]: {
+        latitude: 43.0389,
+        longitude: -87.9065,
+        description: 'Milwaukee, WI area (cleaning facility)'
+    },
+    [TRAY_LOCATIONS.MAINTENANCE]: {
+        latitude: 43.0389,
+        longitude: -87.9065,
+        description: 'Milwaukee, WI area (maintenance facility)'
+    }
+};
+
+/**
+ * Get coordinates for a tray location
+ * @param {string} location - The location type (trunk, corporate, facility, etc.)
+ * @param {object} options - Optional parameters
+ * @param {boolean} options.randomizeForTrunk - Add random offset for trunk locations
+ * @returns {object|null} - Object with latitude, longitude, and description, or null if not found
+ */
+export function getLocationCoordinates(location, options = {}) {
+    const normalizedLocation = normalizeLocation(location);
+    const { randomizeForTrunk = false } = options;
+    
+    // For facility locations, return null (should be handled by facility-specific coordinates)
+    if (normalizedLocation === TRAY_LOCATIONS.FACILITY) {
+        return null; // Facility coordinates should come from facility data
+    }
+    
+    const coordinates = LOCATION_COORDINATES[normalizedLocation];
+    if (!coordinates) {
+        return null;
+    }
+    
+    // Create a copy to avoid modifying the original
+    const result = { ...coordinates };
+    
+    // Add random offset for trunk locations to simulate movement
+    if (normalizedLocation === TRAY_LOCATIONS.TRUNK && randomizeForTrunk) {
+        result.latitude += (Math.random() - 0.5) * 0.5; // ±0.25 degree variance
+        result.longitude += (Math.random() - 0.5) * 0.5; // ±0.25 degree variance
+        result.description += ' (with random offset)';
+    }
+    
+    return result;
+}
+
+/**
+ * Get coordinates as [latitude, longitude] array for mapping libraries
+ * @param {string} location - The location type
+ * @param {object} options - Optional parameters  
+ * @returns {[number, number]|null} - Array of [lat, lng] or null if not found
+ */
+export function getLocationCoordinatesArray(location, options = {}) {
+    const coords = getLocationCoordinates(location, options);
+    return coords ? [coords.latitude, coords.longitude] : null;
+}

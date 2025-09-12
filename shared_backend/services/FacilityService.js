@@ -81,7 +81,7 @@ class FacilityService {
       const {
         limit = 100,
         offset = 0,
-        sortBy = 'name',
+        sortBy = 'account_name',
         sortOrder = 'asc',
         filters = {}
       } = options;
@@ -201,10 +201,10 @@ class FacilityService {
 
       const searchLower = searchTerm.toLowerCase();
       const filtered = allFacilities.data.filter(facility => 
-        facility.name?.toLowerCase().includes(searchLower) ||
-        facility.city?.toLowerCase().includes(searchLower) ||
-        facility.state?.toLowerCase().includes(searchLower) ||
-        facility.address?.toLowerCase().includes(searchLower) ||
+        facility.account_name?.toLowerCase().includes(searchLower) ||
+        facility.address?.city?.toLowerCase().includes(searchLower) ||
+        facility.address?.state?.toLowerCase().includes(searchLower) ||
+        facility.address?.street?.toLowerCase().includes(searchLower) ||
         facility.specialty?.toLowerCase().includes(searchLower) ||
         facility.territory?.toLowerCase().includes(searchLower)
       );
@@ -239,10 +239,10 @@ class FacilityService {
       const results = [];
 
       for (const defaultData of defaults) {
-        // Check if facility already exists by name and city
-        const existing = await this.searchFacilities(defaultData.name);
+        // Check if facility already exists by account_name and city
+        const existing = await this.searchFacilities(defaultData.account_name);
         const duplicateFound = existing.data.some(f => 
-          f.name === defaultData.name && f.city === defaultData.city
+          f.account_name === defaultData.account_name && f.address?.city === defaultData.address?.city
         );
 
         if (!duplicateFound) {
@@ -279,8 +279,8 @@ class FacilityService {
 
       allFacilities.data.forEach(facility => {
         // Count by type
-        if (stats.byType[facility.type] !== undefined) {
-          stats.byType[facility.type]++;
+        if (stats.byType[facility.account_record_type] !== undefined) {
+          stats.byType[facility.account_record_type]++;
         }
 
         // Count by specialty

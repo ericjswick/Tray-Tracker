@@ -1,4 +1,5 @@
 // js/MigrationsManager.js - Database Migrations Management
+import { TrayNameMigration } from './migration/migrateTrayName.js';
 
 export class MigrationsManager {
     constructor() {
@@ -401,7 +402,7 @@ export class MigrationsManager {
             return `
                 <tr>
                     <td><code>${facility.id}</code></td>
-                    <td>${facility.name}</td>
+                    <td>${facility.account_name}</td>
                     <td>${statusBadge}</td>
                     <td class="text-center">${facility.hasCreatedAt ? checkIcon : crossIcon}</td>
                     <td class="text-center">${facility.hasCreated_at ? checkIcon : crossIcon}</td>
@@ -746,5 +747,246 @@ window.checkPhysiciansNameStatus = async function() {
     } catch (error) {
         console.error('❌ Status check failed:', error);
         throw error;
+    }
+};
+
+// Tray Name Migration Functions
+window.runTrayNameMigration = async function() {
+    try {
+        if (!window.app?.dataManager?.db) {
+            throw new Error('Database not available');
+        }
+
+        console.log('🔄 Starting tray name migration...');
+        const { TrayNameMigration } = await import('./migration/migrateTrayName.js');
+        const migration = new TrayNameMigration(window.app.dataManager.db);
+        
+        // Check status first
+        const status = await migration.checkMigrationStatus();
+        console.log('📊 Pre-migration status:', status);
+        
+        if (!status.needsMigration) {
+            console.log('✅ No migration needed - all trays already use tray_name');
+            return status;
+        }
+        
+        // Run the migration
+        const result = await migration.migrateTrayNameField();
+        console.log('✅ Tray name migration completed:', result);
+        
+        if (result.success) {
+            // Check final status
+            const finalStatus = await migration.checkMigrationStatus();
+            console.log('📊 Post-migration status:', finalStatus);
+            
+            return {
+                ...result,
+                finalStatus
+            };
+        }
+        
+        return result;
+        
+    } catch (error) {
+        console.error('❌ Tray name migration failed:', error);
+        throw error;
+    }
+};
+
+window.checkTrayNameStatus = async function() {
+    try {
+        if (!window.app?.dataManager?.db) {
+            throw new Error('Database not available');
+        }
+
+        const { TrayNameMigration } = await import('./migration/migrateTrayName.js');
+        const migration = new TrayNameMigration(window.app.dataManager.db);
+        return await migration.checkMigrationStatus();
+        
+    } catch (error) {
+        console.error('❌ Tray name status check failed:', error);
+        throw error;
+    }
+};
+
+// Tray Timestamp Migration Functions
+window.runTrayTimestampMigration = async function() {
+    try {
+        if (!window.app?.dataManager?.db) {
+            throw new Error('Database not available');
+        }
+
+        console.log('🔄 Starting tray timestamp migration...');
+        const { TrayTimestampMigration } = await import('./migration/migrateTrayTimestamps.js');
+        const migration = new TrayTimestampMigration(window.app.dataManager.db);
+        
+        // Check status first
+        const status = await migration.checkTimestampStatus();
+        console.log('📊 Pre-migration status:', status);
+        
+        if (!status.needsMigration) {
+            console.log('✅ No timestamp migration needed - all trays already use created_at/updated_at');
+            return status;
+        }
+        
+        // Run the migration
+        const result = await migration.migrateTrayTimestamps();
+        console.log('✅ Tray timestamp migration completed:', result);
+        
+        return result;
+        
+    } catch (error) {
+        console.error('❌ Tray timestamp migration failed:', error);
+        throw error;
+    }
+};
+
+window.checkTrayTimestampStatus = async function() {
+    try {
+        if (!window.app?.dataManager?.db) {
+            throw new Error('Database not available');
+        }
+
+        const { TrayTimestampMigration } = await import('./migration/migrateTrayTimestamps.js');
+        const migration = new TrayTimestampMigration(window.app.dataManager.db);
+        return await migration.checkTimestampStatus();
+        
+    } catch (error) {
+        console.error('❌ Tray timestamp status check failed:', error);
+        throw error;
+    }
+};
+
+// UI Helper Functions for Admin Migrations Page
+window.checkTrayNameMigrationStatus = async function() {
+    try {
+        const statusDiv = document.getElementById('trayNameMigrationStatus');
+        const resultDiv = document.getElementById('trayNameMigrationResult');
+        
+        statusDiv.className = 'alert alert-info';
+        statusDiv.classList.remove('d-none');
+        statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking migration status...';
+        resultDiv.classList.add('d-none');
+        
+        const status = await window.checkTrayNameStatus();
+        
+        if (status.needsMigration) {
+            statusDiv.className = 'alert alert-warning';
+            statusDiv.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i> Migration needed<br>
+                <small>Found ${status.nameOnly} trays with only 'name' field</small>
+            `;
+        } else {
+            statusDiv.className = 'alert alert-success';
+            statusDiv.innerHTML = '<i class="fas fa-check"></i> All trays already use tray_name format';
+        }
+        
+    } catch (error) {
+        const statusDiv = document.getElementById('trayNameMigrationStatus');
+        statusDiv.className = 'alert alert-danger';
+        statusDiv.classList.remove('d-none');
+        statusDiv.innerHTML = `<i class="fas fa-times"></i> Error: ${error.message}`;
+    }
+};
+
+window.runTrayNameMigrationFromUI = async function() {
+    try {
+        const resultDiv = document.getElementById('trayNameMigrationResult');
+        
+        resultDiv.className = 'alert alert-info';
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running migration...';
+        
+        const result = await window.runTrayNameMigration();
+        
+        if (result.success) {
+            resultDiv.className = 'alert alert-success';
+            resultDiv.innerHTML = `
+                <i class="fas fa-check"></i> Migration completed successfully<br>
+                <small>Migrated: ${result.migrated} trays, Total: ${result.total}</small>
+            `;
+        } else {
+            resultDiv.className = 'alert alert-danger';
+            resultDiv.innerHTML = `<i class="fas fa-times"></i> Migration failed: ${result.error}`;
+        }
+        
+        // Refresh status
+        setTimeout(() => window.checkTrayNameMigrationStatus(), 1000);
+        
+    } catch (error) {
+        const resultDiv = document.getElementById('trayNameMigrationResult');
+        resultDiv.className = 'alert alert-danger';
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = `<i class="fas fa-times"></i> Error: ${error.message}`;
+    }
+};
+
+window.checkTrayTimestampMigrationStatus = async function() {
+    try {
+        const statusDiv = document.getElementById('trayTimestampMigrationStatus');
+        const resultDiv = document.getElementById('trayTimestampMigrationResult');
+        
+        statusDiv.className = 'alert alert-info';
+        statusDiv.classList.remove('d-none');
+        statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking timestamp migration status...';
+        resultDiv.classList.add('d-none');
+        
+        const status = await window.checkTrayTimestampStatus();
+        
+        if (status.needsMigration) {
+            statusDiv.className = 'alert alert-warning';
+            statusDiv.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i> Timestamp migration needed<br>
+                <small>createdAt only: ${status.createdAtOnly}, updatedAt only: ${status.updatedAtOnly}, lastModified only: ${status.lastModifiedOnly}</small>
+            `;
+        } else {
+            statusDiv.className = 'alert alert-success';
+            statusDiv.innerHTML = '<i class="fas fa-check"></i> All trays already use created_at/updated_at format';
+        }
+        
+    } catch (error) {
+        const statusDiv = document.getElementById('trayTimestampMigrationStatus');
+        statusDiv.className = 'alert alert-danger';
+        statusDiv.classList.remove('d-none');
+        statusDiv.innerHTML = `<i class="fas fa-times"></i> Error: ${error.message}`;
+    }
+};
+
+window.runTrayTimestampMigrationFromUI = async function() {
+    try {
+        const resultDiv = document.getElementById('trayTimestampMigrationResult');
+        
+        resultDiv.className = 'alert alert-info';
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running timestamp migration...';
+        
+        const result = await window.runTrayTimestampMigration();
+        
+        if (result.success) {
+            resultDiv.className = 'alert alert-success';
+            resultDiv.innerHTML = `
+                <i class="fas fa-check"></i> Timestamp migration completed successfully<br>
+                <small>Migrated: ${result.migrated} trays, Total: ${result.total}</small>
+            `;
+        } else {
+            resultDiv.className = 'alert alert-danger';
+            resultDiv.innerHTML = `<i class="fas fa-times"></i> Migration failed: ${result.error}`;
+        }
+        
+        // Refresh status
+        setTimeout(() => window.checkTrayTimestampMigrationStatus(), 1000);
+        
+    } catch (error) {
+        const resultDiv = document.getElementById('trayTimestampMigrationResult');
+        resultDiv.className = 'alert alert-danger';
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = `<i class="fas fa-times"></i> Error: ${error.message}`;
+    }
+};
+
+window.clearMigrationConsole = function() {
+    const consoleOutput = document.getElementById('migrationConsoleOutput');
+    if (consoleOutput) {
+        consoleOutput.innerHTML = 'Migration console output will appear here...';
     }
 };

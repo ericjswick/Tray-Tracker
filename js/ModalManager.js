@@ -2,7 +2,7 @@
 import { populateCaseStatusDropdown, DEFAULT_CASE_STATUS } from './constants/CaseStatus.js';
 import { populateFacilityTypeDropdown, DEFAULT_FACILITY_TYPE } from './constants/FacilityTypes.js';
 import { populateTrayStatusDropdown } from './constants/TrayStatus.js';
-import { populateTrayLocationDropdown, TRAY_LOCATIONS } from './constants/TrayLocations.js';
+import { populateTrayLocationDropdown, TRAY_LOCATIONS, getLocationDisplayText } from './constants/TrayLocations.js';
 import { googlePlacesAutocomplete } from './utils/GooglePlacesAutocomplete.js';
 
 export class ModalManager {
@@ -110,7 +110,7 @@ export class ModalManager {
                     trayTypeSelect.appendChild(option);
                 });
                 
-                console.log(`Populated case type compatibility dropdown with ${activeCaseTypes.length} case types`);
+                console.log(`✅ Populated case type compatibility dropdown with ${activeCaseTypes.length} case types:`, activeCaseTypes.map(ct => ct.name));
             } else {
                 // Fallback to hardcoded case types if Firestore collection is empty
                 console.warn('No case types found in Firestore, using fallback options');
@@ -186,18 +186,18 @@ export class ModalManager {
         if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
             const activeFacilities = window.app.facilityManager.currentFacilities
                 .filter(facility => facility.active !== false && !facility.deletedAt)
-                .sort((a, b) => a.name.localeCompare(b.name));
+                .sort((a, b) => a.account_name.localeCompare(b.account_name));
 
             activeFacilities.forEach(facility => {
                 const option = document.createElement('option');
                 option.value = facility.id;
-                option.textContent = facility.name;
+                option.textContent = facility.account_name;
                 facilitiesList.appendChild(option);
             });
 
             this.logToAPI('🔥 [CHECK-IN MODAL] Populated facilities dropdown', {
                 facilitiesCount: activeFacilities.length,
-                facilities: activeFacilities.map(f => ({ id: f.id, name: f.name }))
+                facilities: activeFacilities.map(f => ({ id: f.id, name: f.account_name }))
             });
         } else {
             this.logToAPI('🔥 [CHECK-IN MODAL] No facilities available', {
@@ -332,7 +332,7 @@ export class ModalManager {
             trayInfo.innerHTML = `
                 <div class="tray-info-card">
                     <div class="tray-info-header">
-                        <h6><i class="fas fa-box"></i> ${tray.name}</h6>
+                        <h6><i class="fas fa-box"></i> ${tray.tray_name}</h6>
                         <span class="tray-status-badge status-${tray.status}">${tray.status}</span>
                     </div>
                     <div class="tray-info-details">
@@ -568,13 +568,8 @@ export class ModalManager {
             }
         }
 
-        const staticLocations = {
-            'trunk': 'Rep Trunk',
-            'facility': 'Medical Facility',
-            'corporate': 'SI-BONE Corporate'
-        };
-
-        return staticLocations[locationId] || 'Unknown Location';
+        // Use centralized location display text
+        return getLocationDisplayText(locationId);
     }
 
     showAddUserModal() {
@@ -662,7 +657,7 @@ export class ModalManager {
 
             // Populate form fields
             document.getElementById('editFacilityId').value = facilityId;
-            document.getElementById('editFacilityName').value = facility.name || '';
+            document.getElementById('editFacilityName').value = facility.account_name || '';
             
             // Populate facility type dropdown with current selection
             const editFacilityTypeSelect = document.getElementById('editFacilityType');
@@ -671,7 +666,7 @@ export class ModalManager {
                     includeAllOption: false,
                     includeEmptyOption: true,
                     emptyOptionText: 'Select Type...',
-                    selectedValue: facility.type,
+                    selectedValue: facility.account_record_type,
                     useShortLabels: false
                 });
             }
@@ -714,12 +709,12 @@ export class ModalManager {
                         
                         if (specialtyField) specialtyField.value = facility.specialty || '';
                         if (addressField) {
-                            addressField.value = facility.address || '';
-                            console.log('✅ Set editFacilityAddress value:', facility.address);
+                            addressField.value = facility.address?.street || '';
+                            console.log('✅ Set editFacilityAddress value:', facility.address?.street);
                         }
-                        if (cityField) cityField.value = facility.city || '';
-                        if (stateField) stateField.value = facility.state || '';
-                        if (zipField) zipField.value = facility.zip || '';
+                        if (cityField) cityField.value = facility.address?.city || '';
+                        if (stateField) stateField.value = facility.address?.state || '';
+                        if (zipField) zipField.value = facility.address?.zip || '';
                         
                         document.getElementById('editFacilityPhone').value = facility.phone || '';
                         document.getElementById('editFacilityTerritory').value = facility.territory || '';
@@ -757,7 +752,7 @@ export class ModalManager {
         if (window.app.dataManager && window.app.dataManager.caseTypes) {
             const activeCaseTypes = window.app.dataManager.caseTypes
                 .filter(ct => ct.active !== false)
-                .sort((a, b) => a.name.localeCompare(b.name));
+                .sort((a, b) => a.account_name.localeCompare(b.account_name));
 
             activeCaseTypes.forEach(caseType => {
                 const option = document.createElement('option');
@@ -1038,7 +1033,7 @@ export class ModalManager {
                 const facilities = this.dataManager.getFacilities();
                 console.log('Loading facilities for dropdown:', facilities.length);
                 const facilityOptions = '<option value="">Select Facility</option>' + 
-                    facilities.map(facility => `<option value="${facility.id}">${facility.name}</option>`).join('');
+                    facilities.map(facility => `<option value="${facility.id}">${facility.account_name}</option>`).join('');
                 facilitySelect.innerHTML = facilityOptions;
                 if (editFacilitySelect) editFacilitySelect.innerHTML = facilityOptions;
             }
@@ -1371,8 +1366,8 @@ export class ModalManager {
                             <select class="form-select form-select-sm tray-select" onchange="app.modalManager.updateTrayRequirement(this)" required>
                                 <option value="">Select Tray...</option>
                                 ${trays.map(tray => `
-                                    <option value="${tray.id}" data-tray-name="${tray.name}" data-tray-type="${tray.type}">
-                                        ${tray.name} (${this.getTrayTypeDisplayName(tray)})
+                                    <option value="${tray.id}" data-tray-name="${tray.tray_name}" data-tray-type="${tray.type}">
+                                        ${tray.tray_name} (${this.getTrayTypeDisplayName(tray)})
                                     </option>
                                 `).join('')}
                             </select>
@@ -1600,7 +1595,7 @@ export class ModalManager {
     getFacilityName(facilityId) {
         if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
             const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
-            return facility ? facility.name : 'Unknown Facility';
+            return facility ? facility.account_name : 'Unknown Facility';
         }
         return 'Unknown Facility';
     }
