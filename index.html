@@ -175,9 +175,9 @@
                             </a>
                         </li>
                         <li>
-                            <a href="#facilities" class="nav-item" id="nav-facilities">
-                                <i class="fas fa-building"></i>
-                                <span>Facilities</span>
+                            <a href="#map" class="nav-item" id="nav-facilities">
+                                <i class="fas fa-map-marked-alt"></i>
+                                <span>Map</span>
                             </a>
                         </li>
                         <li>
@@ -212,6 +212,9 @@
                                 </a></li>
                                 <li><a class="dropdown-item" href="#casetypes">
                                     <i class="fas fa-clipboard-list"></i> Case Types
+                                </a></li>
+                                <li><a class="dropdown-item" href="#migrations">
+                                    <i class="fas fa-database"></i> Database Migrations
                                 </a></li>
                                 <li><hr class="dropdown-divider"></li>
                                 <li><a class="dropdown-item" href="#" onclick="app.demoManager.initializeDemoData()">
@@ -393,8 +396,8 @@
             </div>
         </div>
 
-        <!-- Facilities View -->
-        <div id="facilitiesView" class="view d-none">
+        <!-- Map View -->
+        <div id="mapView" class="view d-none">
             <div class="page-header">
                 <h1 class="page-title">
                     <i class="fas fa-map-marked-alt"></i>
@@ -416,11 +419,7 @@
                     <!-- Facility Filters -->
                     <div class="filter-group">
                         <select class="filter-select" id="locationTypeFilter">
-                            <option value="">All Location Types</option>
-                            <option value="medical_facility">Medical Facilities</option>
-                            <option value="corporate">Corporate</option>
-                            <option value="warehouse">Warehouse</option>
-                            <option value="distribution">Distribution Center</option>
+                            <!-- Facility type filter options populated dynamically by FacilityTypes.populateFacilityTypeDropdown() -->
                         </select>
                     </div>
                     <div class="filter-group">
@@ -443,11 +442,7 @@
                     <!-- Tray Status Filters -->
                     <div class="filter-group">
                         <select class="filter-select" id="trayStatusFilter">
-                            <option value="">All Tray Status</option>
-                            <option value="available">Available</option>
-                            <option value="in_use">In Use</option>
-                            <option value="checked-in">Checked In</option>
-                            <option value="picked-up">Picked Up</option>
+                            <!-- Tray status options populated dynamically by TrayStatus.populateTrayStatusDropdown() -->
                         </select>
                     </div>
                     <div class="filter-group">
@@ -848,6 +843,123 @@
                 </div>
             </div>
         </div>
+
+        <!-- Migrations View -->
+        <div id="migrationsView" class="view d-none">
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">
+                        <i class="fas fa-database"></i>
+                        Database Migrations
+                    </h1>
+                    <p class="page-subtitle">Manage database field migrations and updates</p>
+                </div>
+            </div>
+
+            <!-- Migration Status Cards -->
+            <div class="metrics-grid mb-4">
+                <div class="metric-card">
+                    <div class="metric-value metric-active" id="totalFacilitiesForMigration">-</div>
+                    <div class="metric-label">Total Facilities</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value metric-available" id="facilitiesAlreadyMigrated">-</div>
+                    <div class="metric-label">Already Migrated</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value metric-warning" id="facilitiesNeedMigration">-</div>
+                    <div class="metric-label">Need Migration</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value metric-inactive" id="facilitiesNoTimestamp">-</div>
+                    <div class="metric-label">No Timestamp</div>
+                </div>
+            </div>
+
+            <!-- Facilities Timestamp Migration -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h3><i class="fas fa-building"></i> Facilities Timestamp Migration</h3>
+                    <p class="text-muted mb-0">Convert legacy camelCase timestamp fields (createdAt) to MyRepData format (created_at)</p>
+                </div>
+                <div class="card-body">
+                    <!-- Migration Status -->
+                    <div class="alert alert-info mb-3">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Status:</strong> <span id="migrationStatusText">Click "Check Status" to load current migration status</span>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="d-flex gap-3 mb-3">
+                        <button class="btn btn-outline-primary" id="checkMigrationStatusBtn" onclick="checkMigrationStatus()">
+                            <i class="fas fa-search"></i> Check Status
+                        </button>
+                        <button class="btn btn-warning" id="runMigrationBtn" onclick="runFacilitiesMigration()" disabled>
+                            <i class="fas fa-play"></i> Run Migration
+                        </button>
+                        <button class="btn btn-danger" id="cleanupOldFieldsBtn" onclick="cleanupOldFields()" disabled>
+                            <i class="fas fa-broom"></i> Cleanup Old Fields
+                        </button>
+                    </div>
+                    
+                    <!-- Migration Results -->
+                    <div id="migrationResults" class="d-none">
+                        <h5>Migration Results:</h5>
+                        <div class="migration-summary p-3 border rounded">
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <strong>Processed:</strong> <span id="resultProcessed">-</span>
+                                </div>
+                                <div class="col-md-3">
+                                    <strong>Migrated:</strong> <span id="resultMigrated">-</span>
+                                </div>
+                                <div class="col-md-3">
+                                    <strong>Skipped:</strong> <span id="resultSkipped">-</span>
+                                </div>
+                                <div class="col-md-3">
+                                    <strong>Errors:</strong> <span id="resultErrors">-</span>
+                                </div>
+                            </div>
+                            <div id="migrationErrorsList" class="mt-3 d-none">
+                                <h6>Errors:</h6>
+                                <ul class="list-unstyled" id="errorsList"></ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Status Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-list"></i> Facility Details</h3>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped" id="facilitiesMigrationTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Status</th>
+                                    <th>Has createdAt</th>
+                                    <th>Has created_at</th>
+                                    <th>Has updatedAt</th>
+                                    <th>Has updated_at</th>
+                                </tr>
+                            </thead>
+                            <tbody id="facilitiesMigrationTableBody">
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted">
+                                        <i class="fas fa-info-circle"></i> Click "Check Status" to load facility details
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
     </main>
 </div>
 
@@ -886,14 +998,16 @@
                     <div class="form-group">
                         <label for="trayStatus" class="form-label">Status *</label>
                         <select class="form-control" id="trayStatus" required>
-                            <option value="available">Available</option>
-                            <option value="in_use">In Use</option>
-                            <option value="cleaning">Cleaning</option>
-                            <option value="maintenance">Maintenance</option>
-                            <option value="missing">Missing</option>
-                            <option value="checked_in">Checked In</option>
-                            <option value="picked_up">Picked Up</option>
+                            <!-- Tray status options populated dynamically by TrayStatus.populateTrayStatusDropdown() -->
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="trayAssignedTo" class="form-label">Assigned To</label>
+                        <select class="form-control" id="trayAssignedTo">
+                            <option value="">Not Assigned</option>
+                            <!-- Users will be populated dynamically from Firestore users collection -->
+                        </select>
+                        <small class="form-text text-muted">Select a user to assign this tray to, or leave unassigned</small>
                     </div>
                 </form>
             </div>
@@ -1359,10 +1473,7 @@
                             <div class="form-group">
                                 <label for="facilityType" class="form-label">Facility Type *</label>
                                 <select class="form-control" id="facilityType" required>
-                                    <option value="">Select Type...</option>
-                                    <option value="ASC">ASC (Ambulatory Surgery Center)</option>
-                                    <option value="Hospital">Hospital</option>
-                                    <option value="OBL">OBL (Office-Based Lab)</option>
+                                    <!-- Facility type options populated dynamically by FacilityTypes.populateFacilityTypeDropdown() -->
                                 </select>
                             </div>
                             <div class="form-group">
@@ -1377,72 +1488,92 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="locationAddress" class="form-label">Address *</label>
-                                <textarea class="form-control" id="locationAddress" rows="3" required></textarea>
+                                <label for="facilityAddress" class="form-label">Address *</label>
+                                <input type="text" class="form-control" id="facilityAddress" required placeholder="Start typing to search with Google Places...">
                             </div>
                             <div class="form-group">
-                                <label for="locationCity" class="form-label">City *</label>
-                                <input type="text" class="form-control" id="locationCity" required>
+                                <label for="facilityCity" class="form-label">City *</label>
+                                <input type="text" class="form-control" id="facilityCity" required>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="locationState" class="form-label">State *</label>
-                                <input type="text" class="form-control" id="locationState" required>
+                                <label for="facilityState" class="form-label">State *</label>
+                                <input type="text" class="form-control" id="facilityState" required>
                             </div>
                             <div class="form-group">
-                                <label for="locationZip" class="form-label">ZIP Code *</label>
-                                <input type="text" class="form-control" id="locationZip" required>
+                                <label for="facilityZip" class="form-label">ZIP Code *</label>
+                                <input type="text" class="form-control" id="facilityZip" required>
                             </div>
                             <div class="form-group">
-                                <label for="locationPhone" class="form-label">Phone Number</label>
-                                <input type="tel" class="form-control" id="locationPhone">
+                                <label for="facilityPhone" class="form-label">Phone Number</label>
+                                <input type="tel" class="form-control" id="facilityPhone">
                             </div>
                             <div class="form-group">
-                                <label for="locationContact" class="form-label">Primary Contact</label>
-                                <input type="text" class="form-control" id="locationContact">
+                                <label for="facilityContact" class="form-label">Primary Contact</label>
+                                <input type="text" class="form-control" id="facilityContact">
                             </div>
                             <div class="form-group">
-                                <label for="locationRegion" class="form-label">Region</label>
-                                <select class="form-control" id="locationRegion">
-                                    <option value="">Select Region...</option>
+                                <label for="facilityContactEmail" class="form-label">Contact Email</label>
+                                <input type="email" class="form-control" id="facilityContactEmail">
+                            </div>
+                            <div class="form-group">
+                                <label for="facilityTerritory" class="form-label">Territory</label>
+                                <select class="form-control" id="facilityTerritory">
+                                    <option value="">Select Territory...</option>
                                     <option value="Wisconsin East">Wisconsin East</option>
                                     <option value="Wisconsin West">Wisconsin West</option>
                                     <option value="Illinois North">Illinois North</option>
                                     <option value="Illinois South">Illinois South</option>
                                 </select>
                             </div>
+                            <div class="form-group">
+                                <label for="facilityPriority" class="form-label">Priority</label>
+                                <select class="form-control" id="facilityPriority">
+                                    <option value="1">High (1)</option>
+                                    <option value="2">Medium-High (2)</option>
+                                    <option value="3" selected>Medium (3)</option>
+                                    <option value="4">Medium-Low (4)</option>
+                                    <option value="5">Low (5)</option>
+                                </select>
+                            </div>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="locationActive" checked>
-                                <label class="form-check-label" for="locationActive">
-                                    Active Location
+                                <input class="form-check-input" type="checkbox" id="facilityActive" checked>
+                                <label class="form-check-label" for="facilityActive">
+                                    Active Facility
                                 </label>
                             </div>
                         </div>
                     </div>
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-group">
-                                <label for="locationLatitude" class="form-label">Latitude</label>
-                                <input type="number" class="form-control" id="locationLatitude" step="any" placeholder="43.0389">
+                                <label for="facilityLatitude" class="form-label">Latitude</label>
+                                <input type="number" class="form-control" id="facilityLatitude" step="any" placeholder="43.0389">
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-group">
-                                <label for="locationLongitude" class="form-label">Longitude</label>
-                                <input type="number" class="form-control" id="locationLongitude" step="any" placeholder="-87.9065">
+                                <label for="facilityLongitude" class="form-label">Longitude</label>
+                                <input type="number" class="form-control" id="facilityLongitude" step="any" placeholder="-87.9065">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label for="facilityNPI" class="form-label">NPI Number</label>
+                                <input type="text" class="form-control" id="facilityNPI" placeholder="1234567890">
                             </div>
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="locationNotes" class="form-label">Notes</label>
-                        <textarea class="form-control" id="locationNotes" rows="2"></textarea>
+                        <label for="facilityNotes" class="form-label">Notes</label>
+                        <textarea class="form-control" id="facilityNotes" rows="2"></textarea>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn-primary-custom" onclick="app.locationManager.addLocation()">Add Location</button>
+                <button type="button" class="btn-primary-custom" onclick="app.facilityManager.addFacility()">Add Facility</button>
             </div>
         </div>
     </div>
@@ -1567,10 +1698,7 @@
                             <div class="form-group">
                                 <label for="editFacilityType" class="form-label">Facility Type *</label>
                                 <select class="form-control" id="editFacilityType" required>
-                                    <option value="">Select Type...</option>
-                                    <option value="ASC">ASC (Ambulatory Surgery Center)</option>
-                                    <option value="Hospital">Hospital</option>
-                                    <option value="OBL">OBL (Office-Based Lab)</option>
+                                    <!-- Facility type options populated dynamically by FacilityTypes.populateFacilityTypeDropdown() -->
                                 </select>
                             </div>
                             <div class="form-group">
@@ -1586,7 +1714,7 @@
                             </div>
                             <div class="form-group">
                                 <label for="editFacilityAddress" class="form-label">Address</label>
-                                <textarea class="form-control" id="editFacilityAddress" rows="2"></textarea>
+                                <input type="text" class="form-control" id="editFacilityAddress" placeholder="Start typing to search with Google Places...">
                             </div>
                             <div class="form-group">
                                 <label for="editFacilityCity" class="form-label">City *</label>
@@ -2078,6 +2206,14 @@
                         </div>
                     </div>
                     <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="caseStatus" class="form-label">Status</label>
+                                <select class="form-select" id="caseStatus">
+                                    <!-- Case status options populated dynamically by CaseStatus.populateCaseStatusDropdown() -->
+                                </select>
+                            </div>
+                        </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label for="casePriority" class="form-label">Priority</label>

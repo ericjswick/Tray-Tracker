@@ -102,7 +102,7 @@ export class DataManager {
         });
 
         // Listen to surgeons collection
-        const surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('name', 'asc'));
+        const surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('full_name', 'asc'));
         this.surgeonsUnsubscribe = onSnapshot(surgeonsQuery, (snapshot) => {
             const surgeons = [];
             snapshot.forEach((doc) => {

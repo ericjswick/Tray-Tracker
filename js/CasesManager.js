@@ -1,5 +1,7 @@
 // js/CasesManager.js - Cases Management for Tray Tracker
 import { CASE_STATUS, CASE_STATUS_OPTIONS, DEFAULT_CASE_STATUS, getCaseStatusClass, isValidCaseStatus, populateCaseStatusDropdown } from './constants/CaseStatus.js';
+import { TRAY_LOCATIONS } from './constants/TrayLocations.js';
+import { TRAY_STATUS, isCheckedInStatus } from './constants/TrayStatus.js';
 
 export class CasesManager {
     constructor(dataManager) {
@@ -167,7 +169,7 @@ export class CasesManager {
                 scheduledDate: scheduledDate, // Store date (assume CDT)
                 scheduledTime: scheduledTime, // Store time (assume CDT)
                 estimatedDuration: parseInt(document.getElementById('estimatedDuration').value) || 60,
-                status: DEFAULT_CASE_STATUS,
+                status: document.getElementById('caseStatus').value || DEFAULT_CASE_STATUS,
                 notes: document.getElementById('caseNotes').value,
                 priority: document.getElementById('casePriority').value || 'normal'
             };
@@ -346,7 +348,7 @@ export class CasesManager {
                     <strong>${caseItem.patientName || 'N/A'}</strong>
                     ${caseItem.priority === 'urgent' ? '<span class="badge bg-danger ms-2">Urgent</span>' : ''}
                 </td>
-                <td>${surgeon ? surgeon.name : (surgeons.length === 0 ? 'Loading...' : 'Unknown')}</td>
+                <td>${surgeon ? surgeon.full_name : (surgeons.length === 0 ? 'Loading...' : 'Unknown')}</td>
                 <td>${facility ? facility.name : (facilities.length === 0 ? 'Loading...' : 'Unknown')}</td>
                 <td>
                     <div>${dateStr}</div>
@@ -431,7 +433,7 @@ export class CasesManager {
                     <div class="tray-card-content">
                         <div class="tray-detail">
                             <i class="fas fa-user-md"></i>
-                            <span class="tray-detail-value">${surgeon ? surgeon.name : (surgeons.length === 0 ? 'Loading...' : 'Unknown Surgeon')}</span>
+                            <span class="tray-detail-value">${surgeon ? surgeon.full_name : (surgeons.length === 0 ? 'Loading...' : 'Unknown Surgeon')}</span>
                         </div>
                         <div class="tray-detail">
                             <i class="fas fa-hospital"></i>
@@ -504,7 +506,7 @@ export class CasesManager {
                                                 <small>${caseItem.scheduledTime || '08:00'}</small>
                                             </div>
                                             <small class="text-muted">
-                                                ${this.dataManager.getSurgeons().find(s => s.id === caseItem.physician_id)?.name || 'Unknown Surgeon'}
+                                                ${this.dataManager.getSurgeons().find(s => s.id === caseItem.physician_id)?.full_name || 'Unknown Surgeon'}
                                             </small>
                                         </div>
                                     </div>
@@ -871,6 +873,11 @@ export class CasesManager {
 
             await this.dataManager.updateCase(caseId, updates);
             
+            // Check if case status was changed to "Removed" - if so, move all checked-in trays to trunk
+            if (updates.status === 'removed') {
+                await this.handleCaseRemovedTrays(caseId);
+            }
+            
             if (window.is_enable_api_logging && window.frontendLogger) {
                 window.frontendLogger.info('Case saved successfully', { 
                     caseId: caseId 
@@ -930,7 +937,7 @@ export class CasesManager {
                     <div class="row">
                         <div class="col-md-6">
                             <strong>Patient:</strong> ${caseData.patientName || 'N/A'}<br>
-                            <strong>Surgeon:</strong> ${surgeon ? surgeon.name : 'Unknown'}<br>
+                            <strong>Surgeon:</strong> ${surgeon ? surgeon.full_name : 'Unknown'}<br>
                             <strong>Facility:</strong> ${facility ? facility.name : 'Unknown'}<br>
                             <strong>Case Type:</strong> ${caseType ? caseType.name : 'Unknown'}
                         </div>
@@ -1017,6 +1024,110 @@ export class CasesManager {
         });
     }
 
+    async handleCaseRemovedTrays(caseId) {
+        try {
+            console.log(`🔄 Case ${caseId} set to Removed - moving checked-in trays to trunk`);
+            
+            // Get all trays from the tray manager or data manager
+            let allTrays = [];
+            if (window.app?.trayManager?.currentTrays) {
+                allTrays = window.app.trayManager.currentTrays;
+            } else if (window.app?.dataManager) {
+                // Fallback to get trays from data manager
+                allTrays = await window.app.dataManager.getAllTrays() || [];
+            }
+            
+            if (allTrays.length === 0) {
+                console.log('No trays found to process');
+                return;
+            }
+            
+            // Find all trays that are checked in for this specific case
+            const checkedInTrays = allTrays.filter(tray => {
+                return tray.facility === caseId && isCheckedInStatus(tray.status);
+            });
+            
+            if (checkedInTrays.length === 0) {
+                console.log(`No checked-in trays found for case ${caseId}`);
+                return;
+            }
+            
+            console.log(`Found ${checkedInTrays.length} checked-in trays for removed case ${caseId}:`, 
+                checkedInTrays.map(t => t.name || t.id));
+            
+            // Update each checked-in tray to move it to trunk and set status to available
+            let updatedCount = 0;
+            let errorCount = 0;
+            const errors = [];
+            
+            for (const tray of checkedInTrays) {
+                try {
+                    const updates = {
+                        location: TRAY_LOCATIONS.TRUNK,
+                        status: TRAY_STATUS.AVAILABLE,
+                        facility: '', // Clear the facility association
+                        caseDate: '',
+                        surgeon: '',
+                        notes: `Auto-moved to trunk when case was removed`
+                    };
+                    
+                    await window.app.dataManager.updateTray(tray.id, updates);
+                    
+                    // Add history entry
+                    await window.app.dataManager.addHistoryEntry(
+                        tray.id, 
+                        'case_removed', 
+                        `Moved to trunk automatically when case ${caseId} was removed`
+                    );
+                    
+                    console.log(`✅ Moved tray ${tray.name || tray.id} to trunk`);
+                    updatedCount++;
+                    
+                } catch (trayError) {
+                    console.error(`❌ Error updating tray ${tray.name || tray.id}:`, trayError);
+                    errorCount++;
+                    errors.push({
+                        trayId: tray.id,
+                        trayName: tray.name || 'Unknown',
+                        error: trayError.message
+                    });
+                }
+            }
+            
+            // Show summary notification
+            if (updatedCount > 0) {
+                const message = errorCount > 0 
+                    ? `${updatedCount} trays moved to trunk, ${errorCount} errors occurred`
+                    : `${updatedCount} trays automatically moved to trunk`;
+                    
+                this.showSuccessNotification(message);
+                console.log(`✅ Case removal tray update complete: ${updatedCount} updated, ${errorCount} errors`);
+            }
+            
+            if (errorCount > 0) {
+                console.error('Tray update errors:', errors);
+                if (window.frontendLogger) {
+                    window.frontendLogger.error('Error moving trays to trunk for removed case', {
+                        caseId,
+                        updatedCount,
+                        errorCount,
+                        errors
+                    }, 'case-tray-update');
+                }
+            }
+            
+        } catch (error) {
+            console.error(`❌ Error handling removed case trays for ${caseId}:`, error);
+            if (window.frontendLogger) {
+                window.frontendLogger.error('Error in handleCaseRemovedTrays', {
+                    caseId,
+                    error: error.message
+                }, 'case-tray-update');
+            }
+            this.showErrorNotification('Error moving trays to trunk: ' + error.message);
+        }
+    }
+
     showSuccessNotification(message) {
         if (window.app && window.app.notificationManager) {
             window.app.notificationManager.show(message, 'success');
@@ -1059,7 +1170,7 @@ export class CasesManager {
     getPhysicianName(physicianId) {
         if (window.app.dataManager && window.app.dataManager.physicians) {
             const physician = window.app.dataManager.physicians.find(p => p.id === physicianId);
-            return physician ? physician.name : null;
+            return physician ? physician.full_name : null;
         }
         return null;
     }

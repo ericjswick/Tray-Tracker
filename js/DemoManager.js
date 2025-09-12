@@ -155,6 +155,9 @@ export class DemoManager {
             
             physiciansSnapshot.forEach((doc) => {
                 const data = doc.data();
+                if (data.full_name) {
+                    existingNames.add(data.full_name.toLowerCase().trim());
+                }
                 if (data.name) {
                     existingNames.add(data.name.toLowerCase().trim());
                 }
@@ -292,7 +295,7 @@ export class DemoManager {
                 status: TRAY_STATUS.IN_USE,
                 location: 'sterile_processing',
                 facility_id: 'facility-001',
-                physician_id: availablePhysicians.find(p => p.name === 'Dr. Max Ots')?.id || '',
+                physician_id: availablePhysicians.find(p => p.full_name === 'Dr. Max Ots')?.id || '',
                 notes: 'Demo tray - Multi-level spine fusion instrumentation',
                 isDemoTray: true
             },
@@ -313,7 +316,7 @@ export class DemoManager {
                 status: TRAY_STATUS.IN_USE,
                 location: 'operating_room',
                 facility_id: 'facility-002',
-                physician_id: availablePhysicians.find(p => p.name === 'Dr. Branko Prpa')?.id || '',
+                physician_id: availablePhysicians.find(p => p.full_name === 'Dr. Branko Prpa')?.id || '',
                 notes: 'Demo tray - SI joint revision surgery complete set',
                 isDemoTray: true
             },
@@ -334,7 +337,7 @@ export class DemoManager {
                 status: 'in_transit',
                 location: 'in_transit',
                 facility_id: 'facility-003',
-                physician_id: availablePhysicians.find(p => p.name === 'Dr. Syed Mehdi')?.id || '',
+                physician_id: availablePhysicians.find(p => p.full_name === 'Dr. Syed Mehdi')?.id || '',
                 notes: 'Demo tray - Emergency medial-lateral SI fusion set',
                 isDemoTray: true
             }
@@ -358,7 +361,7 @@ export class DemoManager {
                 if (tray.physician_id) {
                     const physician = availablePhysicians.find(p => p.id === tray.physician_id);
                     if (physician) {
-                        activityDescription += ` assigned to ${physician.name}`;
+                        activityDescription += ` assigned to ${physician.full_name}`;
                     }
                 }
 
@@ -511,7 +514,7 @@ export class DemoManager {
 
         const demoPhysicians = [
             {
-                name: 'Dr. Max Ots',
+                full_name: 'Dr. Max Ots',
                 specialty: 'Orthopedic Spine Surgery',
                 hospital: 'Froedtert Hospital',
                 phone: '+1-414-805-3100',
@@ -523,7 +526,7 @@ export class DemoManager {
                 isDemoPhysician: true
             },
             {
-                name: 'Dr. Branko Prpa',
+                full_name: 'Dr. Branko Prpa',
                 specialty: 'Neurosurgery',
                 hospital: 'Aurora Medical Center - Summit',
                 phone: '+1-262-434-1050',
@@ -535,7 +538,7 @@ export class DemoManager {
                 isDemoPhysician: true
             },
             {
-                name: 'Dr. Syed Mehdi',
+                full_name: 'Dr. Syed Mehdi',
                 specialty: 'Orthopedic Surgery',
                 hospital: 'Aurora Medical Center - Grafton',
                 phone: '+1-262-329-1050',
@@ -547,7 +550,7 @@ export class DemoManager {
                 isDemoPhysician: true
             },
             {
-                name: 'Dr. Jennifer Smith',
+                full_name: 'Dr. Jennifer Smith',
                 specialty: 'Orthopedic Spine Surgery',
                 hospital: 'Children\'s Hospital of Wisconsin',
                 phone: '+1-414-266-2000',
@@ -559,7 +562,7 @@ export class DemoManager {
                 isDemoPhysician: true
             },
             {
-                name: 'Dr. Michael Johnson',
+                full_name: 'Dr. Michael Johnson',
                 specialty: 'Pain Management',
                 hospital: 'Medical College of Wisconsin',
                 phone: '+1-414-955-8000',
@@ -571,7 +574,7 @@ export class DemoManager {
                 isDemoPhysician: true
             },
             {
-                name: 'Dr. Sarah Williams',
+                full_name: 'Dr. Sarah Williams',
                 specialty: 'Orthopedic Surgery',
                 hospital: 'ProHealth Waukesha Memorial Hospital',
                 phone: '+1-262-928-1000',
@@ -590,11 +593,11 @@ export class DemoManager {
         for (const physician of demoPhysicians) {
             try {
                 // Skip if physician already exists by name or email
-                const nameExists = existingIdentifiers.names.has(physician.name.toLowerCase().trim());
+                const nameExists = existingIdentifiers.names.has(physician.full_name.toLowerCase().trim());
                 const emailExists = physician.email && existingIdentifiers.emails.has(physician.email.toLowerCase().trim());
                 
                 if (nameExists || emailExists) {
-                    console.log(`Physician already exists, skipping: ${physician.name}${physician.email ? ` (${physician.email})` : ''}`);
+                    console.log(`Physician already exists, skipping: ${physician.full_name}${physician.email ? ` (${physician.email})` : ''}`);
                     continue;
                 }
 
@@ -603,9 +606,9 @@ export class DemoManager {
                 physician.created_by = window.app?.authManager?.getCurrentUser()?.uid || 'demo-user';
 
                 await addDoc(collection(this.db, 'physicians'), physician);
-                console.log(`Created demo physician: ${physician.name}`);
+                console.log(`Created demo physician: ${physician.full_name}`);
             } catch (error) {
-                console.error(`Error creating demo physician ${physician.name}:`, error);
+                console.error(`Error creating demo physician ${physician.full_name}:`, error);
                 // Continue with other physicians even if one fails
             }
         }

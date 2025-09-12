@@ -1,5 +1,6 @@
 // js/TrayManager.js - Updated for Tray Tracker
 import { TRAY_STATUS, normalizeStatus, isInUseStatus, isAvailableStatus, isCheckedInStatus, getStatusDisplayText, getStatusColor } from './constants/TrayStatus.js';
+import { TRAY_LOCATIONS, getLocationDisplayText, getLocationIcon } from './constants/TrayLocations.js';
 export class TrayManager {
     constructor(dataManager) {
         this.dataManager = dataManager;
@@ -65,6 +66,9 @@ export class TrayManager {
             const trayTypeSelect = document.getElementById('trayType');
             const selectedCaseTypes = Array.from(trayTypeSelect.selectedOptions).map(option => option.value);
             
+            // Get assigned user from dropdown
+            const assignedTo = document.getElementById('trayAssignedTo').value || '';
+            
             const trayData = {
                 name: document.getElementById('trayName').value,
                 type: '', // Keep empty for legacy compatibility if no types selected
@@ -74,13 +78,18 @@ export class TrayManager {
                 facility: '',
                 caseDate: '',
                 surgeon: '',
-                assignedTo: window.app.authManager.getCurrentUser()?.uid || '',
+                assignedTo: assignedTo,
                 notes: ''
             };
 
             const savedTray = await this.dataManager.saveTray(trayData);
             if (savedTray && savedTray.id) {
-                await this.dataManager.addHistoryEntry(savedTray.id, 'created', `Tray created at ${this.getLocationText(trayData.location)}`);
+                let historyMessage = `Tray created at ${this.getLocationText(trayData.location)}`;
+                if (assignedTo) {
+                    const assignedUserName = this.getUserName(assignedTo);
+                    historyMessage += ` and assigned to ${assignedUserName}`;
+                }
+                await this.dataManager.addHistoryEntry(savedTray.id, 'created', historyMessage);
             }
 
             bootstrap.Modal.getInstance(document.getElementById('addTrayModal')).hide();
@@ -108,6 +117,8 @@ export class TrayManager {
         // Populate dropdowns first
         await window.app.modalManager.populateInitialLocationDropdown();
         await window.app.modalManager.populateCaseTypeCompatibilityDropdown();
+        await window.app.modalManager.populateTrayStatusDropdown();
+        await this.populateUserDropdown();
 
         // Populate form with existing tray data
         document.getElementById('trayName').value = tray.name || '';
@@ -125,6 +136,9 @@ export class TrayManager {
         
         // Set status
         document.getElementById('trayStatus').value = tray.status || 'available';
+        
+        // Set assigned user
+        document.getElementById('trayAssignedTo').value = tray.assignedTo || '';
 
         // Show the modal
         new bootstrap.Modal(document.getElementById('addTrayModal')).show();
@@ -155,17 +169,45 @@ export class TrayManager {
             const trayTypeSelect = document.getElementById('trayType');
             const selectedCaseTypes = Array.from(trayTypeSelect.selectedOptions).map(option => option.value);
             
+            // Get assigned user from dropdown
+            const assignedTo = document.getElementById('trayAssignedTo').value || '';
+            
             const updateData = {
                 name: document.getElementById('trayName').value,
                 case_type_compatibility: selectedCaseTypes,
                 status: document.getElementById('trayStatus').value,
                 location: locationValue,
+                assignedTo: assignedTo,
                 lastModified: new Date(),
                 modifiedBy: window.app.authManager.getCurrentUser()?.uid || ''
             };
 
+            // Check if assignment changed for history logging
+            const tray = this.currentTrays.find(t => t.id === trayId);
+            const oldAssignedTo = tray?.assignedTo || '';
+            const assignmentChanged = oldAssignedTo !== assignedTo;
+
             await this.dataManager.updateTray(trayId, updateData);
-            await this.dataManager.addHistoryEntry(trayId, 'updated', `Tray information updated`);
+            
+            let historyMessage = 'Tray information updated';
+            if (assignmentChanged) {
+                if (assignedTo && oldAssignedTo) {
+                    // Assignment changed from one user to another
+                    const oldUserName = this.getUserName(oldAssignedTo);
+                    const newUserName = this.getUserName(assignedTo);
+                    historyMessage += ` - reassigned from ${oldUserName} to ${newUserName}`;
+                } else if (assignedTo && !oldAssignedTo) {
+                    // Tray was assigned to someone
+                    const newUserName = this.getUserName(assignedTo);
+                    historyMessage += ` - assigned to ${newUserName}`;
+                } else if (!assignedTo && oldAssignedTo) {
+                    // Tray was unassigned
+                    const oldUserName = this.getUserName(oldAssignedTo);
+                    historyMessage += ` - unassigned from ${oldUserName}`;
+                }
+            }
+            
+            await this.dataManager.addHistoryEntry(trayId, 'updated', historyMessage);
 
             bootstrap.Modal.getInstance(document.getElementById('addTrayModal')).hide();
             this.resetTrayModal();
@@ -281,7 +323,7 @@ export class TrayManager {
 
             const updates = {
                 status: TRAY_STATUS.AVAILABLE,
-                location: 'trunk',
+                location: TRAY_LOCATIONS.TRUNK,
                 facility: '',
                 caseDate: '',
                 surgeon: '',
@@ -333,7 +375,7 @@ export class TrayManager {
                 const updates = {
                     assignedTo: whoPickedUp,
                     status: TRAY_STATUS.AVAILABLE,
-                    location: 'trunk'
+                    location: TRAY_LOCATIONS.TRUNK
                 };
 
                 if (newDoctor) {
@@ -768,12 +810,8 @@ export class TrayManager {
     }
 
     getLocationIcon(location) {
-        const icons = {
-            'trunk': 'fas fa-car',
-            'facility': 'fas fa-hospital',
-            'corporate': 'fas fa-building'
-        };
-        return icons[location] || 'fas fa-map-marker-alt';
+        // Use centralized location icon function
+        return getLocationIcon(location);
     }
 
     getLocationText(locationId) {
@@ -787,14 +825,8 @@ export class TrayManager {
             }
         }
 
-        // Fallback for old static locations
-        const staticLocations = {
-            'trunk': 'Rep Trunk',
-            'facility': 'Medical Facility',
-            'corporate': 'SI-BONE Corporate'
-        };
-
-        return staticLocations[locationId] || locationId || 'Unknown Location';
+        // Use centralized location display function for static locations
+        return getLocationDisplayText(locationId);
     }
 
     getUserName(userId) {
@@ -807,6 +839,40 @@ export class TrayManager {
         }
 
         return 'Loading user...';
+    }
+
+    async populateUserDropdown() {
+        const userSelect = document.getElementById('trayAssignedTo');
+        if (!userSelect) return;
+
+        // Clear existing options except the first "Not Assigned" option
+        userSelect.innerHTML = '<option value="">Not Assigned</option>';
+
+        try {
+            // Get users from the data manager
+            if (window.app?.dataManager?.users && window.app.dataManager.users.size > 0) {
+                const users = Array.from(window.app.dataManager.users.values());
+                
+                // Sort users by name
+                users.sort((a, b) => {
+                    const nameA = a.name || a.email || 'Unknown';
+                    const nameB = b.name || b.email || 'Unknown';
+                    return nameA.localeCompare(nameB);
+                });
+
+                // Add user options
+                users.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user.uid || user.id;
+                    option.textContent = `${user.name || user.email || 'Unknown User'}${user.role ? ` (${user.role})` : ''}`;
+                    userSelect.appendChild(option);
+                });
+            } else {
+                console.log('No users available for dropdown');
+            }
+        } catch (error) {
+            console.error('Error populating user dropdown:', error);
+        }
     }
 
     getSurgeonName(surgeonId) {
@@ -823,7 +889,7 @@ export class TrayManager {
         if (window.app.dataManager && window.app.dataManager.physicians) {
             const physician = window.app.dataManager.physicians.find(p => p.id === surgeonId);
             if (physician) {
-                return `${physician.title || 'Dr.'} ${physician.name}`;
+                return `${physician.title || 'Dr.'} ${physician.full_name}`;
             }
         }
 
@@ -831,7 +897,7 @@ export class TrayManager {
         if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons) {
             const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === surgeonId);
             if (surgeon) {
-                return `${surgeon.title || 'Dr.'} ${surgeon.name}`;
+                return `${surgeon.title || 'Dr.'} ${surgeon.full_name}`;
             }
         }
 
@@ -965,7 +1031,9 @@ export class TrayManager {
             available: trays.filter(t => isAvailableStatus(t.status)).length,
             inUse: trays.filter(t => isInUseStatus(t.status)).length,
             cleaning: trays.filter(t => normalizeStatus(t.status) === TRAY_STATUS.CLEANING).length,
-            maintenance: trays.filter(t => normalizeStatus(t.status) === TRAY_STATUS.MAINTENANCE).length
+            maintenance: trays.filter(t => normalizeStatus(t.status) === TRAY_STATUS.MAINTENANCE).length,
+            corporate: trays.filter(t => t.location === TRAY_LOCATIONS.CORPORATE).length,
+            trunk: trays.filter(t => t.location === TRAY_LOCATIONS.TRUNK).length
         };
 
         // Update stats in the trays view if elements exist

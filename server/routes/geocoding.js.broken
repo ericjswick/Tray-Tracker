@@ -1,0 +1,158 @@
+// server/routes/geocoding.js
+// Express routes for geocoding functionality (aligned with Vercel)
+
+const express = require('express');
+const GeocodingService = require('../shared_backend/services/GeocodingService');
+const { sendSuccess, sendError } = require('../shared_backend/utils/responseHelpers');
+
+const router = express.Router();
+const geocodingService = new GeocodingService();
+
+/**
+ * POST /api/geocoding/address
+ * Geocode an address to get latitude/longitude coordinates
+ */
+router.post('/address', async (req, res) => {
+    try {
+        const { address } = req.body;
+
+        // Validate request
+        if (!address) {
+            return sendError(res, 'Address is required', 400);
+        }
+
+        if (typeof address !== 'string' || address.trim().length === 0) {
+            return sendError(res, 'Valid address string is required', 400);
+        }
+
+        console.log(`📍 [Express] Geocoding request for address: "${address}"`);
+
+        // Call the shared geocoding service (same as working simple route)
+        const result = await geocodingService.geocodeAddress(address);
+
+        if (result.success) {
+            console.log(`✅ [Express] Geocoding successful: ${result.latitude}, ${result.longitude}`);
+            
+            const geocodeResult = {
+                address: result.address,
+                formattedAddress: result.formattedAddress,
+                latitude: result.latitude,
+                longitude: result.longitude,
+                placeId: result.placeId,
+                addressComponents: result.addressComponents,
+                locationType: result.locationType,
+                viewport: result.viewport,
+                bounds: result.bounds,
+                partialMatch: result.partialMatch
+            };
+
+            return sendSuccess(res, geocodeResult, 'Address geocoded successfully');
+        } else {
+            console.log(`❌ [Express] Geocoding failed: ${result.error}`);
+            return sendError(res, result.error, result.errorCode === 'ZERO_RESULTS' ? 404 : 400, result.errorCode);
+        }
+
+    } catch (error) {
+        console.error('Geocoding endpoint error:', error);
+        return sendError(res, 'Internal server error during geocoding', 500);
+    }
+});
+
+/**
+ * POST /api/geocoding/reverse
+ * Reverse geocode coordinates to get an address
+ */
+router.post('/reverse', async (req, res) => {
+    try {
+        const { latitude, longitude } = req.body;
+
+        // Validate request
+        if (latitude === undefined || longitude === undefined) {
+            return sendError(res, 'Latitude and longitude are required', 400);
+        }
+
+        if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+            return sendError(res, 'Latitude and longitude must be numbers', 400);
+        }
+
+        console.log(`🔄 Reverse geocoding request for coordinates: ${latitude}, ${longitude}`);
+
+        // Call the shared geocoding service
+        const result = await geocodingService.reverseGeocode(latitude, longitude);
+
+        if (result.success) {
+            console.log(`✅ Reverse geocoding successful: "${result.formattedAddress}"`);
+            return sendSuccess(res, result, 'Coordinates reverse geocoded successfully');
+        } else {
+            console.log(`❌ Reverse geocoding failed: ${result.error}`);
+            return sendError(res, result.error, 400, result.errorCode);
+        }
+
+    } catch (error) {
+        console.error('Reverse geocoding endpoint error:', error);
+        return sendError(res, 'Internal server error during reverse geocoding', 500);
+    }
+});
+
+/**
+ * POST /api/geocoding/validate
+ * Validate and standardize an address
+ */
+router.post('/validate', async (req, res) => {
+    try {
+        const { address } = req.body;
+
+        // Validate request
+        if (!address) {
+            return sendError(res, 'Address is required', 400);
+        }
+
+        if (typeof address !== 'string' || address.trim().length === 0) {
+            return sendError(res, 'Valid address string is required', 400);
+        }
+
+        console.log(`✔️ Address validation request for: "${address}"`);
+
+        // Call the shared geocoding service
+        const result = await geocodingService.validateAddress(address);
+
+        if (result.success) {
+            console.log(`✅ Address validation successful: "${result.standardizedAddress}"`);
+            return sendSuccess(res, result, 'Address validated successfully');
+        } else {
+            console.log(`❌ Address validation failed: ${result.error}`);
+            return sendError(res, result.error, result.errorCode === 'ZERO_RESULTS' ? 404 : 400, result.errorCode);
+        }
+
+    } catch (error) {
+        console.error('Address validation endpoint error:', error);
+        return sendError(res, 'Internal server error during address validation', 500);
+    }
+});
+
+/**
+ * GET /api/geocoding/test
+ * Test endpoint to verify geocoding service is working
+ */
+router.get('/test', async (req, res) => {
+    try {
+        const testAddress = '1600 Amphitheatre Parkway, Mountain View, CA';
+        
+        console.log(`🧪 Testing geocoding service with address: "${testAddress}"`);
+
+        const result = await geocodingService.geocodeAddress(testAddress);
+
+        return sendSuccess(res, {
+            testAddress: testAddress,
+            result: result,
+            apiKeyConfigured: !!process.env.GOOGLE_MAPS_API_KEY,
+            timestamp: new Date().toISOString()
+        }, 'Geocoding service test completed');
+
+    } catch (error) {
+        console.error('Geocoding test endpoint error:', error);
+        return sendError(res, 'Geocoding service test failed', 500);
+    }
+});
+
+module.exports = router;
