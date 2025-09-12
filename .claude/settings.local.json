@@ -7,7 +7,14 @@
       "Read(//hosting/web/**)",
       "Bash(netstat:*)",
       "Bash(docker-compose:*)",
-      "Bash(docker logs:*)"
+      "Bash(docker logs:*)",
+      "Bash(rg:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(node:*)",
+      "Bash(docker restart:*)",
+      "Bash(docker exec:*)"
     ],
     "deny": [],
     "ask": []

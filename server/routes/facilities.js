@@ -37,7 +37,7 @@ router.get('/', async (req, res) => {
     const options = {
       limit: parseInt(req.query.limit) || 100,
       offset: parseInt(req.query.offset) || 0,
-      sortBy: req.query.sortBy || 'name',
+      sortBy: req.query.sortBy || 'account_name',
       sortOrder: req.query.sortOrder || 'asc',
       filters: {
         active: req.query.active !== undefined ? req.query.active === 'true' : true,

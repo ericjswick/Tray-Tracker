@@ -479,8 +479,8 @@ export class DemoManager {
         for (const facility of demoFacilities) {
             try {
                 // Skip if facility already exists
-                if (existingNames.has(facility.name.toLowerCase().trim())) {
-                    console.log(`Facility already exists, skipping: ${facility.name}`);
+                if (existingNames.has(facility.account_name.toLowerCase().trim())) {
+                    console.log(`Facility already exists, skipping: ${facility.account_name}`);
                     continue;
                 }
 
@@ -489,9 +489,9 @@ export class DemoManager {
                 facility.created_by = window.app?.authManager?.getCurrentUser()?.uid || 'demo-user';
 
                 await addDoc(collection(this.db, 'facilities'), facility);
-                console.log(`Created demo facility: ${facility.name}`);
+                console.log(`Created demo facility: ${facility.account_name}`);
             } catch (error) {
-                console.error(`Error creating demo facility ${facility.name}:`, error);
+                console.error(`Error creating demo facility ${facility.account_name}:`, error);
                 // Continue with other facilities even if one fails
             }
         }

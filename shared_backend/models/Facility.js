@@ -1,13 +1,15 @@
 class FacilityModel {
   constructor(data = {}) {
     this.id = data.id || null;
-    this.name = data.name || '';
-    this.type = data.type || 'Hospital'; // ASC, Hospital, OBL
+    this.account_name = data.account_name || data.name || ''; // Support both field names for transition
+    this.account_record_type = data.account_record_type || data.type || 'Hospital'; // Support both field names for transition
     this.specialty = data.specialty || ''; // Ortho, Pain Management, Neuro, etc.
-    this.address = data.address || '';
-    this.city = data.city || '';
-    this.state = data.state || '';
-    this.zip = data.zip || '';
+    this.address = data.address || {
+      street: data.address?.street || '',
+      city: data.address?.city || data.city || '',
+      state: data.address?.state || data.state || '',
+      zip: data.address?.zip || data.zip || ''
+    };
     this.phone = data.phone || '';
     this.territory = data.territory || '';
     this.active = data.active !== undefined ? data.active : true;
@@ -35,13 +37,10 @@ class FacilityModel {
   toJSON() {
     return {
       id: this.id,
-      name: this.name,
-      type: this.type,
+      account_name: this.account_name,
+      account_record_type: this.account_record_type,
       specialty: this.specialty,
       address: this.address,
-      city: this.city,
-      state: this.state,
-      zip: this.zip,
       phone: this.phone,
       territory: this.territory,
       active: this.active,
@@ -88,7 +87,7 @@ class FacilityModel {
       errors.push('Facility name must be less than 200 characters');
     }
 
-    if (!['ASC', 'Hospital', 'OBL'].includes(this.type)) {
+    if (!['ASC', 'Hospital', 'OBL'].includes(this.account_record_type)) {
       errors.push('Type must be ASC, Hospital, or OBL');
     }
 
@@ -96,15 +95,15 @@ class FacilityModel {
       errors.push('Invalid specialty');
     }
 
-    if (!this.city || this.city.trim().length === 0) {
+    if (!this.address?.city || this.address.city.trim().length === 0) {
       errors.push('City is required');
     }
 
-    if (!this.state || this.state.trim().length === 0) {
+    if (!this.address?.state || this.address.state.trim().length === 0) {
       errors.push('State is required');
     }
 
-    if (this.zip && !/^\d{5}(-\d{4})?$/.test(this.zip)) {
+    if (this.address?.zip && !/^\d{5}(-\d{4})?$/.test(this.address.zip)) {
       errors.push('Invalid ZIP code format');
     }
 
@@ -144,13 +143,13 @@ class FacilityModel {
 
   // Get full address string
   getFullAddress() {
-    const parts = [this.address, this.city, this.state, this.zip].filter(part => part && part.trim());
+    const parts = [this.address?.street, this.address?.city, this.address?.state, this.address?.zip].filter(part => part && part.trim());
     return parts.join(', ');
   }
 
   // Get display name with location
   getDisplayName() {
-    return this.city ? `${this.name} (${this.city}, ${this.state})` : this.name;
+    return this.address?.city ? `${this.account_name} (${this.address.city}, ${this.address.state})` : this.account_name;
   }
 
   // Check if facility is active
@@ -163,7 +162,7 @@ class FacilityModel {
     return [
       {
         name: 'Advanced Spine Center',
-        type: 'ASC',
+        account_record_type: 'ASC',
         specialty: 'Ortho Spine',
         address: '123 Medical Drive',
         city: 'Milwaukee',
@@ -184,7 +183,7 @@ class FacilityModel {
       },
       {
         name: 'Aurora Medical Center - Grafton',
-        type: 'Hospital',
+        account_record_type: 'Hospital',
         specialty: 'Ortho',
         address: '975 Port Washington Rd',
         city: 'Grafton',
@@ -205,7 +204,7 @@ class FacilityModel {
       },
       {
         name: 'Froedtert Hospital',
-        type: 'Hospital',
+        account_record_type: 'Hospital',
         specialty: 'Ortho Spine',
         address: '9200 W Wisconsin Ave',
         city: 'Milwaukee',
@@ -226,7 +225,7 @@ class FacilityModel {
       },
       {
         name: 'Pain Management Associates',
-        type: 'OBL',
+        account_record_type: 'OBL',
         specialty: 'Pain Management',
         address: '456 Wellness Blvd',
         city: 'Madison',
@@ -247,7 +246,7 @@ class FacilityModel {
       },
       {
         name: 'Neuro Surgery Center of Wisconsin',
-        type: 'ASC',
+        account_record_type: 'ASC',
         specialty: 'Neuro',
         address: '789 Brain Ave',
         city: 'Green Bay',
@@ -271,7 +270,7 @@ class FacilityModel {
 
   // Get facilities by type
   static getFacilitiesByType(facilities, type) {
-    return facilities.filter(facility => facility.type === type);
+    return facilities.filter(facility => facility.account_record_type === type);
   }
 
   // Get facilities by specialty

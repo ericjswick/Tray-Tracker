@@ -46,10 +46,10 @@ export class FacilityMigration {
                     migrated.push({
                         oldId: location.id,
                         newId: docRef.id,
-                        name: facility.name
+                        name: facility.account_name
                     });
                     
-                    console.log(`✅ Migrated: ${facility.name} (${facility.type})`);
+                    console.log(`✅ Migrated: ${facility.account_name} (${facility.account_record_type})`);
                 } catch (error) {
                     console.error(`❌ Failed to migrate location ${location.name}:`, error);
                     errors.push({ location: location.name, error: error.message });
@@ -131,7 +131,7 @@ export class FacilityMigration {
         // Convert to MyRepData-compatible facility structure
         return {
             name: location.name || 'Unknown Facility',
-            type: facilityType,
+            account_record_type: facilityType,
             specialty: specialty,
             address: location.address || '',
             city: location.city || '',
@@ -259,7 +259,7 @@ export class FacilityMigration {
             };
             
             await addDoc(collection(this.db, 'facilities'), facilityWithMeta);
-            console.log(`✅ Initialized: ${defaultFacility.name} (${defaultFacility.type})`);
+            console.log(`✅ Initialized: ${defaultFacility.name} (${defaultFacility.account_record_type})`);
         }
 
         console.log('🎉 Default facilities initialized successfully!');

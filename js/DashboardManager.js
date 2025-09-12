@@ -213,7 +213,7 @@ export class DashboardManager {
                     </div>
                     <div class="tray-detail">
                         <i class="fas fa-hospital"></i>
-                        <span class="tray-detail-value">${facility ? facility.name : (facilities.length === 0 ? 'Loading...' : 'Unknown Facility')}</span>
+                        <span class="tray-detail-value">${facility ? facility.account_name : (facilities.length === 0 ? 'Loading...' : 'Unknown Facility')}</span>
                     </div>
                     <div class="tray-detail">
                         <i class="fas fa-clock"></i>
@@ -1212,10 +1212,36 @@ export class DashboardManager {
         // Try to find facility by ID
         if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
             const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
-            return facility ? facility.name : facilityId; // Fallback to ID if not found
+            return facility ? facility.account_name : facilityId; // Fallback to ID if not found
         }
         
         return facilityId; // Fallback to original value
+    }
+
+    /**
+     * Get facility coordinates for check-in location tracking
+     * @param {string} facilityId - The facility ID to look up
+     * @returns {object|null} - Object with latitude and longitude, or null if not found
+     */
+    getFacilityCoordinates(facilityId) {
+        if (!facilityId) {
+            return null;
+        }
+
+        // Try facilityManager first
+        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
+            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
+            if (facility && facility.latitude && facility.longitude) {
+                return {
+                    latitude: facility.latitude,
+                    longitude: facility.longitude,
+                    source: 'facility_coordinates'
+                };
+            }
+        }
+
+        console.warn(`📍 No coordinates found for facility: ${facilityId}`);
+        return null;
     }
 
     // Helper function to get surgeon name from ID
@@ -1586,6 +1612,12 @@ export class DashboardManager {
             // Get tray requirements
             const requirements = this.getTrayRequirements(caseData);
             
+            // Get facility coordinates for mass check-in (shared for all trays)
+            const facilityCoordinates = this.getFacilityCoordinates(caseFacility);
+            if (facilityCoordinates) {
+                console.log('📍 Using facility coordinates for mass check-in:', facilityCoordinates);
+            }
+            
             // Process each required tray
             for (const requirement of requirements) {
                 // Find trays that match this requirement
@@ -1614,7 +1646,14 @@ export class DashboardManager {
                         surgeon: caseSurgeon,
                         caseDate: caseData.scheduledDate,
                         checkedInAt: new Date().toISOString(),
-                        checkedInBy: window.app.authManager.getCurrentUser()?.uid || 'unknown'
+                        checkedInBy: window.app.authManager.getCurrentUser()?.uid || 'unknown',
+                        // Add facility coordinates if available
+                        ...(facilityCoordinates && {
+                            latitude: facilityCoordinates.latitude,
+                            longitude: facilityCoordinates.longitude,
+                            locationSource: facilityCoordinates.source,
+                            locationTimestamp: new Date().toISOString()
+                        })
                     });
                     
                     // Add activity history entry for mass check-in

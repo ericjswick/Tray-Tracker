@@ -21,8 +21,9 @@ export class DataManager {
     setupRealtimeListeners() {
         if (!this.db) return;
 
-        // Listen to trays collection
-        const traysQuery = query(collection(this.db, 'tray_tracking'), orderBy('createdAt', 'desc'));
+        // Listen to trays collection  
+        // Note: Remove orderBy for now since MyRepData uses created_at and system expects createdAt
+        const traysQuery = query(collection(this.db, 'tray_tracking'));
         this.traysUnsubscribe = onSnapshot(traysQuery, (snapshot) => {
             const trays = [];
             snapshot.forEach((doc) => {
@@ -81,7 +82,7 @@ export class DataManager {
         });
 
         // Listen to Facilities collection
-        const facilityQuery = query(collection(this.db, 'facilities'), orderBy('name', 'asc'));
+        const facilityQuery = query(collection(this.db, 'facilities'), orderBy('account_name', 'asc'));
         this.facilityUnsubscribe = onSnapshot(facilityQuery, (snapshot) => {
             const facilities = [];
             snapshot.forEach((doc) => {
@@ -226,9 +227,10 @@ export class DataManager {
             if (tray.id) {
                 // For updates, ensure tray_id matches document id for MyRepData compatibility
                 trayData.tray_id = tray.id;
+                trayData.updated_at = serverTimestamp();
                 await updateDoc(doc(this.db, 'tray_tracking', tray.id), trayData);
             } else {
-                trayData.createdAt = serverTimestamp();
+                trayData.created_at = serverTimestamp();
                 trayData.createdBy = window.app.authManager.getCurrentUser()?.uid;
                 const docRef = await addDoc(collection(this.db, 'tray_tracking'), trayData);
                 tray.id = docRef.id;
@@ -432,7 +434,7 @@ export class DataManager {
                         });
                     } else {
                         // No history entries - create a synthetic "created" activity from tray creation date
-                        if (tray.createdAt || tray.created_at) {
+                        if (tray.created_at || tray.createdAt) {
                             const createdActivity = {
                                 id: `created-${tray.id}`,
                                 trayId: tray.id,
@@ -440,7 +442,7 @@ export class DataManager {
                                 source: 'tray',
                                 action: 'created',
                                 details: `Tray created`,
-                                timestamp: tray.createdAt || tray.created_at,
+                                timestamp: tray.created_at || tray.createdAt,
                                 user: tray.createdBy || tray.created_by || 'System'
                             };
                             allActivities.push(createdActivity);
@@ -527,7 +529,7 @@ export class DataManager {
                     
                     if (snapshot.empty) {
                         // No history exists, add a creation entry
-                        const creationTime = tray.createdAt || tray.created_at || new Date();
+                        const creationTime = tray.created_at || tray.createdAt || new Date();
                         const createdBy = tray.createdBy || tray.created_by || 'System';
                         
                         await this.addHistoryEntry(
@@ -868,6 +870,7 @@ export class DataManager {
 
         return this.users;
     }
+
 
     cleanup() {
         if (this.traysUnsubscribe) {
