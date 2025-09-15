@@ -4,7 +4,7 @@ import { collection, getDocs, updateDoc, doc } from "https://www.gstatic.com/fir
 export class FacilityGeocodingMigration {
     constructor(db) {
         this.db = db;
-        this.apiBaseUrl = 'https://traytracker-dev.serverdatahost.com/api';
+        this.apiBaseUrl = '/api';
     }
 
     async migrateFacilityCoordinates() {
@@ -110,7 +110,7 @@ export class FacilityGeocodingMigration {
 
     async geocodeAddress(address) {
         try {
-            const response = await fetch(`${this.apiBaseUrl}/geocoding-simple`, {
+            const response = await fetch(`${this.apiBaseUrl}/geocoding-simple/address`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
