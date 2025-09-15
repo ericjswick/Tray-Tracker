@@ -333,6 +333,10 @@ export class TrayManager {
                 console.log('📍 Using facility coordinates for tray check-in:', facilityCoordinates);
             }
 
+            // Get current user ID for automatic assignment
+            const currentUser = window.app.authManager.getCurrentUser();
+            const currentUserId = currentUser?.uid;
+
             const updates = {
                 status: TRAY_STATUS.IN_USE, // Use MyRepData compatible status
                 location: facility, // Keep legacy location field for backward compatibility
@@ -343,6 +347,8 @@ export class TrayManager {
                 physician_id: surgeon, // Store physician ID for proper matching
                 notes: notes,
                 checkinPhotoUrl: photoUrl,
+                // Automatically assign tray to current user on check-in
+                assignedTo: currentUserId,
                 // Add facility coordinates if available
                 ...(facilityCoordinates && {
                     latitude: facilityCoordinates.latitude,
@@ -353,15 +359,19 @@ export class TrayManager {
             };
 
             await this.dataManager.updateTray(trayId, updates);
+            // Create history entry message with assignment info
+            const userName = currentUser?.name || currentUser?.email || 'Unknown User';
+            const historyMessage = `Checked in to ${this.getFacilityName(facility)}${caseDate ? ` for case on ${caseDate}` : ''}${surgeon ? ` with ${this.getSurgeonName(surgeon)}` : ''}. Automatically assigned to ${userName}.`;
+            
             await this.dataManager.addHistoryEntry(
                 trayId,
                 'checked-in',
-                `Checked in to ${this.getFacilityName(facility)}${caseDate ? ` for case on ${caseDate}` : ''}${surgeon ? ` with ${this.getSurgeonName(surgeon)}` : ''}`,
+                historyMessage,
                 photoUrl
             );
 
             bootstrap.Modal.getInstance(document.getElementById('checkinModal')).hide();
-            this.showSuccessNotification('Tray checked in successfully!');
+            this.showSuccessNotification(`Tray checked in successfully and assigned to ${userName}!`);
             
             // Update any cases that require this tray for real-time sync
             await this.updateAffectedCasesTimestamp(trayId);
@@ -401,6 +411,10 @@ export class TrayManager {
 
             // Get trunk coordinates from central function
             const trunkCoords = getLocationCoordinates(TRAY_LOCATIONS.TRUNK);
+            
+            // Get current user ID for automatic assignment
+            const currentUser = window.app.authManager.getCurrentUser();
+            const currentUserId = currentUser?.uid;
 
             const updates = {
                 status: TRAY_STATUS.AVAILABLE,
@@ -410,6 +424,8 @@ export class TrayManager {
                 surgeon: '',
                 notes: notes,
                 pickupPhotoUrl: photoUrl,
+                // Automatically assign tray to current user on pickup
+                assignedTo: currentUserId,
                 // Set coordinates to trunk location
                 latitude: trunkCoords?.latitude,
                 longitude: trunkCoords?.longitude,
@@ -418,15 +434,19 @@ export class TrayManager {
             };
 
             await this.dataManager.updateTray(trayId, updates);
+            // Create history entry message with assignment info
+            const userName = currentUser?.name || currentUser?.email || 'Unknown User';
+            const historyMessage = `Picked up from ${facilityName}. Notes: ${notes || 'None'}. Automatically assigned to ${userName}.`;
+            
             await this.dataManager.addHistoryEntry(
                 trayId,
                 'picked-up',
-                `Picked up from ${facilityName}. Notes: ${notes || 'None'}`,
+                historyMessage,
                 photoUrl
             );
 
             bootstrap.Modal.getInstance(document.getElementById('pickupModal')).hide();
-            this.showSuccessNotification('Tray picked up successfully!');
+            this.showSuccessNotification(`Tray picked up successfully and assigned to ${userName}!`);
             
             // Update any cases that require this tray for real-time sync
             await this.updateAffectedCasesTimestamp(trayId);
@@ -503,19 +523,29 @@ export class TrayManager {
                     turnoverPhotoUrl = await window.app.photoManager.uploadPhoto('turnover', 'turnover-photos');
                 }
 
+                // Get current user ID for automatic assignment on turnover checkin
+                const currentUser = window.app.authManager.getCurrentUser();
+                const currentUserId = currentUser?.uid;
+
                 const updates = {
                     caseDate: newCaseDate, // Assume this is in CDT - will convert on display
                     status: TRAY_STATUS.IN_USE,
                     location: TRAY_LOCATIONS.FACILITY,
                     turnoverCheckinPhotoUrl: checkinPhotoUrl,
-                    turnoverPhotoUrl: turnoverPhotoUrl
+                    turnoverPhotoUrl: turnoverPhotoUrl,
+                    // Automatically assign tray to current user on turnover checkin
+                    assignedTo: currentUserId
                 };
 
                 await this.dataManager.updateTray(trayId, updates);
+                // Create turnover history entry with assignment info
+                const userName = currentUser?.name || currentUser?.email || 'Unknown User';
+                const turnoverHistoryMessage = `Turnover processed for new case on ${newCaseDate}. Checkin notes: ${checkinNotes || 'None'}. Turnover notes: ${turnoverNotes || 'None'}. Automatically assigned to ${userName}.`;
+                
                 await this.dataManager.addHistoryEntry(
                     trayId,
                     'turnover',
-                    `Turnover processed for new case on ${newCaseDate}. Checkin notes: ${checkinNotes || 'None'}. Turnover notes: ${turnoverNotes || 'None'}`,
+                    turnoverHistoryMessage,
                     turnoverPhotoUrl
                 );
             }
@@ -654,11 +684,28 @@ export class TrayManager {
 
     renderTrays(trays) {
         
-        // Apply trays page status filter
+        // Apply trays page filters
         const statusFilter = document.getElementById('traysStatusFilter')?.value || '';
-        const filteredTrays = statusFilter ? 
-            trays.filter(tray => tray.status === statusFilter) : 
-            trays;
+        const userFilter = document.getElementById('traysUserFilter')?.value || '';
+        
+        let filteredTrays = trays;
+        
+        if (statusFilter) {
+            filteredTrays = filteredTrays.filter(tray => tray.status === statusFilter);
+        }
+        
+        if (userFilter) {
+            filteredTrays = filteredTrays.filter(tray => 
+                tray.assignedTo === userFilter || tray.assignedToUID === userFilter
+            );
+        }
+        
+        // Sort trays by name
+        filteredTrays.sort((a, b) => {
+            const nameA = a.tray_name || '';
+            const nameB = b.tray_name || '';
+            return nameA.localeCompare(nameB);
+        });
         
         // Log DOM element availability using API logging
         const trayCardView = document.getElementById('trayCardView');
@@ -731,7 +778,7 @@ export class TrayManager {
 
         const statusClass = this.getStatusClass(tray.status);
         const typeIcon = this.getTrayTypeIcon(tray);
-        const locationText = this.getLocationText(tray.location);
+        const locationText = this.getLocationText(tray.location, tray);
 
         card.innerHTML = `
             <div class="tray-card-header">
@@ -751,16 +798,22 @@ export class TrayManager {
                 <div class="tray-detail">
                     ${this.isCheckedIn(tray) ? `
                         <i class="fas fa-hospital"></i>
-                        <span class="tray-detail-value">${(() => {
-                            const facilityId = this.getTrayFacility(tray);
-                            const facilityName = this.getFacilityName(facilityId);
-                            
-                            
-                            return facilityName;
-                        })()}</span>
+                        <span class="tray-detail-value">
+                            <a href="#" onclick="app.trayManager.showLocationMap('${tray.id}', '${this.getTrayFacility(tray)}'); return false;" class="location-link" title="View location on map">
+                                ${(() => {
+                                    const facilityId = this.getTrayFacility(tray);
+                                    const facilityName = this.getFacilityName(facilityId);
+                                    return facilityName;
+                                })()}
+                            </a>
+                        </span>
                     ` : `
                         <i class="fas fa-map-marker-alt"></i>
-                        <span class="tray-detail-value">${locationText}</span>
+                        <span class="tray-detail-value">
+                            <a href="#" onclick="app.trayManager.showLocationMap('${tray.id}', '${tray.location}'); return false;" class="location-link" title="View location on map">
+                                ${locationText}
+                            </a>
+                        </span>
                     `}
                 </div>
                 ${this.getTrayDate(tray) ? `
@@ -829,7 +882,9 @@ export class TrayManager {
                     <label>Location</label>
                     <span>
                         <i class="${locationIcon} me-2"></i>
-                        ${this.getLocationText(tray.location)}
+                        <a href="#" onclick="app.trayManager.showLocationMap('${tray.id}', '${tray.location}'); return false;" class="location-link" title="View location on map">
+                            ${this.getLocationText(tray.location, tray)}
+                        </a>
                     </span>
                 </div>
                 <div class="tray-horizontal-field">
@@ -908,8 +963,34 @@ export class TrayManager {
         return getLocationIcon(location);
     }
 
-    getLocationText(locationId) {
-        // Get location from Firebase collection using the ID
+    getLocationText(locationId, tray = null) {
+        // Special handling for Rep Trunk - show user's facility if tray is assigned
+        if (locationId === 'trunk' || locationId === 'Rep Trunk' || locationId === 'rep_trunk') {
+            if (tray && tray.assignedTo) {
+                const userFacilityName = this.getUserFacilityName(tray.assignedTo);
+                if (userFacilityName) {
+                    return `Rep Trunk: ${userFacilityName}`;
+                }
+            }
+            // Fallback to generic Rep Trunk if no assigned user or facility found
+            return 'Rep Trunk';
+        }
+
+        // Check if locationId matches other predefined static locations
+        const staticLocationText = getLocationDisplayText(locationId);
+        if (staticLocationText !== locationId && staticLocationText !== 'Unknown Location') {
+            return staticLocationText;
+        }
+
+        // If it's not a static location, try to look up as facility ID
+        if (locationId) {
+            const facilityName = this.getFacilityNameById(locationId);
+            if (facilityName && facilityName !== 'Unknown Facility' && !facilityName.includes('Unknown Facility')) {
+                return facilityName;
+            }
+        }
+
+        // Fallback to Firebase collection locations
         if (window.app.locationManager && window.app.locationManager.currentLocations) {
             const location = window.app.locationManager.currentLocations.find(
                 loc => loc.id === locationId
@@ -919,8 +1000,8 @@ export class TrayManager {
             }
         }
 
-        // Use centralized location display function for static locations
-        return getLocationDisplayText(locationId);
+        // Final fallback
+        return locationId || 'Unknown Location';
     }
 
     getUserName(userId) {
@@ -933,6 +1014,25 @@ export class TrayManager {
         }
 
         return 'Loading user...';
+    }
+
+    /**
+     * Get the facility name for a user's location_facility_id
+     */
+    getUserFacilityName(userId) {
+        if (!userId) return null;
+
+        // Get user data
+        if (window.app?.dataManager?.users && window.app.dataManager.users.size > 0) {
+            const user = window.app.dataManager.users.get(userId);
+            if (user && user.location_facility_id) {
+                // Look up the facility name using the facility ID
+                const facilityName = this.getFacilityNameById(user.location_facility_id);
+                return facilityName;
+            }
+        }
+
+        return null;
     }
 
     async populateUserDropdown() {
@@ -1087,6 +1187,34 @@ export class TrayManager {
     }
 
     /**
+     * Get facility name by ID for location display (no fallback messages)
+     */
+    getFacilityNameById(facilityId) {
+        if (!facilityId) {
+            return null;
+        }
+        
+        // Try facilityManager first
+        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
+            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
+            if (facility) {
+                return facility.account_name || facility.name;
+            }
+        }
+        
+        // Fallback to dataManager
+        const facilities = this.dataManager.getFacilities();
+        if (facilities && facilities.length > 0) {
+            const facility = facilities.find(f => f.id === facilityId);
+            if (facility) {
+                return facility.account_name || facility.name;
+            }
+        }
+        
+        return null;
+    }
+
+    /**
      * Get facility coordinates for check-in location tracking
      * @param {string} facilityId - The facility ID to look up
      * @returns {object|null} - Object with latitude and longitude, or null if not found
@@ -1161,15 +1289,28 @@ export class TrayManager {
 
     updateStats(trays) {
         const stats = {
+            total: trays.length,
             available: trays.filter(t => isAvailableStatus(t.status)).length,
             inUse: trays.filter(t => isInUseStatus(t.status)).length,
+            checkedIn: trays.filter(t => isCheckedInStatus(t.status)).length,
             cleaning: trays.filter(t => normalizeStatus(t.status) === TRAY_STATUS.CLEANING).length,
             maintenance: trays.filter(t => normalizeStatus(t.status) === TRAY_STATUS.MAINTENANCE).length,
             corporate: trays.filter(t => t.location === TRAY_LOCATIONS.CORPORATE).length,
             trunk: trays.filter(t => t.location === TRAY_LOCATIONS.TRUNK).length
         };
 
-        // Update stats in the trays view if elements exist
+        // Update tray page stats cards
+        const totalTraysElement = document.getElementById('totalTraysCount');
+        const availableTraysElement = document.getElementById('availableTraysCount');
+        const inUseTraysElement = document.getElementById('inUseTraysCount');
+        const checkedInTraysElement = document.getElementById('checkedInTraysCount');
+
+        if (totalTraysElement) totalTraysElement.textContent = stats.total;
+        if (availableTraysElement) availableTraysElement.textContent = stats.available;
+        if (inUseTraysElement) inUseTraysElement.textContent = stats.inUse;
+        if (checkedInTraysElement) checkedInTraysElement.textContent = stats.checkedIn;
+
+        // Update legacy dashboard stats if elements exist (for backward compatibility)
         const availableElement = document.getElementById('availableCount');
         const inUseElement = document.getElementById('inUseCount');
         const corporateElement = document.getElementById('corporateCount');
@@ -1367,5 +1508,282 @@ export class TrayManager {
         longitudeField.value = '';
         
         this.showSuccessNotification('Location fields cleared');
+    }
+
+    /**
+     * Show location on map for a tray
+     */
+    async showLocationMap(trayId, locationId) {
+        try {
+            const tray = this.currentTrays.find(t => t.id === trayId);
+            if (!tray) {
+                this.showErrorNotification('Tray not found');
+                return;
+            }
+
+            let coordinates = null;
+            let address = '';
+            let facilityName = '';
+
+            // First check if locationId is a static location (Rep Trunk, SI-BONE Corporate, cleaning, maintenance)
+            const staticLocationText = getLocationDisplayText(locationId);
+            if (staticLocationText !== locationId && staticLocationText !== 'Unknown Location') {
+                // This is a static location - use central function coordinates
+                const locationCoords = getLocationCoordinates(locationId);
+                if (locationCoords) {
+                    coordinates = {
+                        lat: locationCoords.latitude,
+                        lng: locationCoords.longitude
+                    };
+                    facilityName = staticLocationText;
+                    // For static locations, use the description as address if it's different from the name
+                    address = locationCoords.description && locationCoords.description !== staticLocationText 
+                             ? locationCoords.description 
+                             : '';
+                }
+            } else {
+                // Not a static location - try to look up as facility ID
+                const facility = await this.getFacilityById(locationId);
+                if (facility) {
+                    facilityName = facility.account_name || facility.name || 'Unknown Facility';
+                    // Build address from facility fields, only include non-empty parts
+                    const addressParts = [
+                        facility.address,
+                        facility.city, 
+                        facility.state,
+                        facility.zip
+                    ].filter(part => part && typeof part === 'string' && part.trim() && part.trim() !== '');
+                    address = addressParts.join(', ');
+                    if (facility.latitude && facility.longitude) {
+                        coordinates = {
+                            lat: facility.latitude,
+                            lng: facility.longitude
+                        };
+                    }
+                } else {
+                    // Fallback: use tray's own coordinates if available
+                    if (tray.latitude && tray.longitude) {
+                        coordinates = {
+                            lat: tray.latitude,
+                            lng: tray.longitude
+                        };
+                        facilityName = this.getLocationText(locationId, tray);
+                        address = facilityName;
+                    } else {
+                        // Last resort: try generic location text
+                        facilityName = this.getLocationText(locationId, tray);
+                        address = facilityName;
+                        
+                        // Try to get coordinates from central function as fallback
+                        const locationCoords = getLocationCoordinates(locationId);
+                        if (locationCoords) {
+                            coordinates = {
+                                lat: locationCoords.latitude,
+                                lng: locationCoords.longitude
+                            };
+                        }
+                    }
+                }
+            }
+
+            if (!coordinates) {
+                this.showErrorNotification('Location coordinates not available');
+                return;
+            }
+
+            // Debug logging for address issues
+            console.log('🗺️ Map popup data:', {
+                trayName: tray.tray_name,
+                locationId,
+                facilityName,
+                address,
+                coordinates,
+                assignedTo: tray.assignedTo
+            });
+
+            await this.openLocationModal(tray, coordinates, facilityName, address);
+
+        } catch (error) {
+            console.error('Error showing location map:', error);
+            this.showErrorNotification('Error loading location map');
+        }
+    }
+
+    /**
+     * Get facility by ID
+     */
+    async getFacilityById(facilityId) {
+        if (!facilityId) return null;
+
+        // Try facilityManager first
+        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
+            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
+            if (facility) return facility;
+        }
+
+        // Fallback to dataManager
+        const facilities = this.dataManager.getFacilities();
+        if (facilities && facilities.length > 0) {
+            const facility = facilities.find(f => f.id === facilityId);
+            if (facility) return facility;
+        }
+
+        return null;
+    }
+
+    /**
+     * Open location modal with map
+     */
+    async openLocationModal(tray, coordinates, facilityName, address) {
+        // Remove existing modal if present
+        const existingModal = document.getElementById('locationMapModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Create modal
+        const modal = this.createLocationModal(tray, facilityName, address);
+        document.body.appendChild(modal);
+
+        // Show modal
+        const bootstrapModal = new bootstrap.Modal(modal);
+        bootstrapModal.show();
+
+        let mapInstance = null;
+
+        // Initialize map after modal is shown
+        modal.addEventListener('shown.bs.modal', () => {
+            mapInstance = this.initializeLocationMap(coordinates, facilityName, address);
+        });
+
+        // Clean up when modal is hidden
+        modal.addEventListener('hidden.bs.modal', () => {
+            // Clean up Leaflet map instance to prevent memory leaks
+            if (mapInstance && mapInstance.remove) {
+                mapInstance.remove();
+            }
+            modal.remove();
+        });
+    }
+
+    /**
+     * Create location modal HTML
+     */
+    createLocationModal(tray, facilityName, address) {
+        const modal = document.createElement('div');
+        modal.className = 'modal fade';
+        modal.id = 'locationMapModal';
+        modal.tabIndex = -1;
+        modal.setAttribute('aria-labelledby', 'locationMapModalLabel');
+        modal.setAttribute('aria-hidden', 'true');
+
+        modal.innerHTML = `
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="locationMapModalLabel">
+                            <i class="fas fa-map-marker-alt me-2"></i>
+                            Location: ${tray.tray_name}
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <h6><strong>${facilityName}</strong></h6>
+                            ${address ? `<p class="text-muted mb-2"><i class="fas fa-map-marker-alt me-2"></i>${address}</p>` : '<p class="text-muted mb-2"><i class="fas fa-info-circle me-2"></i>No address available</p>'}
+                            ${tray.assignedTo ? `<p class="text-muted mb-2"><i class="fas fa-user me-2"></i>Assigned to: ${this.getUserName(tray.assignedTo)}</p>` : '<p class="text-muted mb-2"><i class="fas fa-user-slash me-2"></i>Not assigned</p>'}
+                        </div>
+                        <div id="locationMap" style="height: 400px; border-radius: 8px; border: 1px solid #ddd;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        return modal;
+    }
+
+    /**
+     * Initialize Leaflet map in the modal
+     */
+    initializeLocationMap(coordinates, facilityName, address) {
+        // Check if Leaflet is available
+        if (typeof L === 'undefined') {
+            document.getElementById('locationMap').innerHTML = `
+                <div class="d-flex align-items-center justify-content-center h-100">
+                    <div class="text-center">
+                        <i class="fas fa-exclamation-triangle text-warning mb-2" style="font-size: 2rem;"></i>
+                        <p>Map library is not available.</p>
+                        <button class="btn btn-primary" onclick="app.trayManager.openInGoogleMaps('${facilityName}', '${address}')">
+                            <i class="fas fa-external-link-alt me-2"></i>
+                            Open in Google Maps
+                        </button>
+                    </div>
+                </div>
+            `;
+            return null;
+        }
+
+        try {
+            // Initialize Leaflet map
+            const map = L.map('locationMap').setView([coordinates.lat, coordinates.lng], 15);
+
+            // Add OpenStreetMap tile layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }).addTo(map);
+
+            // Add marker
+            const marker = L.marker([coordinates.lat, coordinates.lng]).addTo(map);
+
+            // Add popup with facility info
+            const popupContent = `
+                <div style="text-align: center;">
+                    <h6 style="margin-bottom: 8px;"><strong>${facilityName}</strong></h6>
+                    <p style="margin: 0; color: #666;">${address}</p>
+                </div>
+            `;
+            
+            marker.bindPopup(popupContent);
+            
+            // Auto-open popup
+            marker.openPopup();
+
+            // Fix map display issues that sometimes occur with Bootstrap modals
+            setTimeout(() => {
+                map.invalidateSize();
+            }, 100);
+
+            // Return map instance for cleanup
+            return map;
+
+        } catch (error) {
+            console.error('Error initializing Leaflet map:', error);
+            document.getElementById('locationMap').innerHTML = `
+                <div class="d-flex align-items-center justify-content-center h-100">
+                    <div class="text-center">
+                        <i class="fas fa-exclamation-triangle text-warning mb-2" style="font-size: 2rem;"></i>
+                        <p>Error loading map.</p>
+                        <button class="btn btn-primary" onclick="app.trayManager.openInGoogleMaps('${facilityName}', '${address}')">
+                            <i class="fas fa-external-link-alt me-2"></i>
+                            Open in Google Maps
+                        </button>
+                    </div>
+                </div>
+            `;
+            return null;
+        }
+    }
+
+    /**
+     * Open location in Google Maps (external)
+     */
+    openInGoogleMaps(facilityName, address) {
+        const query = encodeURIComponent(address || facilityName);
+        const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+        window.open(url, '_blank');
     }
 }

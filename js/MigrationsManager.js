@@ -990,3 +990,225 @@ window.clearMigrationConsole = function() {
         consoleOutput.innerHTML = 'Migration console output will appear here...';
     }
 };
+
+// Facility ID Null Removal Migration Functions
+window.checkFacilityIdNullStatus = async function() {
+    try {
+        const statusDiv = document.getElementById('facilityIdNullStatus');
+        const resultDiv = document.getElementById('facilityIdNullResult');
+        
+        statusDiv.className = 'alert alert-info';
+        statusDiv.classList.remove('d-none');
+        statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking facility ID status...';
+        resultDiv.classList.add('d-none');
+        
+        const status = await window.facilityIdNullRemovalMigration.checkMigrationStatus();
+        
+        if (status.hasNullId > 0) {
+            statusDiv.className = 'alert alert-warning';
+            statusDiv.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i> Migration needed<br>
+                <small>Found ${status.hasNullId} facilities with id: null field<br>
+                Total facilities: ${status.total} | Clean: ${status.noIdField} | Non-null IDs: ${status.hasNonNullId}</small>
+            `;
+        } else {
+            statusDiv.className = 'alert alert-success';
+            statusDiv.innerHTML = '<i class="fas fa-check"></i> All facilities have clean ID fields (no id: null)';
+        }
+        
+    } catch (error) {
+        const statusDiv = document.getElementById('facilityIdNullStatus');
+        statusDiv.className = 'alert alert-danger';
+        statusDiv.classList.remove('d-none');
+        statusDiv.innerHTML = `<i class="fas fa-times"></i> Error: ${error.message}`;
+    }
+};
+
+window.runFacilityIdNullRemovalFromUI = async function() {
+    try {
+        const resultDiv = document.getElementById('facilityIdNullResult');
+        
+        resultDiv.className = 'alert alert-info';
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running facility ID null removal migration...';
+        
+        const result = await window.facilityIdNullRemovalMigration.migrateFacilities();
+        
+        if (result.errors === 0) {
+            resultDiv.className = 'alert alert-success';
+            resultDiv.innerHTML = `
+                <i class="fas fa-check"></i> Migration completed successfully!<br>
+                <small>Updated: ${result.updated} facilities | Skipped: ${result.skipped} | Total: ${result.total}</small>
+            `;
+        } else {
+            resultDiv.className = 'alert alert-warning';
+            resultDiv.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i> Migration completed with ${result.errors} errors<br>
+                <small>Updated: ${result.updated} | Skipped: ${result.skipped} | Errors: ${result.errors}</small>
+            `;
+        }
+        
+        // Refresh status
+        setTimeout(() => window.checkFacilityIdNullStatus(), 1000);
+        
+    } catch (error) {
+        const resultDiv = document.getElementById('facilityIdNullResult');
+        resultDiv.className = 'alert alert-danger';
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = `<i class="fas fa-times"></i> Migration failed: ${error.message}`;
+    }
+};
+
+// Facility Geocoding Migration Functions
+window.checkFacilityGeocodingStatus = async function() {
+    try {
+        const statusDiv = document.getElementById('facilityGeocodingStatus');
+        const resultDiv = document.getElementById('facilityGeocodingResult');
+        
+        statusDiv.className = 'alert alert-info';
+        statusDiv.classList.remove('d-none');
+        statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking geocoding status...';
+        resultDiv.classList.add('d-none');
+        
+        const status = await window.facilityGeocodingMigration.checkGeocodingStatus();
+        
+        if (status.missingCoordinates > 0) {
+            statusDiv.className = 'alert alert-warning';
+            statusDiv.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i> Geocoding needed<br>
+                <small>
+                    ${status.missingCoordinates} facilities need geocoding<br>
+                    ${status.hasCoordinates} have coordinates | ${status.incompleteAddress} have incomplete addresses
+                </small>
+            `;
+        } else if (status.incompleteAddress > 0) {
+            statusDiv.className = 'alert alert-info';
+            statusDiv.innerHTML = `
+                <i class="fas fa-info-circle"></i> Some facilities have incomplete addresses<br>
+                <small>
+                    ${status.hasCoordinates} facilities have coordinates | ${status.incompleteAddress} have incomplete addresses
+                </small>
+            `;
+        } else {
+            statusDiv.className = 'alert alert-success';
+            statusDiv.innerHTML = '<i class="fas fa-check"></i> All facilities have valid coordinates';
+        }
+        
+    } catch (error) {
+        const statusDiv = document.getElementById('facilityGeocodingStatus');
+        statusDiv.className = 'alert alert-danger';
+        statusDiv.classList.remove('d-none');
+        statusDiv.innerHTML = `<i class="fas fa-times"></i> Error: ${error.message}`;
+    }
+};
+
+window.runFacilityGeocodingFromUI = async function() {
+    try {
+        const resultDiv = document.getElementById('facilityGeocodingResult');
+        
+        resultDiv.className = 'alert alert-info';
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running facility geocoding migration...<br><small>This may take several minutes depending on the number of facilities.</small>';
+        
+        const result = await window.facilityGeocodingMigration.migrateFacilityCoordinates();
+        
+        if (result.errors === 0) {
+            resultDiv.className = 'alert alert-success';
+            resultDiv.innerHTML = `
+                <i class="fas fa-check"></i> Geocoding migration completed successfully!<br>
+                <small>Updated: ${result.updated} facilities | Skipped: ${result.skipped} | Total: ${result.total}</small>
+            `;
+        } else {
+            resultDiv.className = 'alert alert-warning';
+            resultDiv.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i> Geocoding completed with ${result.errors} errors<br>
+                <small>Updated: ${result.updated} | Skipped: ${result.skipped} | Errors: ${result.errors}</small>
+            `;
+        }
+        
+        // Refresh status
+        setTimeout(() => window.checkFacilityGeocodingStatus(), 2000);
+        
+    } catch (error) {
+        const resultDiv = document.getElementById('facilityGeocodingResult');
+        resultDiv.className = 'alert alert-danger';
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = `<i class="fas fa-times"></i> Geocoding migration failed: ${error.message}`;
+    }
+};
+
+// Facility Name to Account Name Migration Functions
+window.checkFacilityNameToAccountNameStatus = async function() {
+    try {
+        const statusDiv = document.getElementById('facilityNameToAccountNameStatus');
+        const resultDiv = document.getElementById('facilityNameToAccountNameResult');
+        
+        statusDiv.className = 'alert alert-info';
+        statusDiv.classList.remove('d-none');
+        statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking name/account_name status...';
+        resultDiv.classList.add('d-none');
+        
+        const status = await window.facilityNameToAccountNameMigration.checkMigrationStatus();
+        
+        if (status.hasNameOnly > 0 || status.hasBothMatching > 0) {
+            statusDiv.className = 'alert alert-warning';
+            statusDiv.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i> Migration needed<br>
+                <small>
+                    Name only: ${status.hasNameOnly} | Both matching: ${status.hasBothMatching} | Conflicts: ${status.hasBothConflicting}<br>
+                    Account name only: ${status.hasAccountNameOnly} | Neither: ${status.hasNeither}
+                </small>
+            `;
+        } else if (status.hasBothConflicting > 0) {
+            statusDiv.className = 'alert alert-info';
+            statusDiv.innerHTML = `
+                <i class="fas fa-info-circle"></i> Manual review needed<br>
+                <small>${status.hasBothConflicting} facilities have conflicting name/account_name values</small>
+            `;
+        } else {
+            statusDiv.className = 'alert alert-success';
+            statusDiv.innerHTML = '<i class="fas fa-check"></i> All facilities use account_name consistently';
+        }
+        
+    } catch (error) {
+        const statusDiv = document.getElementById('facilityNameToAccountNameStatus');
+        statusDiv.className = 'alert alert-danger';
+        statusDiv.classList.remove('d-none');
+        statusDiv.innerHTML = `<i class="fas fa-times"></i> Error: ${error.message}`;
+    }
+};
+
+window.runFacilityNameToAccountNameFromUI = async function() {
+    try {
+        const resultDiv = document.getElementById('facilityNameToAccountNameResult');
+        
+        resultDiv.className = 'alert alert-info';
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running name to account_name migration...';
+        
+        const result = await window.facilityNameToAccountNameMigration.migrateFacilities();
+        
+        if (result.errors === 0) {
+            resultDiv.className = 'alert alert-success';
+            resultDiv.innerHTML = `
+                <i class="fas fa-check"></i> Migration completed successfully!<br>
+                <small>Updated: ${result.updated} facilities | Skipped: ${result.skipped} | Total: ${result.total}</small>
+            `;
+        } else {
+            resultDiv.className = 'alert alert-warning';
+            resultDiv.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i> Migration completed with ${result.errors} errors<br>
+                <small>Updated: ${result.updated} | Skipped: ${result.skipped} | Errors: ${result.errors}</small>
+            `;
+        }
+        
+        // Refresh status
+        setTimeout(() => window.checkFacilityNameToAccountNameStatus(), 1000);
+        
+    } catch (error) {
+        const resultDiv = document.getElementById('facilityNameToAccountNameResult');
+        resultDiv.className = 'alert alert-danger';
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = `<i class="fas fa-times"></i> Migration failed: ${error.message}`;
+    }
+};

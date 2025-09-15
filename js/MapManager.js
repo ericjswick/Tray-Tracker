@@ -22,13 +22,45 @@ export class MapManager {
     initializeMap() {
         if (this.map) return;
 
-        // Initialize map centered on Milwaukee area as default
-        const defaultCenter = getLocationCoordinatesArray(TRAY_LOCATIONS.TRUNK) || [43.0389, -87.9065];
-        this.map = L.map('map').setView(defaultCenter, 8);
+        const mapContainer = document.getElementById('map');
+        if (!mapContainer) {
+            console.error('🗺️ Map container not found');
+            return;
+        }
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(this.map);
+        // Check if container has proper dimensions
+        if (mapContainer.offsetWidth === 0 || mapContainer.offsetHeight === 0) {
+            console.warn('🗺️ Map container has zero dimensions, waiting for proper sizing');
+            setTimeout(() => this.initializeMap(), 100);
+            return;
+        }
+
+        console.log('🗺️ Initializing map with container dimensions:', {
+            width: mapContainer.offsetWidth,
+            height: mapContainer.offsetHeight
+        });
+
+        try {
+            // Initialize map centered on Milwaukee area as default
+            const defaultCenter = getLocationCoordinatesArray(TRAY_LOCATIONS.TRUNK) || [43.0389, -87.9065];
+            this.map = L.map('map').setView(defaultCenter, 8);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(this.map);
+
+            // Ensure map renders properly after initialization
+            setTimeout(() => {
+                if (this.map) {
+                    this.map.invalidateSize();
+                    console.log('🗺️ Map initialization complete');
+                }
+            }, 100);
+
+        } catch (error) {
+            console.error('🗺️ Error initializing map:', error);
+        }
     }
 
     updateMap(trays) {
@@ -155,31 +187,136 @@ export class MapManager {
         // Tray filters
         const trayStatusFilter = document.getElementById('trayStatusFilter');
         const trayLocationFilter = document.getElementById('trayLocationFilter');
+        const trayUserFilter = document.getElementById('trayUserFilter');
         const mapDisplayFilter = document.getElementById('mapDisplayFilter');
 
-        // Add event listeners for facility filters
+        // Add event listeners for facility filters with smart switching
         if (locationSearch) {
-            locationSearch.addEventListener('input', () => this.updateCombinedFilters());
+            locationSearch.addEventListener('input', (e) => {
+                if (e.target.value.trim()) {
+                    this.switchToFacilityMode();
+                }
+                this.updateCombinedFilters();
+            });
         }
         if (locationTypeFilter) {
-            locationTypeFilter.addEventListener('change', () => this.updateCombinedFilters());
+            locationTypeFilter.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    this.switchToFacilityMode();
+                }
+                this.updateCombinedFilters();
+            });
         }
         if (locationStatusFilter) {
-            locationStatusFilter.addEventListener('change', () => this.updateCombinedFilters());
+            locationStatusFilter.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    this.switchToFacilityMode();
+                }
+                this.updateCombinedFilters();
+            });
         }
         if (locationRegionFilter) {
             locationRegionFilter.addEventListener('change', () => this.updateCombinedFilters());
         }
         
-        // Add event listeners for tray filters
+        // Add event listeners for tray filters with smart switching
         if (trayStatusFilter) {
-            trayStatusFilter.addEventListener('change', () => this.updateCombinedFilters());
+            trayStatusFilter.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    this.switchToTrayMode();
+                }
+                this.updateCombinedFilters();
+            });
         }
         if (trayLocationFilter) {
-            trayLocationFilter.addEventListener('change', () => this.updateCombinedFilters());
+            trayLocationFilter.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    this.switchToTrayMode();
+                }
+                this.updateCombinedFilters();
+            });
+        }
+        if (trayUserFilter) {
+            trayUserFilter.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    this.switchToTrayMode();
+                }
+                this.updateCombinedFilters();
+            });
         }
         if (mapDisplayFilter) {
             mapDisplayFilter.addEventListener('change', () => this.updateCombinedFilters());
+        }
+        
+        // Populate user dropdown
+        this.populateUserFilter();
+    }
+
+    // Switch to tray-focused mode
+    switchToTrayMode() {
+        // Set display filter to show trays only
+        const mapDisplayFilter = document.getElementById('mapDisplayFilter');
+        if (mapDisplayFilter) {
+            mapDisplayFilter.value = 'trays';
+        }
+
+        // Reset facility filters
+        const locationTypeFilter = document.getElementById('locationTypeFilter');
+        const locationStatusFilter = document.getElementById('locationStatusFilter');
+        const locationSearch = document.getElementById('locationSearch');
+
+        if (locationTypeFilter) locationTypeFilter.value = '';
+        if (locationStatusFilter) locationStatusFilter.value = '';
+        if (locationSearch) locationSearch.value = '';
+    }
+
+    // Switch to facility-focused mode
+    switchToFacilityMode() {
+        // Set display filter to show facilities only
+        const mapDisplayFilter = document.getElementById('mapDisplayFilter');
+        if (mapDisplayFilter) {
+            mapDisplayFilter.value = 'facilities';
+        }
+
+        // Reset tray filters
+        const trayStatusFilter = document.getElementById('trayStatusFilter');
+        const trayLocationFilter = document.getElementById('trayLocationFilter');
+        const trayUserFilter = document.getElementById('trayUserFilter');
+
+        if (trayStatusFilter) trayStatusFilter.value = '';
+        if (trayLocationFilter) trayLocationFilter.value = '';
+        if (trayUserFilter) trayUserFilter.value = '';
+    }
+
+    // Populate user filter dropdown
+    populateUserFilter(retryCount = 0) {
+        const trayUserFilter = document.getElementById('trayUserFilter');
+        if (!trayUserFilter) return;
+
+        // Clear existing options except "All Users"
+        trayUserFilter.innerHTML = '<option value="">All Users</option>';
+
+        // Get users from DataManager
+        if (window.app?.dataManager?.users && window.app.dataManager.users.size > 0) {
+            const users = Array.from(window.app.dataManager.users.values())
+                .filter(user => user.active !== false) // Only show active users
+                .sort((a, b) => {
+                    const nameA = a.name || a.email || '';
+                    const nameB = b.name || b.email || '';
+                    return nameA.localeCompare(nameB);
+                });
+
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.uid || user.id; // Use uid first, fallback to id
+                option.textContent = user.name || user.email || 'Unknown User';
+                trayUserFilter.appendChild(option);
+            });
+        } else if (retryCount < 5) {
+            // Data not loaded yet, retry after delay (max 5 retries)
+            setTimeout(() => {
+                this.populateUserFilter(retryCount + 1);
+            }, 1000);
         }
     }
 
@@ -248,13 +385,26 @@ export class MapManager {
         // Get display option
         const displayFilter = document.getElementById('mapDisplayFilter')?.value || 'both';
         
-        // Show facilities if requested
-        if (displayFilter === 'both' || displayFilter === 'facilities') {
+        // Get tray filters - if any tray filter is used, don't show facilities
+        const trayStatusFilter = document.getElementById('trayStatusFilter')?.value || '';
+        const trayUserFilter = document.getElementById('trayUserFilter')?.value || '';
+        const trayLocationFilter = document.getElementById('trayLocationFilter')?.value || '';
+        
+        // Get facility filters - if any facility filter is used, don't show trays
+        const locationTypeFilter = document.getElementById('locationTypeFilter')?.value || '';
+        const locationStatusFilter = document.getElementById('locationStatusFilter')?.value || '';
+        const locationRegionFilter = document.getElementById('locationRegionFilter')?.value || '';
+        const locationSearch = document.getElementById('locationSearch')?.value || '';
+        
+        // Show facilities only if requested and no tray filters are applied
+        if ((displayFilter === 'both' || displayFilter === 'facilities') && 
+            !trayStatusFilter && !trayUserFilter && !trayLocationFilter) {
             this.addFilteredFacilityMarkers();
         }
         
-        // Show trays if requested
-        if (displayFilter === 'both' || displayFilter === 'trays') {
+        // Show trays only if requested and no facility filters are applied
+        if ((displayFilter === 'both' || displayFilter === 'trays') && 
+            !locationTypeFilter && !locationStatusFilter && !locationRegionFilter && !locationSearch) {
             this.addFilteredTrayMarkers();
         }
 
@@ -315,9 +465,13 @@ export class MapManager {
         const searchTerm = document.getElementById('locationSearch')?.value.toLowerCase() || '';
         const trayStatusFilter = document.getElementById('trayStatusFilter')?.value || '';
         const trayLocationFilter = document.getElementById('trayLocationFilter')?.value || '';
+        const trayUserFilter = document.getElementById('trayUserFilter')?.value || '';
 
         // Get trays from TrayManager
         const trays = window.app.trayManager?.currentTrays || [];
+        
+        // Static locations that are NOT facilities
+        const staticLocations = ['trunk', 'corporate', 'cleaning', 'maintenance'];
         
         // Apply tray filters
         const filteredTrays = trays.filter(tray => {
@@ -334,7 +488,23 @@ export class MapManager {
             }
             
             // Tray location filter
-            if (trayLocationFilter && tray.location !== trayLocationFilter) {
+            if (trayLocationFilter) {
+                if (trayLocationFilter === 'facility') {
+                    // "At Facility" means NOT in static locations (trunk, corporate, cleaning, maintenance)
+                    if (staticLocations.includes(tray.location)) {
+                        return false;
+                    }
+                } else {
+                    // Specific location filter
+                    if (tray.location !== trayLocationFilter) {
+                        return false;
+                    }
+                }
+            }
+            
+            // Tray user filter (filter by assigned user)
+            if (trayUserFilter && tray.assignedTo !== trayUserFilter) {
+                console.log(`🔍 User filter: Filtering out tray ${tray.tray_name} - assignedTo: "${tray.assignedTo}" !== filter: "${trayUserFilter}"`);
                 return false;
             }
             
@@ -345,6 +515,25 @@ export class MapManager {
         this.displayTrayMarkers(filteredTrays);
         
         console.log(`🔍 Filtered trays: ${filteredTrays.length} of ${trays.length} trays`);
+        console.log(`🔍 Filter values:`, { 
+            searchTerm, 
+            trayStatusFilter, 
+            trayLocationFilter, 
+            trayUserFilter 
+        });
+        
+        if (trayUserFilter) {
+            console.log(`🔍 User filter active: "${trayUserFilter}"`);
+            console.log(`🔍 All tray assignments:`, 
+                trays.map(t => ({ name: t.tray_name, assignedTo: t.assignedTo, assignedToType: typeof t.assignedTo }))
+            );
+            console.log(`🔍 Available users in dropdown:`, 
+                Array.from(document.getElementById('trayUserFilter').options).map(opt => ({ value: opt.value, text: opt.textContent }))
+            );
+            console.log(`🔍 Users from DataManager:`, 
+                Array.from(window.app?.dataManager?.users?.values() || []).map(user => ({ uid: user.uid, id: user.id, name: user.name, email: user.email }))
+            );
+        }
     }
 
     displayTrayMarkers(trays) {
@@ -444,12 +633,11 @@ export class MapManager {
                 const popupContent = `
                     <div class="tray-popup">
                         <h6 class="popup-title">${tray.tray_name}</h6>
-                        <p class="mb-1"><strong>Status:</strong> <span class="status-${tray.status}">${tray.status.charAt(0).toUpperCase() + tray.status.slice(1)}</span></p>
+                        <p class="mb-1"><strong>Status:</strong> <span class="status-${tray.status}">${getStatusDisplayText(tray.status)}</span></p>
                         <p class="mb-1"><strong>Location:</strong> ${locationInfo}</p>
-                        ${tray.facility ? `<p class="mb-1"><strong>Facility:</strong> ${tray.facility}</p>` : ''}
-                        ${coordinateInfo}
+                        ${tray.assignedTo ? `<p class="mb-1"><strong>Assigned to:</strong> ${window.app.trayManager.getUserName(tray.assignedTo)}</p>` : ''}
                         ${tray.caseDate ? `<p class="mb-1"><strong>Case Date:</strong> ${tray.caseDate}</p>` : ''}
-                        ${surgeonName && surgeonName !== 'Not assigned' ? `<p class="mb-2"><strong>Surgeon:</strong> ${surgeonName}</p>` : ''}
+                        ${surgeonName && surgeonName !== 'Not assigned' ? `<p class="mb-2"><strong>Physician:</strong> ${surgeonName}</p>` : ''}
                         ${actions ? `<div class="d-flex gap-2 mt-2">${actions}</div>` : ''}
                     </div>
                 `;

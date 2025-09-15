@@ -63,7 +63,7 @@ class CaseService {
         query = query.where('surgeonId', '==', filters.surgeonId);
       }
       if (filters.facilityId) {
-        query = query.where('facilityId', '==', filters.facilityId);
+        query = query.where('facility_id', '==', filters.facilityId);
       }
       if (filters.status) {
         query = query.where('status', '==', filters.status);

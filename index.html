@@ -165,9 +165,16 @@
                     Tray Tracker
                 </a>
 
-                <!-- Navigation Items -->
-                <nav>
-                    <ul class="nav-items">
+                <!-- Mobile Menu Toggle -->
+                <button class="mobile-menu-toggle d-none" id="mobileMenuToggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+
+                <!-- Mobile Menu Container -->
+                <div class="mobile-menu-container" id="mobileMenuContainer">
+                    <!-- Navigation Items -->
+                    <nav>
+                        <ul class="nav-items">
                         <li>
                             <a href="/" class="nav-item active" id="nav-dashboard">
                                 <i class="fas fa-chart-line"></i>
@@ -226,18 +233,19 @@
                             </ul>
                         </li>
                     </ul>
-                </nav>
+                    </nav>
 
-                <!-- User Profile -->
-                <div class="user-profile">
-                    <div class="user-info">
-                        <div class="user-avatar" id="userAvatar">ES</div>
-                        <span id="currentUserName">Eric Swick</span>
+                    <!-- User Profile -->
+                    <div class="user-profile">
+                        <div class="user-info">
+                            <div class="user-avatar" id="userAvatar">ES</div>
+                            <span id="currentUserName">Eric Swick</span>
+                        </div>
+                        <button class="logout-btn" onclick="app.authManager.logout()">
+                            <i class="fas fa-sign-out-alt"></i>
+                            <span>Logout</span>
+                        </button>
                     </div>
-                    <button class="logout-btn" onclick="app.authManager.logout()">
-                        <i class="fas fa-sign-out-alt"></i>
-                        <span>Logout</span>
-                    </button>
                 </div>
             </div>
         </div>
@@ -306,6 +314,10 @@
                                 <option value="checked-in">Checked In</option>
                                 <option value="picked-up">Picked Up</option>
                             </select>
+                            <select class="filter-select" id="dashboardUserFilter">
+                                <option value="">All Users</option>
+                                <!-- Options populated dynamically -->
+                            </select>
                         </div>
                     </div>
 
@@ -331,7 +343,8 @@
                                 <select class="filter-select" id="dashboardCasesDateFilter">
                                     <option value="today">Today</option>
                                     <option value="tomorrow">Tomorrow</option>
-                                    <option value="week" selected>This Week</option>
+                                    <option value="week">This Week</option>
+                                    <option value="upcoming" selected>Upcoming Cases</option>
                                     <option value="month">This Month</option>
                                     <option value="recent">Recent (Last 7 Days)</option>
                                     <option value="past">All Past Cases</option>
@@ -453,6 +466,12 @@
                             <option value="maintenance">Maintenance</option>
                         </select>
                     </div>
+                    <div class="filter-group">
+                        <select class="filter-select" id="trayUserFilter">
+                            <option value="">All Users</option>
+                            <!-- User options will be populated dynamically -->
+                        </select>
+                    </div>
                     
                     <!-- Show Options -->
                     <div class="filter-group">
@@ -486,30 +505,57 @@
                     Add Tray
                 </button>
             </div>
-
-            <!-- View Toggle -->
-            <div class="view-controls">
-                <div class="btn-group" role="group">
-                    <button type="button" class="btn-view active" id="cardViewBtn" onclick="app.trayManager.setViewMode('card')">
-                        <i class="fas fa-th-large"></i> Cards
-                    </button>
-                    <button type="button" class="btn-view" id="listViewBtn" onclick="app.trayManager.setViewMode('list')">
-                        <i class="fas fa-list"></i> List
-                    </button>
+            
+            <!-- Tray Stats -->
+            <div id="trayStats" class="metrics-grid mb-4">
+                <div class="metric-card">
+                    <div class="metric-value metric-active" id="totalTraysCount">0</div>
+                    <div class="metric-label">Total Trays</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value metric-available" id="availableTraysCount">0</div>
+                    <div class="metric-label">Available</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value metric-in-use" id="inUseTraysCount">0</div>
+                    <div class="metric-label">In Use</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value metric-upcoming" id="checkedInTraysCount">0</div>
+                    <div class="metric-label">Checked In</div>
                 </div>
             </div>
-            
-            <!-- Tray Filters -->
-            <div class="tray-filters mb-3">
-                <div class="d-flex gap-2 align-items-center">
-                    <span class="filter-label"><i class="fas fa-filter"></i> Filter by:</span>
-                    <select class="filter-select" id="traysStatusFilter">
-                        <option value="">All Status</option>
-                        <option value="available">Available</option>
-                        <option value="in_use">In Use</option>
-                        <option value="checked-in">Checked In</option>
-                        <option value="picked-up">Picked Up</option>
-                    </select>
+
+            <!-- Tray Filters and View Toggle -->
+            <div class="d-flex justify-content-between align-items-center mb-3 tray-filter-row">
+                <!-- Tray Filters -->
+                <div class="tray-filters">
+                    <div class="d-flex gap-2 align-items-center">
+                        <span class="filter-label"><i class="fas fa-filter"></i> Filter by:</span>
+                        <select class="filter-select" id="traysStatusFilter">
+                            <option value="">All Status</option>
+                            <option value="available">Available</option>
+                            <option value="in_use">In Use</option>
+                            <option value="checked-in">Checked In</option>
+                            <option value="picked-up">Picked Up</option>
+                        </select>
+                        <select class="filter-select" id="traysUserFilter">
+                            <option value="">All Users</option>
+                            <!-- Options populated dynamically -->
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- View Toggle -->
+                <div class="view-controls">
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn-view active" id="cardViewBtn" onclick="app.trayManager.setViewMode('card')">
+                            <i class="fas fa-th-large"></i> Cards
+                        </button>
+                        <button type="button" class="btn-view" id="listViewBtn" onclick="app.trayManager.setViewMode('list')">
+                            <i class="fas fa-list"></i> List
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -728,7 +774,7 @@
                     Add Case
                 </button>
             </div>
-
+            
             <!-- Cases Stats -->
             <div id="casesStats" class="metrics-grid mb-4">
                 <div class="metric-card">
@@ -749,18 +795,40 @@
                 </div>
             </div>
 
-            <!-- View Toggle -->
-            <div class="view-controls">
-                <div class="btn-group" role="group">
-                    <button type="button" class="btn-view" id="casesCardViewBtn" onclick="app.casesManager.setViewMode('card')">
-                        <i class="fas fa-th-large"></i> Cards
-                    </button>
-                    <button type="button" class="btn-view active" id="casesListViewBtn" onclick="app.casesManager.setViewMode('list')">
-                        <i class="fas fa-list"></i> List
-                    </button>
-                    <button type="button" class="btn-view" id="casesCalendarViewBtn" onclick="app.casesManager.setViewMode('calendar')">
-                        <i class="fas fa-calendar"></i> Calendar
-                    </button>
+            <!-- Cases Filters and View Toggle -->
+            <div class="d-flex justify-content-between align-items-center mb-3 cases-filter-row">
+                <!-- Cases Filters -->
+                <div class="cases-filters">
+                    <div class="d-flex gap-2 align-items-center">
+                        <span class="filter-label"><i class="fas fa-filter"></i> Filter by:</span>
+                        <select class="filter-select" id="casesStatusFilter">
+                            <!-- Case status options populated dynamically -->
+                        </select>
+                        <select class="filter-select" id="casesDateFilter">
+                            <option value="today">Today</option>
+                            <option value="tomorrow">Tomorrow</option>
+                            <option value="week">This Week</option>
+                            <option value="upcoming" selected>Upcoming Cases</option>
+                            <option value="month">This Month</option>
+                            <option value="recent">Recent Cases</option>
+                            <option value="past">All Past Cases</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- View Toggle -->
+                <div class="view-controls">
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn-view" id="casesCardViewBtn" onclick="app.casesManager.setViewMode('card')">
+                            <i class="fas fa-th-large"></i> Cards
+                        </button>
+                        <button type="button" class="btn-view active" id="casesListViewBtn" onclick="app.casesManager.setViewMode('list')">
+                            <i class="fas fa-list"></i> List
+                        </button>
+                        <button type="button" class="btn-view" id="casesCalendarViewBtn" onclick="app.casesManager.setViewMode('calendar')">
+                            <i class="fas fa-calendar"></i> Calendar
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -956,6 +1024,119 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Facilities Geolocation Migration -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h3><i class="fas fa-map-marker-alt"></i> Facilities Geolocation Migration</h3>
+                    <p class="text-muted mb-0">Add latitude/longitude coordinates to facilities based on their addresses using geocoding API</p>
+                </div>
+                <div class="card-body">
+                    <!-- Geolocation Status -->
+                    <div class="alert alert-info mb-3">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Status:</strong> <span id="geolocationStatusText">Click "Check Geolocation Status" to load current status</span>
+                    </div>
+                    
+                    <!-- Geolocation Stats -->
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <div class="metric-card">
+                                <div class="metric-value metric-active" id="geoTotalFacilities">-</div>
+                                <div class="metric-label">Total Facilities</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric-card">
+                                <div class="metric-value metric-available" id="geoWithCoordinates">-</div>
+                                <div class="metric-label">With Coordinates</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric-card">
+                                <div class="metric-value metric-warning" id="geoWithoutCoordinates">-</div>
+                                <div class="metric-label">Need Coordinates</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric-card">
+                                <div class="metric-value metric-inactive" id="geoWithoutAddresses">-</div>
+                                <div class="metric-label">No Address Data</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="d-flex gap-3 mb-3">
+                        <button class="btn btn-outline-primary" id="checkGeolocationStatusBtn" onclick="checkGeolocationStatus()">
+                            <i class="fas fa-search"></i> Check Geolocation Status
+                        </button>
+                        <button class="btn btn-warning" id="runGeolocationMigrationBtn" onclick="runGeolocationMigration()" disabled>
+                            <i class="fas fa-map-marker-alt"></i> Add Coordinates to Facilities
+                        </button>
+                    </div>
+
+                    <!-- Migration Options -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="skipExistingCoordinates" checked>
+                                <label class="form-check-label" for="skipExistingCoordinates">
+                                    Skip facilities that already have coordinates
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="geocodingDelay" class="form-label">Delay between API calls (ms):</label>
+                            <input type="number" class="form-control" id="geocodingDelay" value="1000" min="500" max="5000">
+                            <small class="form-text text-muted">Recommended: 1000ms to be respectful to geocoding service</small>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div id="geolocationProgressContainer" class="d-none mb-3">
+                        <label class="form-label">Migration Progress:</label>
+                        <div class="progress mb-2">
+                            <div class="progress-bar" id="geolocationProgressBar" role="progressbar" style="width: 0%">0%</div>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <small id="geolocationProgressText">Ready to start...</small>
+                            <small id="geolocationProgressStats">0/0 processed</small>
+                        </div>
+                    </div>
+
+                    <!-- Results Summary -->
+                    <div id="geolocationResults" class="alert alert-success d-none">
+                        <h6><i class="fas fa-check-circle"></i> Migration Results</h6>
+                        <div class="row">
+                            <div class="col-md-3">
+                                <strong>Total:</strong> <span id="geoResultTotal">0</span>
+                            </div>
+                            <div class="col-md-3">
+                                <strong>Successful:</strong> <span id="geoResultSuccessful">0</span>
+                            </div>
+                            <div class="col-md-3">
+                                <strong>Failed:</strong> <span id="geoResultFailed">0</span>
+                            </div>
+                            <div class="col-md-3">
+                                <strong>Skipped:</strong> <span id="geoResultSkipped">0</span>
+                            </div>
+                        </div>
+                        <div id="geolocationErrors" class="mt-2 d-none">
+                            <strong>Errors:</strong>
+                            <ul id="geolocationErrorsList" class="mt-1 mb-0"></ul>
+                        </div>
+                    </div>
+
+                    <!-- Live Processing Log -->
+                    <div id="geolocationLog" class="d-none">
+                        <h6>Processing Log:</h6>
+                        <div id="geolocationLogContent" class="border rounded p-2" style="height: 200px; overflow-y: auto; background-color: #f8f9fa; font-family: monospace; font-size: 12px;">
+                            <!-- Log entries will be added here -->
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1358,6 +1539,13 @@
                             <option value="Corporate">Corporate</option>
                         </select>
                     </div>
+                    <div class="form-group">
+                        <label for="userLocationFacility" class="form-label">RepTrunk Location</label>
+                        <select class="form-control" id="userLocationFacility">
+                            <option value="">Select Facility Location...</option>
+                        </select>
+                        <small class="form-text text-muted">Select the primary facility location for this user</small>
+                    </div>
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="userActive" checked>
                         <label class="form-check-label" for="userActive">
@@ -1419,6 +1607,13 @@
                             <option value="Illinois South">Illinois South</option>
                             <option value="Corporate">Corporate</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editUserLocationFacility" class="form-label">RepTrunk Location</label>
+                        <select class="form-control" id="editUserLocationFacility">
+                            <option value="">Select Facility Location...</option>
+                        </select>
+                        <small class="form-text text-muted">Select the primary facility location for this user</small>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="editUserActive">
@@ -1571,6 +1766,13 @@
                                 <label class="form-check-label" for="facilityActive">
                                     Active Facility
                                 </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="facilityCorporateHQ">
+                                <label class="form-check-label" for="facilityCorporateHQ">
+                                    Corporate Headquarters
+                                </label>
+                                <small class="form-text text-muted">Check if this is the main corporate headquarters facility</small>
                             </div>
                         </div>
                     </div>
@@ -1806,6 +2008,13 @@
                                 <label class="form-check-label" for="editFacilityActive">
                                     Active Facility
                                 </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="editFacilityCorporateHQ">
+                                <label class="form-check-label" for="editFacilityCorporateHQ">
+                                    Corporate Headquarters
+                                </label>
+                                <small class="form-text text-muted">Check if this is the main corporate headquarters facility</small>
                             </div>
                         </div>
                     </div>
@@ -2060,7 +2269,10 @@
                         <h6 class="mb-2">Default Tray Requirements</h6>
                         <div class="row mb-2">
                             <div class="col-md-4">
-                                <input type="text" class="form-control" id="newTrayId" placeholder="Tray ID (e.g., TRAY_001)">
+                                <select class="form-control" id="newTrayDropdown">
+                                    <option value="">Select Tray...</option>
+                                    <!-- Trays will be populated dynamically -->
+                                </select>
                             </div>
                             <div class="col-md-3">
                                 <select class="form-control" id="newTrayRequirementType">
@@ -2180,7 +2392,7 @@
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="patientName" class="form-label">Patient Name</label>
+                                <label for="patientName" class="form-label">Case Name</label>
                                 <input type="text" class="form-control" id="patientName" required>
                             </div>
                         </div>
@@ -2292,7 +2504,7 @@
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="editPatientName" class="form-label">Patient Name</label>
+                                <label for="editPatientName" class="form-label">Case Name</label>
                                 <input type="text" class="form-control" id="editPatientName" required>
                             </div>
                         </div>
@@ -2412,6 +2624,8 @@
 <!-- Firebase SDK and Main App -->
 <script type="module" src="js/main.js"></script>
 <script type="module" src="js/utils/FirebaseDataDump.js"></script>
+<script type="module" src="js/migration/cleanStaleFacilities.js"></script>
+<script type="module" src="js/utils/FacilityDiagnostics.js"></script>
 
 <script>
 // Toggle function for check-in method
@@ -2462,6 +2676,175 @@ async function onCheckinCaseSelect() {
         document.getElementById('checkinFacilityName').value = '';
         document.getElementById('physician').value = '';
     }
+}
+
+// Geolocation Migration Functions
+let geolocationMigration = null;
+
+async function checkGeolocationStatus() {
+    try {
+        const statusBtn = document.getElementById('checkGeolocationStatusBtn');
+        statusBtn.disabled = true;
+        statusBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
+        
+        if (!geolocationMigration) {
+            const { GeolocationMigration } = await import('./js/utils/GeolocationMigration.js');
+            geolocationMigration = new GeolocationMigration(window.app.dataManager.db);
+        }
+        
+        const status = await geolocationMigration.getMigrationStatus();
+        
+        // Update UI with status
+        document.getElementById('geoTotalFacilities').textContent = status.total;
+        document.getElementById('geoWithCoordinates').textContent = status.withCoordinates;
+        document.getElementById('geoWithoutCoordinates').textContent = status.withoutCoordinates;
+        document.getElementById('geoWithoutAddresses').textContent = status.withoutAddresses;
+        
+        // Update status text
+        const statusText = `Found ${status.total} facilities. ${status.withCoordinates} have coordinates, ${status.withoutCoordinates} need coordinates. ${status.withoutAddresses} have no address data.`;
+        document.getElementById('geolocationStatusText').textContent = statusText;
+        
+        // Enable migration button if there are facilities to process
+        const migrationBtn = document.getElementById('runGeolocationMigrationBtn');
+        migrationBtn.disabled = status.withoutCoordinates === 0;
+        
+    } catch (error) {
+        console.error('Error checking geolocation status:', error);
+        document.getElementById('geolocationStatusText').textContent = `Error checking status: ${error.message}`;
+    } finally {
+        const statusBtn = document.getElementById('checkGeolocationStatusBtn');
+        statusBtn.disabled = false;
+        statusBtn.innerHTML = '<i class="fas fa-search"></i> Check Geolocation Status';
+    }
+}
+
+async function runGeolocationMigration() {
+    try {
+        const migrationBtn = document.getElementById('runGeolocationMigrationBtn');
+        migrationBtn.disabled = true;
+        migrationBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+        
+        // Show progress container and log
+        document.getElementById('geolocationProgressContainer').classList.remove('d-none');
+        document.getElementById('geolocationLog').classList.remove('d-none');
+        document.getElementById('geolocationResults').classList.add('d-none');
+        
+        // Clear log
+        const logContent = document.getElementById('geolocationLogContent');
+        logContent.innerHTML = '';
+        
+        // Get options
+        const skipExisting = document.getElementById('skipExistingCoordinates').checked;
+        const delay = parseInt(document.getElementById('geocodingDelay').value) || 1000;
+        
+        // Log start
+        addGeolocationLogEntry('🚀 Starting geolocation migration...', 'info');
+        
+        if (!geolocationMigration) {
+            const { GeolocationMigration } = await import('./js/utils/GeolocationMigration.js');
+            geolocationMigration = new GeolocationMigration(window.app.dataManager.db);
+        }
+        
+        // Run migration with progress callbacks
+        const results = await geolocationMigration.migrateFacilitiesGeolocation({
+            skipExisting: skipExisting,
+            delayBetweenRequests: delay,
+            onProgress: (progress) => {
+                // Update progress bar
+                const percentage = progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
+                const progressBar = document.getElementById('geolocationProgressBar');
+                progressBar.style.width = percentage + '%';
+                progressBar.textContent = percentage + '%';
+                
+                // Update progress text
+                document.getElementById('geolocationProgressText').textContent = 
+                    `Processing: ${progress.currentFacility || 'N/A'}`;
+                document.getElementById('geolocationProgressStats').textContent = 
+                    `${progress.processed}/${progress.total} processed`;
+            },
+            onFacilityProcessed: (result) => {
+                // Add log entry for each facility
+                const facility = result.facility;
+                const name = facility.name || facility.id;
+                
+                switch (result.status) {
+                    case 'success':
+                        addGeolocationLogEntry(`✅ ${name}: ${result.geoData.latitude}, ${result.geoData.longitude}`, 'success');
+                        break;
+                    case 'skipped':
+                        addGeolocationLogEntry(`⏭️ ${name}: ${result.reason}`, 'info');
+                        break;
+                    case 'failed':
+                        addGeolocationLogEntry(`❌ ${name}: ${result.reason}`, 'warning');
+                        break;
+                    case 'error':
+                        addGeolocationLogEntry(`💥 ${name}: ${result.error}`, 'danger');
+                        break;
+                }
+            }
+        });
+        
+        // Show results
+        document.getElementById('geoResultTotal').textContent = results.total;
+        document.getElementById('geoResultSuccessful').textContent = results.successful;
+        document.getElementById('geoResultFailed').textContent = results.failed;
+        document.getElementById('geoResultSkipped').textContent = results.skipped;
+        
+        // Show errors if any
+        if (results.errors.length > 0) {
+            const errorsList = document.getElementById('geolocationErrorsList');
+            errorsList.innerHTML = '';
+            results.errors.forEach(error => {
+                const li = document.createElement('li');
+                li.textContent = error;
+                errorsList.appendChild(li);
+            });
+            document.getElementById('geolocationErrors').classList.remove('d-none');
+        }
+        
+        document.getElementById('geolocationResults').classList.remove('d-none');
+        addGeolocationLogEntry('🏁 Migration completed!', 'success');
+        
+        // Refresh status
+        await checkGeolocationStatus();
+        
+    } catch (error) {
+        console.error('Error running geolocation migration:', error);
+        addGeolocationLogEntry(`💥 Migration failed: ${error.message}`, 'danger');
+    } finally {
+        const migrationBtn = document.getElementById('runGeolocationMigrationBtn');
+        migrationBtn.disabled = false;
+        migrationBtn.innerHTML = '<i class="fas fa-map-marker-alt"></i> Add Coordinates to Facilities';
+    }
+}
+
+function addGeolocationLogEntry(message, type = 'info') {
+    const logContent = document.getElementById('geolocationLogContent');
+    const timestamp = new Date().toLocaleTimeString();
+    const entry = document.createElement('div');
+    
+    let className = '';
+    switch (type) {
+        case 'success':
+            className = 'text-success';
+            break;
+        case 'warning':
+            className = 'text-warning';
+            break;
+        case 'danger':
+            className = 'text-danger';
+            break;
+        case 'info':
+        default:
+            className = 'text-info';
+    }
+    
+    entry.className = className;
+    entry.textContent = `[${timestamp}] ${message}`;
+    logContent.appendChild(entry);
+    
+    // Auto-scroll to bottom
+    logContent.scrollTop = logContent.scrollHeight;
 }
 </script>
 </body>

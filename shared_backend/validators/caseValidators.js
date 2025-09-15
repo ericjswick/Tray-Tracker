@@ -8,7 +8,7 @@ const validateCase = (caseData) => {
   if (!caseData.surgeonId?.trim()) {
     errors.push('Surgeon ID is required');
   }
-  if (!caseData.facilityId?.trim()) {
+  if (!caseData.facility_id?.trim()) {
     errors.push('Facility ID is required');
   }
   if (!caseData.caseTypeId?.trim()) {
@@ -89,7 +89,7 @@ const validateCaseUpdate = (updateData) => {
   if (updateData.surgeonId !== undefined && !updateData.surgeonId?.trim()) {
     errors.push('Surgeon ID cannot be empty');
   }
-  if (updateData.facilityId !== undefined && !updateData.facilityId?.trim()) {
+  if (updateData.facility_id !== undefined && !updateData.facility_id?.trim()) {
     errors.push('Facility ID cannot be empty');
   }
   if (updateData.caseTypeId !== undefined && !updateData.caseTypeId?.trim()) {
