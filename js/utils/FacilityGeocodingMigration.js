@@ -45,7 +45,7 @@ export class FacilityGeocodingMigration {
                     }
                     
                     // Build full address string
-                    const fullAddress = `${address.street}, ${address.city}, ${address.state}`;
+                    let fullAddress = `${address.street}, ${address.city}, ${address.state}`;
                     if (address.zip) {
                         fullAddress += ` ${address.zip}`;
                     }
