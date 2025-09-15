@@ -34,9 +34,9 @@ export class DemoManager {
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
             if (!traysExist) {
-                console.log('No Tray data found, initializing...');
-                // Then create demo trays
-                await this.createDemoTrays();
+                console.log('No Tray data found, but skipping automatic initialization to avoid permission errors');
+                // Commented out automatic demo tray creation to prevent permission errors
+                // await this.createDemoTrays();
             }
             if (!facilitiesExist) {
                 console.log('No Facility data found, initializing...');
@@ -45,13 +45,15 @@ export class DemoManager {
             }
             // Initialize physicians if they don't exist
             if (!physiciansExist) {
-                console.log('No Physician data found, initializing...');
-                await this.createDemoSurgeons();
+                console.log('No Physician data found, but skipping automatic initialization to avoid permission errors');
+                // Commented out automatic demo physician creation to prevent permission errors
+                // await this.createDemoSurgeons();
             }
 
             if (!caseTypesExist) {
-                console.log('No Case Types data found, initializing...');
-                await this.createDemoCaseTypes();
+                console.log('No Case Types data found, but skipping automatic initialization to avoid permission errors');
+                // Commented out automatic demo case types creation to prevent permission errors
+                // await this.createDemoCaseTypes();
             }
 
             if (!usersExist || !traysExist || !facilitiesExist || !physiciansExist || !caseTypesExist) {

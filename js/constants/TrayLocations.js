@@ -310,6 +310,41 @@ export function getLocationCoordinates(location, options = {}) {
         return null; // Facility coordinates should come from facility data
     }
     
+    // Special handling for Rep Trunk - check user's location_facility_id
+    if (normalizedLocation === TRAY_LOCATIONS.TRUNK) {
+        const userFacilityCoordinates = getUserFacilityCoordinates();
+        if (userFacilityCoordinates) {
+            const result = {
+                latitude: userFacilityCoordinates.latitude,
+                longitude: userFacilityCoordinates.longitude,
+                description: `Rep Trunk at ${userFacilityCoordinates.facilityName}`
+            };
+            
+            // Add random offset if requested
+            if (randomizeForTrunk) {
+                result.latitude += (Math.random() - 0.5) * 0.01; // Smaller variance when using facility coords
+                result.longitude += (Math.random() - 0.5) * 0.01;
+                result.description += ' (with random offset)';
+            }
+            
+            return result;
+        }
+        // Fall back to default trunk coordinates if no user facility found
+    }
+    
+    // Special handling for Corporate - check for designated corporate headquarters facility
+    if (normalizedLocation === TRAY_LOCATIONS.CORPORATE) {
+        const corporateHQCoordinates = getCorporateHeadquartersCoordinates();
+        if (corporateHQCoordinates) {
+            return {
+                latitude: corporateHQCoordinates.latitude,
+                longitude: corporateHQCoordinates.longitude,
+                description: `Corporate Headquarters (${corporateHQCoordinates.facilityName})`
+            };
+        }
+        // Fall back to default corporate coordinates if no corporate HQ facility found
+    }
+    
     const coordinates = LOCATION_COORDINATES[normalizedLocation];
     if (!coordinates) {
         return null;
@@ -337,4 +372,134 @@ export function getLocationCoordinates(location, options = {}) {
 export function getLocationCoordinatesArray(location, options = {}) {
     const coords = getLocationCoordinates(location, options);
     return coords ? [coords.latitude, coords.longitude] : null;
+}
+
+/**
+ * Get coordinates from the current user's assigned facility location
+ * @returns {object|null} - Object with latitude, longitude, and facilityName, or null if not found
+ */
+function getUserFacilityCoordinates() {
+    try {
+        // Get current user
+        const currentUser = window.app?.authManager?.getCurrentUser();
+        if (!currentUser?.uid) {
+            console.log('No current user found for facility coordinates');
+            return null;
+        }
+        
+        // Get user data to find their location_facility_id
+        const users = window.app?.dataManager?.getUsers();
+        const userData = users?.get(currentUser.uid);
+        
+        if (!userData?.location_facility_id) {
+            console.log('User has no location_facility_id assigned');
+            return null;
+        }
+        
+        console.log('🏥 Looking up coordinates for user facility:', userData.location_facility_id);
+        
+        // Get facility coordinates from facility manager
+        if (window.app?.facilityManager?.currentFacilities) {
+            const facility = window.app.facilityManager.currentFacilities.find(
+                f => f.id === userData.location_facility_id
+            );
+            
+            if (facility && facility.latitude && facility.longitude) {
+                console.log('✅ Found facility coordinates:', {
+                    facility: facility.account_name || facility.name,
+                    coordinates: [facility.latitude, facility.longitude]
+                });
+                
+                return {
+                    latitude: parseFloat(facility.latitude),
+                    longitude: parseFloat(facility.longitude),
+                    facilityName: facility.account_name || facility.name || 'Unknown Facility'
+                };
+            }
+        }
+        
+        // Fallback: try dataManager facilities
+        if (window.app?.dataManager) {
+            const facilities = window.app.dataManager.getFacilities();
+            const facility = facilities.find(f => f.id === userData.location_facility_id);
+            
+            if (facility && facility.latitude && facility.longitude) {
+                console.log('✅ Found facility coordinates from dataManager:', {
+                    facility: facility.account_name || facility.name,
+                    coordinates: [facility.latitude, facility.longitude]
+                });
+                
+                return {
+                    latitude: parseFloat(facility.latitude),
+                    longitude: parseFloat(facility.longitude),
+                    facilityName: facility.account_name || facility.name || 'Unknown Facility'
+                };
+            }
+        }
+        
+        console.warn('❌ No coordinates found for user facility:', userData.location_facility_id);
+        return null;
+        
+    } catch (error) {
+        console.error('Error getting user facility coordinates:', error);
+        return null;
+    }
+}
+
+/**
+ * Get coordinates from the designated corporate headquarters facility
+ * @returns {object|null} - Object with latitude, longitude, and facilityName, or null if not found
+ */
+function getCorporateHeadquartersCoordinates() {
+    try {
+        console.log('🏢 Looking for corporate headquarters facility...');
+        
+        // Check facility manager for corporate headquarters
+        if (window.app?.facilityManager?.currentFacilities) {
+            const corporateHQ = window.app.facilityManager.currentFacilities.find(
+                facility => facility.is_corporate_headquarters === true && facility.active !== false
+            );
+            
+            if (corporateHQ && corporateHQ.latitude && corporateHQ.longitude) {
+                console.log('✅ Found corporate headquarters coordinates:', {
+                    facility: corporateHQ.account_name || corporateHQ.name,
+                    coordinates: [corporateHQ.latitude, corporateHQ.longitude]
+                });
+                
+                return {
+                    latitude: parseFloat(corporateHQ.latitude),
+                    longitude: parseFloat(corporateHQ.longitude),
+                    facilityName: corporateHQ.account_name || corporateHQ.name || 'Corporate HQ'
+                };
+            }
+        }
+        
+        // Fallback: try dataManager facilities
+        if (window.app?.dataManager) {
+            const facilities = window.app.dataManager.getFacilities();
+            const corporateHQ = facilities.find(
+                facility => facility.is_corporate_headquarters === true && facility.active !== false
+            );
+            
+            if (corporateHQ && corporateHQ.latitude && corporateHQ.longitude) {
+                console.log('✅ Found corporate headquarters coordinates from dataManager:', {
+                    facility: corporateHQ.account_name || corporateHQ.name,
+                    coordinates: [corporateHQ.latitude, corporateHQ.longitude]
+                });
+                
+                return {
+                    latitude: parseFloat(corporateHQ.latitude),
+                    longitude: parseFloat(corporateHQ.longitude),
+                    facilityName: corporateHQ.account_name || corporateHQ.name || 'Corporate HQ'
+                };
+            }
+        }
+        
+        console.log('ℹ️ No corporate headquarters facility found or no coordinates available');
+        return null;
+        
+    } catch (error) {
+        console.error('Error getting corporate headquarters coordinates:', error);
+        return null;
+    }
 }

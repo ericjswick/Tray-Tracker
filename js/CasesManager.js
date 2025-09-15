@@ -68,12 +68,40 @@ export class CasesManager {
 
     initializeViewMode() {
         this.setViewMode(this.viewMode);
+        // Initialize filters
+        this.initializeFilters();
         // Wait for essential data before loading cases
         this.waitForEssentialDataThenLoad();
     }
+
+    initializeFilters() {
+        // Populate status filter using central function
+        const statusFilter = document.getElementById('casesStatusFilter');
+        if (statusFilter) {
+            populateCaseStatusDropdown(statusFilter, {
+                includeAllOption: true,
+                allOptionText: 'All Status'
+            });
+        }
+
+        // Add event listeners for filters
+        const dateFilter = document.getElementById('casesDateFilter');
+        const statusFilterElement = document.getElementById('casesStatusFilter');
+
+        if (dateFilter) {
+            dateFilter.addEventListener('change', () => {
+                this.renderCases(this.currentCases);
+            });
+        }
+
+        if (statusFilterElement) {
+            statusFilterElement.addEventListener('change', () => {
+                this.renderCases(this.currentCases);
+            });
+        }
+    }
     
     async waitForEssentialDataThenLoad() {
-        console.log('Waiting for essential data (surgeons, facilities, case types) to load...');
         
         // Wait for essential data to be available
         const maxWait = 50; // 5 seconds max
@@ -86,7 +114,6 @@ export class CasesManager {
             
             // Check if we have some data (at least one item in each or empty arrays are OK)
             if (surgeons !== null && facilities !== null && caseTypes !== null) {
-                console.log(`✅ Essential data loaded - Surgeons: ${surgeons.length}, Facilities: ${facilities.length}, Case Types: ${caseTypes.length}`);
                 this.loadCases();
                 this.setupDataUpdateListeners();
                 return;
@@ -97,7 +124,6 @@ export class CasesManager {
             attempts++;
         }
         
-        console.warn('⚠️ Timeout waiting for essential data, loading cases anyway...');
         this.loadCases();
         this.setupDataUpdateListeners();
     }
@@ -123,7 +149,6 @@ export class CasesManager {
                 currentState.facilityCount !== lastDataState.facilityCount ||
                 currentState.caseTypeCount !== lastDataState.caseTypeCount) {
                 
-                console.log('📊 Reference data updated, re-rendering cases...');
                 if (this.currentCases) {
                     this.renderCases(this.currentCases);
                 }
@@ -204,7 +229,6 @@ export class CasesManager {
 
             const savedCase = await this.dataManager.saveCase(caseData);
             if (savedCase && savedCase.id) {
-                console.log('Case saved successfully:', savedCase.id);
                 
                 // Log case creation activity
                 const facilityName = this.getFacilityName(caseData.facility_id) || 'Unknown Facility';
@@ -279,13 +303,66 @@ export class CasesManager {
     }
 
     renderCases(cases) {
+        // Apply filters
+        const filteredCases = this.applyFilters(cases);
+        
         if (this.viewMode === 'list') {
-            this.renderCasesList(cases);
+            this.renderCasesList(filteredCases);
         } else if (this.viewMode === 'card') {
-            this.renderCasesCards(cases);
+            this.renderCasesCards(filteredCases);
         } else if (this.viewMode === 'calendar') {
-            this.renderCasesCalendar(cases);
+            this.renderCasesCalendar(filteredCases);
         }
+    }
+
+    applyFilters(cases) {
+        const statusFilter = document.getElementById('casesStatusFilter')?.value || '';
+        const dateFilter = document.getElementById('casesDateFilter')?.value || 'upcoming';
+
+        let filteredCases = cases;
+
+        // Apply status filter
+        if (statusFilter) {
+            filteredCases = filteredCases.filter(caseItem => caseItem.status === statusFilter);
+        }
+
+        // Apply date filter
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const weekFromNow = new Date(today);
+        weekFromNow.setDate(weekFromNow.getDate() + 7);
+        const monthFromNow = new Date(today);
+        monthFromNow.setMonth(monthFromNow.getMonth() + 1);
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+
+        filteredCases = filteredCases.filter(caseItem => {
+            const caseDate = new Date(caseItem.scheduledDate);
+            const caseDateOnly = new Date(caseDate.getFullYear(), caseDate.getMonth(), caseDate.getDate());
+
+            switch (dateFilter) {
+                case 'today':
+                    return caseDateOnly.getTime() === today.getTime();
+                case 'tomorrow':
+                    return caseDateOnly.getTime() === tomorrow.getTime();
+                case 'week':
+                    return caseDateOnly >= today && caseDateOnly <= weekFromNow;
+                case 'upcoming':
+                    return caseDateOnly >= today;
+                case 'month':
+                    return caseDateOnly >= today && caseDateOnly <= monthFromNow;
+                case 'recent':
+                    return caseDateOnly >= weekAgo && caseDateOnly < today;
+                case 'past':
+                    return caseDateOnly < today;
+                default:
+                    return true;
+            }
+        });
+
+        return filteredCases;
     }
 
     renderCasesList(cases) {
@@ -349,7 +426,7 @@ export class CasesManager {
                     ${caseItem.priority === 'urgent' ? '<span class="badge bg-danger ms-2">Urgent</span>' : ''}
                 </td>
                 <td>${surgeon ? surgeon.full_name : (surgeons.length === 0 ? 'Loading...' : 'Unknown')}</td>
-                <td>${facility ? facility.account_name : (facilities.length === 0 ? 'Loading...' : 'Unknown')}</td>
+                <td>${this.getFacilityDisplayName(caseItem.facility_id, facilities)}</td>
                 <td>
                     <div>${dateStr}</div>
                     <small class="text-muted">${timeStr}</small>
@@ -437,7 +514,7 @@ export class CasesManager {
                         </div>
                         <div class="tray-detail">
                             <i class="fas fa-hospital"></i>
-                            <span class="tray-detail-value">${facility ? facility.account_name : (facilities.length === 0 ? 'Loading...' : 'Unknown Facility')}</span>
+                            <span class="tray-detail-value">${this.getFacilityDisplayName(caseItem.facility_id, facilities)}</span>
                         </div>
                         <div class="tray-detail">
                             <i class="fas fa-calendar"></i>
@@ -1008,7 +1085,6 @@ export class CasesManager {
     populateCaseStatusDropdown(selectElementId) {
         const select = document.getElementById(selectElementId);
         if (!select) {
-            console.warn(`Status dropdown element ${selectElementId} not found`);
             return;
         }
 
@@ -1026,7 +1102,6 @@ export class CasesManager {
 
     async handleCaseRemovedTrays(caseId) {
         try {
-            console.log(`🔄 Case ${caseId} set to Removed - moving checked-in trays to trunk`);
             
             // Get all trays from the tray manager or data manager
             let allTrays = [];
@@ -1038,7 +1113,6 @@ export class CasesManager {
             }
             
             if (allTrays.length === 0) {
-                console.log('No trays found to process');
                 return;
             }
             
@@ -1160,11 +1234,56 @@ export class CasesManager {
     }
 
     getFacilityName(facilityId) {
+        if (!facilityId) return null;
+        
+        // Try facilityManager first (current facilities)
         if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
             const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
-            return facility ? facility.account_name : null;
+            if (facility) {
+                return facility.account_name || facility.name || facilityId;
+            }
         }
+        
+        // Fallback to dataManager facilities
+        const facilities = this.dataManager.getFacilities();
+        if (facilities && facilities.length > 0) {
+            const facility = facilities.find(f => f.id === facilityId);
+            if (facility) {
+                return facility.account_name || facility.name || facilityId;
+            }
+        }
+        
         return null;
+    }
+
+    getFacilityDisplayName(facilityId, facilities) {
+        if (!facilityId) return 'No Facility';
+        
+        // If it's already a name (not an ID), return it
+        if (facilityId.length > 20 && !facilityId.match(/^[a-zA-Z0-9]{20}$/)) {
+            return facilityId;
+        }
+        
+        // First try the provided facilities array
+        if (facilities && facilities.length > 0) {
+            const facility = facilities.find(f => f.id === facilityId);
+            if (facility) {
+                return facility.account_name || facility.name || facilityId;
+            }
+        }
+        
+        // Try facilityManager as backup
+        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
+            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
+            if (facility) {
+                return facility.account_name || facility.name || facilityId;
+            }
+        }
+        if (facilities && facilities.length === 0) {
+            return 'Loading...';
+        } else {
+            return `Unknown Facility (${facilityId.substring(0, 8)}...)`;
+        }
     }
 
     getPhysicianName(physicianId) {

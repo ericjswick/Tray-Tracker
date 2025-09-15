@@ -2,7 +2,7 @@ class CaseModel {
   constructor(data = {}) {
     this.patientName = data.patientName || '';
     this.surgeonId = data.surgeonId || '';
-    this.facilityId = data.facilityId || '';
+    this.facility_id = data.facility_id || '';
     this.caseTypeId = data.caseTypeId || '';
     this.scheduledDate = data.scheduledDate || '';
     this.scheduledTime = data.scheduledTime || '';
@@ -27,7 +27,7 @@ class CaseModel {
     return {
       patientName: this.patientName,
       surgeonId: this.surgeonId,
-      facilityId: this.facilityId,
+      facility_id: this.facility_id,
       caseTypeId: this.caseTypeId,
       scheduledDate: this.scheduledDate,
       scheduledTime: this.scheduledTime,
@@ -52,7 +52,7 @@ class CaseModel {
     return {
       patientName: this.patientName,
       surgeonId: this.surgeonId,
-      facilityId: this.facilityId,
+      facility_id: this.facility_id,
       caseTypeId: this.caseTypeId,
       scheduledDate: this.scheduledDate,
       scheduledTime: this.scheduledTime,
@@ -79,7 +79,7 @@ class CaseModel {
     if (!this.surgeonId?.trim()) {
       errors.push('Surgeon ID is required');
     }
-    if (!this.facilityId?.trim()) {
+    if (!this.facility_id?.trim()) {
       errors.push('Facility ID is required');
     }
     if (!this.caseTypeId?.trim()) {

@@ -8,7 +8,7 @@ export class DashboardManager {
     constructor(dataManager) {
         this.dataManager = dataManager;
         this.currentCases = [];
-        this.dateFilter = 'week';
+        this.dateFilter = 'upcoming';
         this.statusFilter = '';
         
         this.bindEvents();
@@ -42,7 +42,8 @@ export class DashboardManager {
         const titleMap = {
             'today': 'Today\'s Cases',
             'tomorrow': 'Tomorrow\'s Cases', 
-            'week': 'Upcoming Cases',
+            'week': 'This Week\'s Cases',
+            'upcoming': 'Upcoming Cases',
             'month': 'This Month\'s Cases',
             'recent': 'Recent Cases',
             'past': 'Past Cases'
@@ -93,6 +94,9 @@ export class DashboardManager {
                     const weekEnd = new Date(today);
                     weekEnd.setDate(weekEnd.getDate() + 7);
                     return caseDateOnly >= today && caseDateOnly <= weekEnd;
+                
+                case 'upcoming':
+                    return caseDateOnly >= today;
                 
                 case 'month':
                     const monthEnd = new Date(today);
@@ -543,7 +547,7 @@ export class DashboardManager {
                         caseStatus: caseItem.status
                     }
                 })
-            }).catch(e => console.error('Failed to log analysis start:', e));
+            }).catch(e => {});
         }
         if (window.is_enable_api_logging && window.frontendLogger) {
             const logData = {
@@ -711,7 +715,7 @@ export class DashboardManager {
                                 context: 'tray-status-eval',
                                 data: statusEvaluation
                             })
-                        }).catch(e => console.error('Failed to log tray status:', e));
+                        }).catch(e => {});
                     }
                     
                     // Flag to track if tray has been displayed
@@ -735,7 +739,7 @@ export class DashboardManager {
                                     context: 'tray-counting',
                                     data: { trayName, availableCount, status: tray.status }
                                 })
-                            }).catch(e => console.error('Failed to log available count:', e));
+                            }).catch(e => {});
                         }
                     } else if (isInUseStatus(tray.status)) {
                         inUseCount++;
@@ -758,7 +762,7 @@ export class DashboardManager {
                                         context: 'tray-counting',
                                         data: { trayName, effectivelyCheckedIn, facilityMatches, surgeonMatches, status: tray.status, reason: "IN_USE with matching facility/physician" }
                                     })
-                                }).catch(e => console.error('Failed to log in-use as checked-in:', e));
+                                }).catch(e => {});
                             }
                             
                             // Use checked-in logic - same as lines 936-968
@@ -799,7 +803,7 @@ export class DashboardManager {
                                             context: 'tray-counting',
                                             data: { trayName, effectivelyCheckedIn, facilityMatches, surgeonMatches, status: tray.status }
                                         })
-                                    }).catch(e => console.error('Failed to log effectively checked in:', e));
+                                    }).catch(e => {});
                                 }
                                 let statusDetails = `${trayName}: READY (matching assignment)`;
                                 
@@ -930,7 +934,7 @@ export class DashboardManager {
                                         context: 'tray-counting',
                                         data: { trayName, effectivelyCheckedIn, assignedCaseId: tray.assignedCaseId, currentCaseId: caseItem.id, status: tray.status }
                                     })
-                                }).catch(e => console.error('Failed to log checked in for this case:', e));
+                                }).catch(e => {});
                             }
                             let statusDetails = `${trayName}: ${getStatusDisplayText(tray.status).toUpperCase()}`;
                             
@@ -1135,7 +1139,7 @@ export class DashboardManager {
                         duplicateCheck: trayRequirements.length !== [...new Set(trayRequirements.map(req => req.tray_id))].length
                     }
                 })
-            }).catch(e => console.error('Failed to log to API:', e));
+            }).catch(e => {});
         }
         
         const result = {
@@ -1211,8 +1215,25 @@ export class DashboardManager {
         
         // Try to find facility by ID
         if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
-            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
-            return facility ? facility.account_name : facilityId; // Fallback to ID if not found
+            const facilities = window.app.facilityManager.currentFacilities;
+            const facility = facilities.find(f => f.id === facilityId);
+            
+            if (facility) {
+                return facility.account_name || facility.name || facilityId;
+            } else {
+                // Try to find by partial match or name
+                const partialMatch = facilities.find(f => 
+                    f.account_name?.includes(facilityId) || 
+                    f.name?.includes(facilityId) ||
+                    facilityId.includes(f.id)
+                );
+                
+                if (partialMatch) {
+                    return `${partialMatch.account_name || partialMatch.name} (matched)`;
+                }
+                
+                return `Unknown Facility (${facilityId.substring(0, 8)}...)`; // Shortened ID for display
+            }
         }
         
         return facilityId; // Fallback to original value
@@ -1240,7 +1261,6 @@ export class DashboardManager {
             }
         }
 
-        console.warn(`📍 No coordinates found for facility: ${facilityId}`);
         return null;
     }
 
@@ -1420,7 +1440,7 @@ export class DashboardManager {
                             allIssues: analysis.issues
                         }
                     })
-                }).catch(e => console.error('Failed to log issues array:', e));
+                }).catch(e => {});
             }
 
             if (analysis.issues.length > 0) {
@@ -1615,7 +1635,6 @@ export class DashboardManager {
             // Get facility coordinates for mass check-in (shared for all trays)
             const facilityCoordinates = this.getFacilityCoordinates(caseFacility);
             if (facilityCoordinates) {
-                console.log('📍 Using facility coordinates for mass check-in:', facilityCoordinates);
             }
             
             // Process each required tray
@@ -1638,6 +1657,10 @@ export class DashboardManager {
                         conflictWarnings.push(`${trayName}: ${warnings.join(', ')}`);
                     }
                     
+                    // Get current user for automatic assignment
+                    const currentUser = window.app.authManager.getCurrentUser();
+                    const currentUserId = currentUser?.uid || 'unknown';
+                    
                     // Update tray with case details
                     await this.dataManager.updateTray(tray.id, {
                         status: TRAY_STATUS.IN_USE,
@@ -1646,7 +1669,9 @@ export class DashboardManager {
                         surgeon: caseSurgeon,
                         caseDate: caseData.scheduledDate,
                         checkedInAt: new Date().toISOString(),
-                        checkedInBy: window.app.authManager.getCurrentUser()?.uid || 'unknown',
+                        checkedInBy: currentUserId,
+                        // Automatically assign tray to current user on dashboard checkin
+                        assignedTo: currentUserId,
                         // Add facility coordinates if available
                         ...(facilityCoordinates && {
                             latitude: facilityCoordinates.latitude,
@@ -1656,13 +1681,16 @@ export class DashboardManager {
                         })
                     });
                     
-                    // Add activity history entry for mass check-in
+                    // Add activity history entry for mass check-in with assignment info
                     const facilityName = this.getFacilityName(caseFacility) || caseFacility || 'Unknown Facility';
                     const physicianName = this.getSurgeonName(caseSurgeon) || caseSurgeon || 'Unknown Physician';
+                    const userName = currentUser?.name || currentUser?.email || 'Unknown User';
+                    const dashboardHistoryMessage = `Mass checked in to ${facilityName} for case on ${caseData.scheduledDate} with ${physicianName}. Automatically assigned to ${userName}.`;
+                    
                     await this.dataManager.addHistoryEntry(
                         tray.id,
                         'checkin',
-                        `Mass checked in to ${facilityName} for case on ${caseData.scheduledDate} with ${physicianName}`,
+                        dashboardHistoryMessage,
                         null
                     );
                     
@@ -1898,15 +1926,13 @@ export class DashboardManager {
     }
 
     handleCasesUpdate(cases) {
-        console.log('🔄 DashboardManager.handleCasesUpdate() called with', cases.length, 'cases');
         
         // Store the updated cases data
         this.cases = cases;
         
         // Refresh dashboard if currently viewing dashboard
         if (window.app.viewManager && window.app.viewManager.currentView === 'dashboard') {
-            console.log('✅ Refreshing dashboard cases section with updated data');
-            // Add small delay to ensure DOM is ready
+                // Add small delay to ensure DOM is ready
             setTimeout(() => {
                 this.refresh();
             }, 100);

@@ -1,7 +1,20 @@
 {
   "version": 2,
   "public": true,
+  "env": {
+    "TWILIO_ACCOUNT_SID": "@twilio-account-sid",
+    "TWILIO_AUTH_TOKEN": "@twilio-auth-token", 
+    "TWILIO_PHONE_NUMBER": "@twilio-phone-number"
+  },
+  "functions": {
+    "api/notifications.js": {
+      "memory": 512,
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
+    { "source": "/api/notifications/(.*)", "destination": "/api/notifications" },
+    { "source": "/api/notifications", "destination": "/api/notifications" },
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]

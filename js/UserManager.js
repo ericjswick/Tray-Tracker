@@ -1,6 +1,8 @@
 // js/UserManager.js - Updated for Tray Tracker
-import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
-import { doc, setDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+import { createUserWithEmailAndPassword, getAuth } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
+import { doc, setDoc, updateDoc, deleteDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 
 export class UserManager {
     constructor(auth, db, dataManager) {
@@ -147,33 +149,145 @@ export class UserManager {
 
     async addUser() {
         try {
+            const currentAdminUser = this.auth.currentUser;
+            const currentAdminData = window.app.authManager.getCurrentUser();
+            
+            console.log('🔍 BEFORE user creation - Current admin user:', {
+                firebaseUID: currentAdminUser?.uid,
+                firebaseEmail: currentAdminUser?.email,
+                authManagerUID: currentAdminData?.uid,
+                authManagerName: currentAdminData?.name,
+                authManagerEmail: currentAdminData?.email
+            });
+            
+            // Check what's displayed in UI right now
+            const currentDisplay = document.getElementById('currentUserName')?.textContent;
+            console.log('🔍 BEFORE user creation - UI displays:', currentDisplay);
+            
             const name = document.getElementById('userName').value;
             const email = document.getElementById('userEmail').value;
             const password = document.getElementById('userPassword').value;
             const role = document.getElementById('userRole').value;
             const phone = document.getElementById('userPhone').value;
             const region = document.getElementById('userRegion').value;
+            let location_facility_id = document.getElementById('userLocationFacility').value;
+            
+            // Convert empty string or 'null' string to actual null
+            if (location_facility_id === '' || location_facility_id === 'null') {
+                location_facility_id = null;
+            }
             const active = document.getElementById('userActive').checked;
 
-            const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
-            const user = userCredential.user;
 
-            await setDoc(doc(this.db, 'users', user.uid), {
+            // Check if secondary app exists and delete it first to avoid conflicts
+            try {
+                const existingApp = window.firebase.app('secondary');
+                if (existingApp) {
+                    await existingApp.delete();
+                    console.log('🗑️ Deleted existing secondary app');
+                }
+            } catch (e) {
+                // App doesn't exist, that's fine
+            }
+
+            // Create secondary Firebase app instance for user creation
+            // Get config from the existing Firebase app instance
+            const mainApp = this.auth.app;
+            const secondaryAppConfig = {
+                apiKey: mainApp.options.apiKey,
+                authDomain: mainApp.options.authDomain,
+                projectId: mainApp.options.projectId,
+                storageBucket: mainApp.options.storageBucket,
+                messagingSenderId: mainApp.options.messagingSenderId,
+                appId: mainApp.options.appId
+            };
+            
+            console.log('🔄 Initializing secondary Firebase app...');
+            
+            // Initialize secondary app
+            const secondaryApp = initializeApp(secondaryAppConfig, 'secondary-' + Date.now());
+            const secondaryAuth = getAuth(secondaryApp);
+
+            console.log('🔄 Secondary app created:', secondaryApp.name);
+            console.log('🔍 Main auth current user before creation:', this.auth.currentUser?.email);
+            console.log('🔍 Secondary auth current user before creation:', secondaryAuth.currentUser?.email);
+
+            // Create the new user using secondary auth (should not affect main session)
+            const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+            const newUser = userCredential.user;
+
+            console.log('✅ New user created with secondary auth:', {
+                newUserUID: newUser.uid,
+                newUserEmail: newUser.email
+            });
+
+            console.log('🔍 AFTER user creation - Main auth user:', this.auth.currentUser?.email);
+            console.log('🔍 AFTER user creation - Secondary auth user:', secondaryAuth.currentUser?.email);
+            console.log('🔍 AFTER user creation - AuthManager user:', window.app.authManager.getCurrentUser()?.email);
+
+            // Save the new user's profile data using main database connection
+            await setDoc(doc(this.db, 'users', newUser.uid), {
                 name,
                 email,
                 role,
                 phone,
                 region,
+                location_facility_id,
                 active,
                 createdAt: serverTimestamp(),
-                createdBy: window.app.authManager.getCurrentUser()?.uid,
+                createdBy: currentAdminData?.uid,
                 isDemoUser: false
             });
 
+            console.log('✅ User profile data saved to Firestore');
+
+            // Sign out the new user from secondary auth and clean up
+            await secondaryAuth.signOut();
+            await deleteApp(secondaryApp);
+
+            console.log('🧹 Secondary app cleaned up');
+            
+            // Check state after cleanup
+            console.log('🔍 AFTER cleanup - Main auth user:', this.auth.currentUser?.email);
+            console.log('🔍 AFTER cleanup - AuthManager user:', window.app.authManager.getCurrentUser()?.email);
+            
+            const finalDisplay = document.getElementById('currentUserName')?.textContent;
+            console.log('🔍 AFTER cleanup - UI displays:', finalDisplay);
+
+            // If the display changed, force refresh it
+            if (finalDisplay !== currentDisplay) {
+                console.log('⚠️ Display changed from', currentDisplay, 'to', finalDisplay, '- forcing refresh');
+                
+                // Force restore the admin user display immediately
+                setTimeout(() => {
+                    if (window.app.authManager && currentAdminData) {
+                        console.log('🔧 Force restoring admin user display...');
+                        window.app.authManager.currentUser = {
+                            uid: currentAdminUser.uid,
+                            email: currentAdminUser.email,
+                            ...currentAdminData
+                        };
+                        window.app.authManager.updateUserDisplay();
+                    }
+                }, 100);
+                
+                if (window.refreshUserDisplay) {
+                    setTimeout(() => window.refreshUserDisplay(), 200);
+                }
+            }
+
+            // Close modal and reset form
             bootstrap.Modal.getInstance(document.getElementById('addUserModal')).hide();
             document.getElementById('addUserForm').reset();
 
+            // Show success message
             this.showSuccessNotification('User created successfully!');
+
+            // Refresh user list
+            if (window.app.dataManager && window.app.dataManager.loadUsers) {
+                window.app.dataManager.loadUsers();
+            }
+            
         } catch (error) {
             console.error('Error adding user:', error);
             this.showErrorNotification('Error adding user: ' + error.message);
@@ -187,6 +301,13 @@ export class UserManager {
             const role = document.getElementById('editUserRole').value;
             const phone = document.getElementById('editUserPhone').value;
             const region = document.getElementById('editUserRegion').value;
+            let location_facility_id = document.getElementById('editUserLocationFacility').value;
+            
+            
+            // Convert empty string or 'null' string to actual null
+            if (location_facility_id === '' || location_facility_id === 'null') {
+                location_facility_id = null;
+            }
             const active = document.getElementById('editUserActive').checked;
 
             await updateDoc(doc(this.db, 'users', userId), {
@@ -194,6 +315,7 @@ export class UserManager {
                 role,
                 phone,
                 region,
+                location_facility_id,
                 active,
                 lastModified: serverTimestamp(),
                 modifiedBy: window.app.authManager.getCurrentUser()?.uid
@@ -237,7 +359,6 @@ export class UserManager {
     }
 
     renderUsers(users) {
-
         if (this.viewMode === 'card') {
             this.renderCardView(users);
         } else {
@@ -336,6 +457,17 @@ export class UserManager {
                         <span class="empty-value">Not assigned</span>
                     </div>
                 `}
+                ${user.location_facility_id ? `
+                    <div class="user-detail">
+                        <i class="fas fa-hospital"></i>
+                        <span>${this.getFacilityName(user.location_facility_id)}</span>
+                    </div>
+                ` : `
+                    <div class="user-detail">
+                        <i class="fas fa-hospital"></i>
+                        <span class="empty-value">No RepTrunk location</span>
+                    </div>
+                `}
             </div>
 
             <div class="user-actions">
@@ -390,6 +522,10 @@ export class UserManager {
                     <span class="${!user.region ? 'empty-value' : ''}">${user.region || 'Not assigned'}</span>
                 </div>
                 <div class="user-horizontal-field">
+                    <label>RepTrunk Location</label>
+                    <span class="${!user.location_facility_id ? 'empty-value' : ''}">${user.location_facility_id ? this.getFacilityName(user.location_facility_id) : 'Not assigned'}</span>
+                </div>
+                <div class="user-horizontal-field">
                     <label>Created</label>
                     <span class="empty-value">${this.formatDate(user.createdAt) || 'Unknown'}</span>
                 </div>
@@ -435,6 +571,29 @@ export class UserManager {
         if (!timestamp) return null;
         const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
         return date.toLocaleDateString();
+    }
+
+    getFacilityName(facilityId) {
+        if (!facilityId) return 'Not assigned';
+        
+        // Try to get facility name from facilityManager
+        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
+            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
+            if (facility) {
+                return facility.account_name || facility.name || facilityId;
+            }
+        }
+        
+        // Try to get from dataManager as fallback
+        if (window.app.dataManager) {
+            const facilities = window.app.dataManager.getFacilities();
+            const facility = facilities.find(f => f.id === facilityId);
+            if (facility) {
+                return facility.account_name || facility.name || facilityId;
+            }
+        }
+        
+        return `Unknown Facility (${facilityId.substring(0, 8)}...)`;
     }
 
     updateStats(users) {

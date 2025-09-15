@@ -573,6 +573,9 @@ export class ModalManager {
     }
 
     showAddUserModal() {
+        // Populate facility dropdown
+        this.populateFacilityDropdown('userLocationFacility');
+        
         const modal = new bootstrap.Modal(document.getElementById('addUserModal'));
         modal.show();
     }
@@ -587,6 +590,9 @@ export class ModalManager {
                 return;
             }
 
+            // Populate facility dropdown first
+            this.populateFacilityDropdown('editUserLocationFacility');
+            
             // Populate form fields
             document.getElementById('editUserId').value = userId;
             document.getElementById('editUserName').value = user.name || '';
@@ -594,6 +600,9 @@ export class ModalManager {
             document.getElementById('editUserRole').value = user.role || '';
             document.getElementById('editUserPhone').value = user.phone || '';
             document.getElementById('editUserRegion').value = user.region || '';
+            // Handle null, empty, or string "null" values
+            const locationFacilityValue = (user.location_facility_id === null || user.location_facility_id === 'null' || !user.location_facility_id) ? '' : user.location_facility_id;
+            document.getElementById('editUserLocationFacility').value = locationFacilityValue;
             document.getElementById('editUserActive').checked = user.active !== false;
 
             const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
@@ -724,6 +733,7 @@ export class ModalManager {
                         document.getElementById('editFacilityNPI').value = facility.npi || '';
                         document.getElementById('editFacilityNotes').value = facility.notes || '';
                         document.getElementById('editFacilityActive').checked = facility.active !== false;
+                        document.getElementById('editFacilityCorporateHQ').checked = facility.is_corporate_headquarters === true;
                         document.getElementById('editFacilityLatitude').value = facility.latitude || '';
                         document.getElementById('editFacilityLongitude').value = facility.longitude || '';
                     }, 100);
@@ -905,6 +915,10 @@ export class ModalManager {
         if (window.app.caseTypeManager) {
             window.app.caseTypeManager.resetTrayRequirementsForAdd();
         }
+        
+        // Populate tray dropdown
+        this.populateAddCaseTypeTrayDropdown();
+        
         const modal = new bootstrap.Modal(document.getElementById('addCaseTypeModal'));
         modal.show();
     }
@@ -1593,11 +1607,69 @@ export class ModalManager {
     }
 
     getFacilityName(facilityId) {
-        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
-            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
-            return facility ? facility.account_name : 'Unknown Facility';
+        if (!facilityId) return null;
+        
+        // Debug logging for ModalManager facility lookup
+        console.log('🔍 ModalManager.getFacilityName called with:', facilityId);
+        
+        // If it's already a name (not an ID), return it
+        if (facilityId.length > 20 && !facilityId.match(/^[a-zA-Z0-9]{20}$/)) {
+            console.log('🔍 Modal: Facility appears to be a name, returning:', facilityId);
+            return facilityId;
         }
-        return 'Unknown Facility';
+        
+        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
+            const facilities = window.app.facilityManager.currentFacilities;
+            console.log('🔍 Modal: Searching in facilities:', facilities.length, 'facilities loaded');
+            const facility = facilities.find(f => f.id === facilityId);
+            
+            if (facility) {
+                console.log('🔍 Modal: Found facility:', facility.account_name, 'for ID:', facilityId);
+                return facility.account_name || facility.name || facilityId;
+            } else {
+                console.log('🔍 Modal: Facility not found for ID:', facilityId, 'Available IDs:', facilities.map(f => f.id));
+                
+                // Try to find by partial match
+                const partialMatch = facilities.find(f => 
+                    f.account_name?.includes(facilityId) || 
+                    f.name?.includes(facilityId) ||
+                    facilityId.includes(f.id)
+                );
+                
+                if (partialMatch) {
+                    console.log('🔍 Modal: Found partial match:', partialMatch.account_name || partialMatch.name);
+                    return `${partialMatch.account_name || partialMatch.name} (matched)`;
+                }
+                
+                return `Unknown Facility (${facilityId.substring(0, 8)}...)`; // Shortened ID for display
+            }
+        }
+        return `Unknown Facility (${facilityId.substring(0, 8)}...)`;
+    }
+
+    populateFacilityDropdown(selectElementId) {
+        const selectElement = document.getElementById(selectElementId);
+        if (!selectElement) return;
+        
+        // Clear existing options except the first one
+        selectElement.innerHTML = '<option value="">Select Facility Location...</option>';
+        
+        // Get facilities from dataManager or facilityManager
+        let facilities = [];
+        if (this.dataManager && this.dataManager.getFacilities) {
+            facilities = this.dataManager.getFacilities();
+        } else if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
+            facilities = window.app.facilityManager.currentFacilities;
+        }
+        
+        if (facilities && facilities.length > 0) {
+            facilities.forEach(facility => {
+                const option = document.createElement('option');
+                option.value = facility.id;
+                option.textContent = facility.account_name || facility.name || facility.id;
+                selectElement.appendChild(option);
+            });
+        }
     }
 
     getPhysicianName(physicianId) {
@@ -1606,5 +1678,70 @@ export class ModalManager {
             return physician ? physician.full_name : 'Unknown Physician';
         }
         return 'Unknown Physician';
+    }
+
+    /**
+     * Populate tray dropdown in Add Case Type modal
+     */
+    async populateAddCaseTypeTrayDropdown() {
+        const dropdown = document.getElementById('newTrayDropdown');
+        if (!dropdown) {
+            console.error('newTrayDropdown element not found');
+            return;
+        }
+
+        try {
+            // Get trays from tray manager
+            let trays = window.app.trayManager?.currentTrays || [];
+            
+            // If no trays loaded yet, try to load them
+            if (trays.length === 0 && window.app.trayManager) {
+                dropdown.innerHTML = '<option value="">Loading trays...</option>';
+                try {
+                    await window.app.trayManager.loadTrays();
+                    trays = window.app.trayManager.currentTrays || [];
+                } catch (error) {
+                    console.error('Error loading trays for dropdown:', error);
+                }
+            }
+            
+            // Clear existing options
+            dropdown.innerHTML = '<option value="">Select Tray...</option>';
+            
+            if (trays.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'No trays available';
+                option.disabled = true;
+                dropdown.appendChild(option);
+                return;
+            }
+
+            // Sort trays by name for better UX
+            const sortedTrays = trays.sort((a, b) => {
+                const nameA = a.tray_name || a.name || a.id || '';
+                const nameB = b.tray_name || b.name || b.id || '';
+                return nameA.localeCompare(nameB);
+            });
+
+            // Add tray options
+            sortedTrays.forEach(tray => {
+                const option = document.createElement('option');
+                option.value = tray.id;
+                option.textContent = tray.tray_name || tray.name || tray.id;
+                dropdown.appendChild(option);
+            });
+
+        } catch (error) {
+            console.error('Error populating tray dropdown:', error);
+            
+            // Add error option
+            dropdown.innerHTML = '<option value="">Select Tray...</option>';
+            const errorOption = document.createElement('option');
+            errorOption.value = '';
+            errorOption.textContent = 'Error loading trays';
+            errorOption.disabled = true;
+            dropdown.appendChild(errorOption);
+        }
     }
 }

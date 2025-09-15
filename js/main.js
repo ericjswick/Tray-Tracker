@@ -39,6 +39,9 @@ import { TrayMigration } from './utils/TrayMigration.js';
 import { SurgeonToPhysicianMigration } from './utils/SurgeonToPhysicianMigration.js';
 import { TrayToTrayTrackingMigration } from './utils/TrayToTrayTrackingMigration.js';
 import { CaseToSurgicalCaseMigration } from './utils/CaseToSurgicalCaseMigration.js';
+import { FacilityIdNullRemovalMigration } from './utils/FacilityIdNullRemovalMigration.js';
+import { FacilityGeocodingMigration } from './utils/FacilityGeocodingMigration.js';
+import { FacilityNameToAccountNameMigration } from './utils/FacilityNameToAccountNameMigration.js';
 import { timezoneConverter } from './utils/TimezoneConverter.js';
 
 
@@ -94,6 +97,9 @@ class SIBoneApp {
         this.surgeonToPhysicianMigration = new SurgeonToPhysicianMigration(db);
         this.trayToTrayTrackingMigration = new TrayToTrayTrackingMigration(db);
         this.caseToSurgicalCaseMigration = new CaseToSurgicalCaseMigration(db);
+        this.facilityIdNullRemovalMigration = new FacilityIdNullRemovalMigration(db);
+        this.facilityGeocodingMigration = new FacilityGeocodingMigration(db);
+        this.facilityNameToAccountNameMigration = new FacilityNameToAccountNameMigration(db);
         
         // Make migration tools available globally
         window.facilityMigration = this.facilityMigration;
@@ -101,6 +107,9 @@ class SIBoneApp {
         window.surgeonToPhysicianMigration = this.surgeonToPhysicianMigration;
         window.trayToTrayTrackingMigration = this.trayToTrayTrackingMigration;
         window.caseToSurgicalCaseMigration = this.caseToSurgicalCaseMigration;
+        window.facilityIdNullRemovalMigration = this.facilityIdNullRemovalMigration;
+        window.facilityGeocodingMigration = this.facilityGeocodingMigration;
+        window.facilityNameToAccountNameMigration = this.facilityNameToAccountNameMigration;
         
         // Add convenient global functions for tray field migration
         window.checkTrayCompatibility = () => this.trayMigration.checkCompatibility();
@@ -552,6 +561,153 @@ class SIBoneApp {
                 });
             }
         });
+
+        // Setup mobile menu toggle
+        this.initializeMobileMenu();
+    }
+
+    initializeMobileMenu() {
+        console.log('Initializing mobile menu...');
+        const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+        const mobileMenuContainer = document.getElementById('mobileMenuContainer');
+        
+        console.log('Mobile menu toggle found:', !!mobileMenuToggle);
+        console.log('Mobile menu container found:', !!mobileMenuContainer);
+        
+        if (mobileMenuToggle && mobileMenuContainer) {
+            console.log('Setting up mobile menu event listeners...');
+            
+            // Setup mobile menu toggle behavior
+            mobileMenuToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                mobileMenuContainer.classList.toggle('show');
+                
+                // Update hamburger icon
+                const icon = mobileMenuToggle.querySelector('i');
+                if (mobileMenuContainer.classList.contains('show')) {
+                    icon.className = 'fas fa-times';
+                } else {
+                    icon.className = 'fas fa-bars';
+                }
+            });
+
+            // Close mobile menu when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!mobileMenuContainer.contains(e.target) && !mobileMenuToggle.contains(e.target)) {
+                    mobileMenuContainer.classList.remove('show');
+                    mobileMenuToggle.querySelector('i').className = 'fas fa-bars';
+                }
+            });
+
+            // Close mobile menu when clicking on nav items (except dropdown toggles)
+            const navItems = mobileMenuContainer.querySelectorAll('.nav-item:not(.dropdown-toggle)');
+            navItems.forEach(item => {
+                item.addEventListener('click', () => {
+                    mobileMenuContainer.classList.remove('show');
+                    mobileMenuToggle.querySelector('i').className = 'fas fa-bars';
+                });
+            });
+            
+            // Setup mobile dropdown container for admin menu
+            this.setupMobileAdminDropdown(mobileMenuContainer);
+        }
+        
+        // Setup desktop dropdown (disable Bootstrap on desktop)
+        this.setupDesktopAdminDropdown();
+    }
+    
+    setupDesktopAdminDropdown() {
+        const adminDropdownToggle = document.querySelector('.header-nav .dropdown-toggle');
+        const adminDropdownMenu = document.querySelector('.header-nav .dropdown-menu');
+        
+        if (adminDropdownToggle && adminDropdownMenu) {
+            // Disable Bootstrap dropdown behavior
+            adminDropdownToggle.removeAttribute('data-bs-toggle');
+            
+            let isOpen = false;
+            
+            adminDropdownToggle.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Only handle on desktop
+                if (window.innerWidth >= 769) {
+                    isOpen = !isOpen;
+                    
+                    if (isOpen) {
+                        adminDropdownMenu.style.display = 'block';
+                        adminDropdownMenu.style.position = 'absolute';
+                        adminDropdownMenu.style.top = '100%';
+                        adminDropdownMenu.style.left = '50%';
+                        adminDropdownMenu.style.transform = 'translateX(-50%)';
+                        adminDropdownMenu.style.margin = '4px 0 0 0';
+                        adminDropdownMenu.style.zIndex = '1000';
+                        adminDropdownToggle.classList.add('active');
+                    } else {
+                        adminDropdownMenu.style.display = 'none';
+                        adminDropdownToggle.classList.remove('active');
+                    }
+                }
+            });
+            
+            // Close dropdown when clicking outside
+            document.addEventListener('click', (e) => {
+                if (window.innerWidth >= 769 && isOpen) {
+                    if (!adminDropdownToggle.contains(e.target) && !adminDropdownMenu.contains(e.target)) {
+                        isOpen = false;
+                        adminDropdownMenu.style.display = 'none';
+                        adminDropdownToggle.classList.remove('active');
+                    }
+                }
+            });
+            
+            // Close dropdown when clicking on any dropdown item
+            const dropdownItems = adminDropdownMenu.querySelectorAll('.dropdown-item');
+            dropdownItems.forEach(item => {
+                item.addEventListener('click', () => {
+                    if (window.innerWidth >= 769 && isOpen) {
+                        isOpen = false;
+                        adminDropdownMenu.style.display = 'none';
+                        adminDropdownToggle.classList.remove('active');
+                    }
+                });
+            });
+        }
+    }
+
+    setupMobileAdminDropdown(mobileMenuContainer) {
+        const adminDropdown = mobileMenuContainer.querySelector('.dropdown');
+        const adminNavItem = mobileMenuContainer.querySelector('.dropdown-toggle');
+        const dropdownMenu = mobileMenuContainer.querySelector('.dropdown-menu');
+        
+        if (adminNavItem && dropdownMenu && adminDropdown) {
+            // Create a separate container for the dropdown menu
+            const mobileDropdownContainer = document.createElement('div');
+            mobileDropdownContainer.className = 'mobile-dropdown-container';
+            
+            // Move the dropdown menu to the new container
+            const clonedDropdownMenu = dropdownMenu.cloneNode(true);
+            mobileDropdownContainer.appendChild(clonedDropdownMenu);
+            
+            // Add the container after the nav
+            const nav = mobileMenuContainer.querySelector('nav');
+            nav.parentNode.insertBefore(mobileDropdownContainer, nav.nextSibling);
+            
+            // Hide the original dropdown menu
+            dropdownMenu.style.display = 'none';
+            
+            // Handle admin nav item click
+            adminNavItem.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const isVisible = clonedDropdownMenu.style.display === 'block';
+                clonedDropdownMenu.style.display = isVisible ? 'none' : 'block';
+                
+                // Update admin button appearance
+                adminNavItem.classList.toggle('active', !isVisible);
+            });
+        }
     }
 
     setupErrorHandling() {

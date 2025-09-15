@@ -112,13 +112,43 @@ body {
     font-size: 1rem;
 }
 
-/* Dropdown Styles */
+/* Dropdown Styles - Desktop only (exclude mobile menu container) */
+.dropdown {
+    position: relative;
+}
+
+/* Target Bootstrap dropdown menu specifically - but only on desktop */
 .dropdown-menu {
     border: 1px solid var(--gray-200);
     box-shadow: var(--shadow-lg);
     border-radius: 0.5rem;
     padding: 0.5rem 0;
     margin-top: 0.5rem;
+    background: white;
+    min-width: 200px;
+    z-index: 1000;
+}
+
+/* Desktop-specific dropdown - hide Bootstrap dropdown, only show custom one */
+@media (min-width: 769px) {
+    /* Force hide all Bootstrap dropdown behavior on desktop */
+    .header-nav .dropdown-menu {
+        display: none !important;
+    }
+    
+    /* Only show our custom dropdown that has the specific inline styles from our JS */
+    .header-nav .dropdown-menu[style*="position: absolute"][style*="display: block"] {
+        display: block !important;
+    }
+    
+    /* Disable Bootstrap dropdown classes completely on desktop */
+    .header-nav .dropdown.show .dropdown-menu {
+        display: none !important;
+    }
+    
+    .header-nav .show > .dropdown-menu {
+        display: none !important;
+    }
 }
 
 .dropdown-item {
@@ -405,7 +435,8 @@ body {
     .user-cards-grid,
     .location-cards-grid,
     .surgeon-cards-grid,
-    .physician-cards-grid {
+    .physician-cards-grid,
+    .casetype-cards-grid {
         grid-template-columns: 1fr;
         gap: 1rem;
     }
@@ -418,7 +449,8 @@ body {
     .user-cards-grid,
     .location-cards-grid,
     .surgeon-cards-grid,
-    .physician-cards-grid {
+    .physician-cards-grid,
+    .casetype-cards-grid {
         grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     }
 }
@@ -430,7 +462,8 @@ body {
     .user-cards-grid,
     .location-cards-grid,
     .surgeon-cards-grid,
-    .physician-cards-grid {
+    .physician-cards-grid,
+    .casetype-cards-grid {
         grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
         max-width: none;
     }
@@ -868,6 +901,152 @@ body {
 
 .btn-view:not(:last-child) {
     border-right: none;
+}
+
+/* Cases page filters alignment */
+.cases-filters .filter-select {
+    padding: 0.5rem 1rem; /* Match btn-view padding exactly */
+    height: calc(1rem * 1.5 + 1rem + 2px); /* line-height + padding + border */
+    border: 1px solid var(--gray-300);
+    border-radius: 0.375rem;
+    font-size: 1rem;
+    line-height: 1.5; /* Match typical line height */
+    box-sizing: border-box;
+}
+
+.cases-filters .d-flex {
+    align-items: center;
+    height: calc(1rem * 1.5 + 1rem + 2px); /* Match calculated height */
+}
+
+.cases-filters .filter-label {
+    height: calc(1rem * 1.5 + 1rem + 2px); /* Match calculated height */
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+}
+
+/* Restore original view controls spacing */
+.view-controls {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+/* Only remove margin for inline filter layouts */
+.cases-filter-row .view-controls,
+.tray-filter-row .view-controls {
+    margin-bottom: 0;
+}
+
+.view-controls .btn-group {
+    display: flex;
+    align-items: center; /* Ensure buttons are centered */
+}
+
+/* Tray page filters alignment - same pattern as cases */
+.tray-filters .filter-select {
+    padding: 0.5rem 1rem; /* Match btn-view padding exactly */
+    height: calc(1rem * 1.5 + 1rem + 2px); /* line-height + padding + border */
+    border: 1px solid var(--gray-300);
+    border-radius: 0.375rem;
+    font-size: 1rem;
+    line-height: 1.5; /* Match typical line height */
+    box-sizing: border-box;
+}
+
+.tray-filters .d-flex {
+    align-items: center;
+    height: calc(1rem * 1.5 + 1rem + 2px); /* Match calculated height */
+}
+
+.tray-filters .filter-label {
+    height: calc(1rem * 1.5 + 1rem + 2px); /* Match calculated height */
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+}
+
+/* Mobile responsive - NUCLEAR OPTION - force specific heights and positions */
+@media (max-width: 768px) {
+    /* Force main content to allow overflow for dropdowns */
+    .main-content {
+        overflow: visible !important;
+        overflow-x: visible !important;
+        overflow-y: visible !important;
+    }
+    
+    /* Force view containers to allow overflow */
+    #casesView, #traysView {
+        overflow: visible !important;
+    }
+    
+    /* Force parent container to stack vertically with specific heights */
+    .cases-filter-row.d-flex.justify-content-between.align-items-center,
+    .tray-filter-row.d-flex.justify-content-between.align-items-center {
+        display: block !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: auto !important; /* Let container size naturally */
+        position: relative !important;
+        overflow: visible !important; /* Allow dropdowns to show */
+        z-index: 100 !important;
+    }
+    
+    /* Position filters naturally - let them flow and expand as needed */
+    .cases-filter-row .cases-filters,
+    .tray-filter-row .tray-filters {
+        width: 100% !important;
+        display: block !important;
+        position: static !important; /* Changed to static for natural flow */
+        min-height: 50px !important;
+        height: auto !important; /* Allow natural height for dropdowns */
+        z-index: 1000 !important;
+        background: var(--gray-50) !important;
+        padding: 0.5rem !important;
+        margin-bottom: 1rem !important; /* Add spacing below */
+        overflow: visible !important; /* Allow dropdowns to extend beyond */
+    }
+    
+    .cases-filter-row .cases-filters .d-flex,
+    .tray-filter-row .tray-filters .d-flex {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: stretch;
+        height: 100%;
+        align-items: center;
+    }
+    
+    /* Hide filter labels and icons on mobile */
+    .cases-filter-row .cases-filters .filter-label,
+    .tray-filter-row .tray-filters .filter-label {
+        display: none !important;
+    }
+    
+    /* Position view controls naturally below filters */
+    .cases-filter-row .view-controls,
+    .tray-filter-row .view-controls {
+        width: 100% !important;
+        display: flex !important;
+        justify-content: center !important;
+        position: static !important; /* Changed to static for natural flow */
+        margin: 0 !important;
+        z-index: 5 !important;
+        background: var(--gray-50) !important;
+        padding: 0.5rem !important;
+    }
+    
+    /* Adjust filter elements for mobile */
+    .cases-filter-row .cases-filters .filter-select,
+    .tray-filter-row .tray-filters .filter-select {
+        flex: 1;
+        min-width: 120px;
+        margin: 0;
+        height: 35px;
+        position: relative;
+        z-index: 2000 !important; /* Very high z-index to ensure dropdown options appear above everything */
+    }
 }
 
 /* ========== BUTTONS ========== */
@@ -1354,15 +1533,25 @@ body {
     }
 }
 
+/* Keep 2-column layout for stats cards on mobile instead of full width */
 @media (max-width: 640px) {
     .metrics-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
     }
-
+    
+    .metric-card {
+        padding: 1rem;
+    }
+    
+    .metric-value {
+        font-size: 1.75rem;
+    }
+    
     .page-title {
         font-size: 1.5rem;
     }
-
+    
     .tray-horizontal-body,
     .user-horizontal-body,
     .location-horizontal-body {
@@ -1398,6 +1587,302 @@ body {
     .location-horizontal-actions .btn-warning-custom {
         width: 100%;
         justify-content: center;
+    }
+}
+
+/* Mobile menu styles */
+.mobile-menu-toggle {
+    background: none;
+    border: none;
+    color: var(--gray-600);
+    font-size: 1.25rem;
+    padding: 0.5rem;
+    cursor: pointer;
+    border-radius: 0.25rem;
+    transition: all 0.2s;
+}
+
+.mobile-menu-toggle:hover {
+    background: var(--light-blue);
+    color: var(--primary-blue);
+}
+
+.mobile-menu-container {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+}
+
+/* Mobile responsive fixes for 414px and similar mobile widths */
+@media (max-width: 768px) {
+    /* Show mobile menu toggle and hide desktop menu */
+    .mobile-menu-toggle {
+        display: block !important;
+        margin-right: 0.5rem;
+    }
+    
+    /* Force override of d-none class */
+    .mobile-menu-toggle.d-none {
+        display: block !important;
+        margin-right: 0.5rem;
+    }
+    
+    /* Ensure header container has proper padding */
+    .header-nav .container-fluid {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+    
+    .mobile-menu-container {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border-top: 1px solid var(--gray-200);
+        box-shadow: var(--shadow-lg);
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+        z-index: 1000;
+    }
+    
+    .mobile-menu-container.show {
+        max-height: 400px;
+        padding: 1rem;
+    }
+    
+    .mobile-menu-container nav {
+        width: 100%;
+    }
+    
+    /* Create separate container for dropdown menu */
+    .mobile-dropdown-container {
+        width: 100%;
+        margin-top: 1rem;
+    }
+    
+    .nav-items {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        width: 100%;
+        gap: 0.5rem;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .nav-items li {
+        display: flex;
+        justify-content: center;
+        margin: 0;
+        padding: 0;
+    }
+    
+    .nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 0.75rem 0.5rem;
+        border-radius: 0.5rem;
+        text-align: center;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    
+    .nav-item i {
+        font-size: 1.25rem;
+        margin-bottom: 0.25rem;
+    }
+    
+    .nav-item span {
+        font-size: 0.75rem;
+        font-weight: 500;
+        line-height: 1.1;
+        white-space: nowrap;
+    }
+    
+    /* Mobile dropdown styling - override desktop styles only in mobile */
+    .mobile-menu-container .dropdown {
+        display: contents;
+        position: static;
+    }
+    
+    .mobile-menu-container .dropdown .nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 0.75rem 0.5rem;
+        border-radius: 0.5rem;
+        text-align: center;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    
+    .mobile-menu-container .dropdown-menu {
+        position: static;
+        display: none;
+        box-shadow: var(--shadow);
+        border: 1px solid var(--gray-200);
+        border-radius: 0.5rem;
+        width: 100%;
+        background: white;
+        margin-top: 1rem;
+        left: auto;
+        top: auto;
+        transform: none;
+        min-width: auto;
+    }
+    
+    .mobile-dropdown-container .dropdown-menu {
+        position: static;
+        display: none;
+        box-shadow: var(--shadow);
+        border: 1px solid var(--gray-200);
+        border-radius: 0.5rem;
+        width: 100%;
+        background: white;
+        margin-top: 0;
+        left: auto;
+        top: auto;
+        transform: none;
+        min-width: auto;
+    }
+    
+    .user-profile {
+        width: 100%;
+        justify-content: space-between;
+        padding: 0.75rem 0;
+        border-top: 1px solid var(--gray-200);
+        margin-top: 1rem;
+    }
+    
+    .header-nav {
+        position: relative;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Ensure mobile menu works on smaller devices */
+    .mobile-menu-toggle {
+        display: block !important;
+        margin-right: 0.5rem;
+    }
+    
+    .mobile-menu-toggle.d-none {
+        display: block !important;
+        margin-right: 0.5rem;
+    }
+    
+    /* Additional header padding for very small screens */
+    .header-nav .container-fluid {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+    
+    .main-content {
+        padding: 0.75rem;
+        margin: 0 0.5rem;
+        width: calc(100% - 1rem);
+        max-width: calc(100vw - 1rem);
+        overflow-x: hidden;
+    }
+    
+    .dashboard-layout {
+        gap: 0.75rem;
+        padding: 0;
+        margin: 0;
+        width: 100%;
+    }
+    
+    .main-dashboard, .dashboard-section {
+        padding: 1rem;
+        margin: 0;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    
+    .tray-cards-grid,
+    .cases-cards-grid {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+        padding: 0;
+        margin: 0;
+        width: 100%;
+        max-width: 100%;
+    }
+    
+    .tray-card,
+    .case-card {
+        padding: 0.875rem;
+        margin: 0;
+        max-width: 100%;
+        width: 100%;
+        box-sizing: border-box;
+        min-width: 0;
+    }
+    
+    .dashboard-header {
+        margin-bottom: 0.75rem;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .dashboard-header h3 {
+        font-size: 1rem;
+    }
+    
+    .dashboard-filters {
+        margin-bottom: 0.75rem !important;
+        width: 100%;
+    }
+    
+    .dashboard-filters .d-flex {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .filter-select {
+        font-size: 0.875rem;
+        padding: 0.375rem 0.5rem;
+        width: 100%;
+        max-width: 200px;
+    }
+    
+    .activity-sidebar {
+        padding: 1rem;
+        margin: 0;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    
+    .activity-header {
+        font-size: 0.9rem;
+        margin-bottom: 0.75rem;
+    }
+    
+    /* Ensure all container elements don't overflow */
+    .tray-cards-grid > *,
+    .cases-cards-grid > *,
+    .main-dashboard *,
+    .dashboard-section * {
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    
+    /* Additional button responsiveness */
+    .dashboard-header .btn-primary-custom {
+        font-size: 0.875rem;
+        padding: 0.5rem 1rem;
     }
 }
 
@@ -1884,9 +2369,10 @@ button:focus,
 
 /* ========== CASE TYPE MANAGEMENT ========== */
 
-.casetype-card,
 .casetype-cards-grid {
-    /* Use same styles as other card systems */
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.5rem;
 }
 
 .casetype-card {
@@ -2311,4 +2797,38 @@ gmp-place-autocomplete > * {
 /* Fix any weird text selection issues */
 gmp-place-autocomplete *::selection {
     background: rgba(59, 130, 246, 0.2) !important;
+}
+
+/* ========== LOCATION LINKS ========== */
+
+.location-link {
+    color: var(--primary-blue);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.location-link:hover {
+    color: var(--secondary-blue);
+    text-decoration: underline;
+}
+
+.location-link:focus {
+    outline: 2px solid var(--primary-blue);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* Location link with subtle map icon */
+.location-link:after {
+    content: "🗺️";
+    font-size: 0.8em;
+    margin-left: 0.25rem;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+.location-link:hover:after {
+    opacity: 1;
 }

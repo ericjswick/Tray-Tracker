@@ -51,7 +51,6 @@ export class FacilityManager {
     initializeViewMode() {
         this.setViewMode(this.viewMode);
         this.setupRealtimeListener();
-        console.log('FacilityManager initialized with MyRepData-compatible structure');
     }
 
     setupRealtimeListener() {
@@ -79,7 +78,6 @@ export class FacilityManager {
             this.currentFacilities = facilities;
             this.renderFacilities(facilities);
             this.updateStats(facilities);
-            console.log(`Loaded ${facilities.length} facilities from MyRepData-compatible collection`);
             
             // Trigger tray re-render when facilities are loaded/updated
             if (window.app.trayManager && facilities.length > 0) {
@@ -340,8 +338,7 @@ export class FacilityManager {
                 throw new Error('Database connection not available');
             }
             
-            const facility = {
-                id: document.getElementById('facilityId').value.trim() || null,
+            const facilityData = {
                 account_name: document.getElementById('facilityName').value.trim(),
                 account_record_type: document.getElementById('facilityType').value,
                 specialty: document.getElementById('facilitySpecialty').value,
@@ -361,6 +358,7 @@ export class FacilityManager {
                 npi: document.getElementById('facilityNPI').value.trim(),
                 notes: document.getElementById('facilityNotes').value.trim(),
                 active: document.getElementById('facilityActive').checked,
+                is_corporate_headquarters: document.getElementById('facilityCorporateHQ').checked,
                 latitude: parseFloat(document.getElementById('facilityLatitude').value) || null,
                 longitude: parseFloat(document.getElementById('facilityLongitude').value) || null,
                 createdAt: serverTimestamp(),
@@ -370,28 +368,51 @@ export class FacilityManager {
             };
 
             // Basic validation
-            if (!facility.account_name) {
+            if (!facilityData.account_name) {
                 throw new Error('Facility account name is required');
             }
-            if (!facility.account_record_type) {
+            if (!facilityData.account_record_type) {
                 throw new Error('Facility account record type is required');
             }
-            if (!facility.address?.city) {
+            if (!facilityData.address?.city) {
                 throw new Error('City is required');
             }
-            if (!facility.address?.state) {
+            if (!facilityData.address?.state) {
                 throw new Error('State is required');
             }
 
+            // Get custom ID if provided
+            const customId = document.getElementById('facilityId').value.trim();
+            
+            // Check for duplicates
+            if (customId) {
+                // Check if custom ID already exists
+                const existingFacility = this.currentFacilities.find(f => f.id === customId);
+                if (existingFacility) {
+                    throw new Error(`Facility with ID "${customId}" already exists`);
+                }
+            }
+            
+            // Check for duplicate facility names
+            const existingName = this.currentFacilities.find(f => 
+                f.account_name.toLowerCase() === facilityData.account_name.toLowerCase()
+            );
+            if (existingName) {
+                throw new Error(`Facility with name "${facilityData.account_name}" already exists`);
+            }
+
+            // Handle corporate headquarters - only one facility can be corporate HQ
+            if (facilityData.is_corporate_headquarters) {
+                await this.clearOtherCorporateHeadquarters();
+            }
+
             // Handle custom ID vs auto-generated ID
-            if (facility.id) {
-                // Use custom ID as document ID
-                const facilityWithoutId = { ...facility };
-                delete facilityWithoutId.id; // Remove id field since it becomes the document ID
-                await setDoc(doc(this.db, this.collectionName, facility.id), facilityWithoutId);
+            if (customId) {
+                // Use custom ID as document ID (don't save id field in the document)
+                await setDoc(doc(this.db, this.collectionName, customId), facilityData);
             } else {
                 // Auto-generate document ID
-                await addDoc(collection(this.db, this.collectionName), facility);
+                await addDoc(collection(this.db, this.collectionName), facilityData);
             }
             
             // Close modal
@@ -406,7 +427,6 @@ export class FacilityManager {
             document.getElementById('facilityActive').checked = true;
             
             window.app.notificationManager.show('Facility added successfully', 'success');
-            console.log('Facility added to MyRepData-compatible collection');
         } catch (error) {
             console.error('Error adding facility:', error);
             const errorMessage = error.message || 'Unknown error occurred';
@@ -444,6 +464,7 @@ export class FacilityManager {
                 npi: document.getElementById('editFacilityNPI').value.trim(),
                 notes: document.getElementById('editFacilityNotes').value.trim(),
                 active: document.getElementById('editFacilityActive').checked,
+                is_corporate_headquarters: document.getElementById('editFacilityCorporateHQ').checked,
                 latitude: parseFloat(document.getElementById('editFacilityLatitude').value) || null,
                 longitude: parseFloat(document.getElementById('editFacilityLongitude').value) || null,
                 lastModified: serverTimestamp(),
@@ -464,6 +485,11 @@ export class FacilityManager {
                 throw new Error('State is required');
             }
 
+            // Handle corporate headquarters - only one facility can be corporate HQ
+            if (updates.is_corporate_headquarters) {
+                await this.clearOtherCorporateHeadquarters(facilityId);
+            }
+
             await updateDoc(doc(this.db, this.collectionName, facilityId), updates);
             
             // Close modal
@@ -474,7 +500,6 @@ export class FacilityManager {
             }
             
             window.app.notificationManager.show('Facility updated successfully', 'success');
-            console.log('Facility updated in MyRepData-compatible collection');
         } catch (error) {
             console.error('Error updating facility:', error);
             const errorMessage = error.message || 'Unknown error occurred';
@@ -497,7 +522,6 @@ export class FacilityManager {
             });
             
             window.app.notificationManager.show('Facility deleted successfully', 'success');
-            console.log('Facility soft-deleted from MyRepData-compatible collection');
         } catch (error) {
             console.error('Error deleting facility:', error);
             window.app.notificationManager.show(`Error deleting facility: ${error.message}`, 'error');
@@ -589,7 +613,6 @@ export class FacilityManager {
             }
             
             window.app.notificationManager.show(`Initialized ${defaults.length} MyRepData-compatible facilities`, 'success');
-            console.log('Default facilities initialized with MyRepData structure');
         } catch (error) {
             console.error('Error initializing default facilities:', error);
             window.app.notificationManager.show(`Error initializing facilities: ${error.message}`, 'error');
@@ -597,6 +620,46 @@ export class FacilityManager {
     }
 
     // Facility type functions moved to constants/FacilityTypes.js for central management
+
+    async clearOtherCorporateHeadquarters(excludeFacilityId = null) {
+        try {
+                
+            // Get all facilities
+            const facilitiesSnapshot = await getDocs(collection(this.db, this.collectionName));
+            const updatePromises = [];
+            
+            facilitiesSnapshot.forEach((doc) => {
+                const facilityData = doc.data();
+                const facilityId = doc.id;
+                
+                // Skip the facility we're currently updating/creating
+                if (facilityId === excludeFacilityId) {
+                    return;
+                }
+                
+                // If this facility is marked as corporate headquarters, unmark it
+                if (facilityData.is_corporate_headquarters === true) {
+                    
+                    const updatePromise = updateDoc(doc.ref, {
+                        is_corporate_headquarters: false,
+                        lastModified: serverTimestamp(),
+                        modifiedBy: window.app.authManager.getCurrentUser()?.uid || 'system'
+                    });
+                    
+                    updatePromises.push(updatePromise);
+                }
+            });
+            
+            // Wait for all updates to complete
+            if (updatePromises.length > 0) {
+                await Promise.all(updatePromises);
+            }
+            
+        } catch (error) {
+            console.error('❌ Error clearing other corporate headquarters:', error);
+            throw new Error(`Failed to clear other corporate headquarters: ${error.message}`);
+        }
+    }
 
     cleanup() {
         if (this.facilitiesUnsubscribe) {

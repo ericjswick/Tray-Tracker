@@ -485,13 +485,13 @@ export class CaseTypeManager {
 
     // Tray Requirements Management Methods
     addTrayRequirement() {
-        const trayId = document.getElementById('newTrayId').value.trim();
+        const trayId = document.getElementById('newTrayDropdown').value;
         const requirementType = document.getElementById('newTrayRequirementType').value;
         const quantity = parseInt(document.getElementById('newTrayQuantity').value) || 1;
         const notes = document.getElementById('newTrayNotes').value.trim();
         
         if (!trayId) {
-            alert('Please enter a tray ID');
+            alert('Please select a tray');
             return;
         }
         
@@ -506,7 +506,7 @@ export class CaseTypeManager {
         this.renderTrayRequirements('addCaseTypeTrayRequirements', this.tempTrayRequirements);
         
         // Clear the form
-        document.getElementById('newTrayId').value = '';
+        document.getElementById('newTrayDropdown').value = '';
         document.getElementById('newTrayRequirementType').value = 'required';
         document.getElementById('newTrayQuantity').value = '1';
         document.getElementById('newTrayNotes').value = '';

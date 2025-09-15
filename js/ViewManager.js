@@ -179,7 +179,7 @@ export class ViewManager {
             // Load recent activity
             this.loadRecentActivity();
             
-            // Set up dashboard filter listener
+            // Set up dashboard filter listeners
             const dashboardFilter = document.getElementById('dashboardStatusFilter');
             if (dashboardFilter) {
                 dashboardFilter.addEventListener('change', () => {
@@ -188,6 +188,18 @@ export class ViewManager {
                     }
                 });
             }
+            
+            const dashboardUserFilter = document.getElementById('dashboardUserFilter');
+            if (dashboardUserFilter) {
+                dashboardUserFilter.addEventListener('change', () => {
+                    if (window.app.trayManager && window.app.trayManager.currentTrays) {
+                        this.renderDashboardTrays(window.app.trayManager.currentTrays);
+                    }
+                });
+            }
+            
+            // Populate dashboard user filter
+            this.populateDashboardUserFilter();
         }, 100);
     }
 
@@ -250,7 +262,7 @@ export class ViewManager {
                 }
             }
             
-            // Set up trays page filter listener
+            // Set up trays page filter listeners
             const traysFilter = document.getElementById('traysStatusFilter');
             if (traysFilter) {
                 traysFilter.addEventListener('change', () => {
@@ -259,6 +271,18 @@ export class ViewManager {
                     }
                 });
             }
+            
+            const traysUserFilter = document.getElementById('traysUserFilter');
+            if (traysUserFilter) {
+                traysUserFilter.addEventListener('change', () => {
+                    if (window.app.trayManager && window.app.trayManager.currentTrays) {
+                        window.app.trayManager.renderTrays(window.app.trayManager.currentTrays);
+                    }
+                });
+            }
+            
+            // Populate trays user filter
+            this.populateTraysUserFilter();
         }, 100);
     }
 
@@ -338,25 +362,66 @@ export class ViewManager {
     }
 
     initializeMapView() {
+        // Use longer timeout to ensure container is properly sized
         setTimeout(() => {
             if (window.app.mapManager) {
-                window.app.mapManager.initializeMap();
-                if (window.app.trayManager.currentTrays) {
-                    window.app.mapManager.updateMap(window.app.trayManager.currentTrays);
+                // Ensure map container is visible and properly sized
+                const mapContainer = document.getElementById('map');
+                if (mapContainer) {
+                    // Force reflow to ensure container dimensions are calculated
+                    mapContainer.style.display = 'block';
+                    mapContainer.offsetHeight; // Force reflow
+                    
+                    console.log('🗺️ Initializing map view with container size:', {
+                        width: mapContainer.offsetWidth,
+                        height: mapContainer.offsetHeight,
+                        visible: mapContainer.offsetParent !== null
+                    });
                 }
+                
+                window.app.mapManager.initializeMap();
+                
+                // Additional timeout to ensure map is fully initialized before adding markers
+                setTimeout(() => {
+                    if (window.app.mapManager.map) {
+                        // Force map to invalidate size in case container wasn't properly sized initially
+                        window.app.mapManager.map.invalidateSize();
+                        
+                        if (window.app.trayManager.currentTrays) {
+                            window.app.mapManager.updateMap(window.app.trayManager.currentTrays);
+                        }
+                    }
+                }, 100);
             }
-        }, 100);
+        }, 250); // Increased timeout to ensure proper container sizing
     }
 
     renderDashboardTrays(trays) {
         const container = document.getElementById('dashboardTraysContent');
         if (!container) return;
 
-        // Apply dashboard status filter
+        // Apply dashboard filters
         const statusFilter = document.getElementById('dashboardStatusFilter')?.value || '';
-        const filteredTrays = statusFilter ? 
-            trays.filter(tray => tray.status === statusFilter) : 
-            trays;
+        const userFilter = document.getElementById('dashboardUserFilter')?.value || '';
+        
+        let filteredTrays = trays;
+        
+        if (statusFilter) {
+            filteredTrays = filteredTrays.filter(tray => tray.status === statusFilter);
+        }
+        
+        if (userFilter) {
+            filteredTrays = filteredTrays.filter(tray => 
+                tray.assignedTo === userFilter || tray.assignedToUID === userFilter
+            );
+        }
+
+        // Sort trays by name
+        filteredTrays.sort((a, b) => {
+            const nameA = a.tray_name || '';
+            const nameB = b.tray_name || '';
+            return nameA.localeCompare(nameB);
+        });
 
         if (filteredTrays.length === 0) {
             const message = statusFilter ? 
@@ -393,7 +458,7 @@ export class ViewManager {
 
         const statusClass = this.getStatusClass(tray.status);
         const typeIcon = this.getTrayTypeIcon(tray);
-        const locationText = this.getLocationText(tray.location);
+        const locationText = this.getLocationText(tray.location, tray);
 
         card.innerHTML = `
             <div class="tray-card-header">
@@ -409,20 +474,22 @@ export class ViewManager {
                 <div class="tray-detail">
                     ${this.isCheckedIn(tray) ? `
                         <i class="fas fa-hospital"></i>
-                        <span class="tray-detail-value">${(() => {
-                            const facilityId = this.getTrayFacility(tray);
-                            const facilityName = this.getFacilityName(facilityId);
-                            
-                            // Debug for dashboard cards (using same pattern as TrayManager)
-                            if (window.is_enable_api_logging && window.frontendLogger) {
-                                // Dashboard HTML generation debugging available if needed
-                            }
-                            
-                            return facilityName;
-                        })()}</span>
+                        <span class="tray-detail-value">
+                            <a href="#" onclick="app.trayManager.showLocationMap('${tray.id}', '${this.getTrayFacility(tray)}'); return false;" class="location-link" title="View location on map">
+                                ${(() => {
+                                    const facilityId = this.getTrayFacility(tray);
+                                    const facilityName = this.getFacilityName(facilityId);
+                                    return facilityName;
+                                })()}
+                            </a>
+                        </span>
                     ` : `
                         <i class="fas fa-map-marker-alt"></i>
-                        <span class="tray-detail-value">${locationText}</span>
+                        <span class="tray-detail-value">
+                            <a href="#" onclick="app.trayManager.showLocationMap('${tray.id}', '${tray.location}'); return false;" class="location-link" title="View location on map">
+                                ${locationText}
+                            </a>
+                        </span>
                     `}
                 </div>
                 ${tray.caseDate ? `
@@ -467,6 +534,83 @@ export class ViewManager {
         `;
 
         return card;
+    }
+
+    populateDashboardUserFilter() {
+        const dashboardUserFilter = document.getElementById('dashboardUserFilter');
+        if (!dashboardUserFilter) return;
+
+        // Clear existing options except "All Users"
+        dashboardUserFilter.innerHTML = '<option value="">All Users</option>';
+
+        // Get users from DataManager
+        if (window.app?.dataManager?.users && window.app.dataManager.users.size > 0) {
+            const users = Array.from(window.app.dataManager.users.values())
+                .filter(user => user.active !== false) // Only show active users
+                .sort((a, b) => {
+                    const nameA = a.name || a.email || '';
+                    const nameB = b.name || b.email || '';
+                    return nameA.localeCompare(nameB);
+                });
+
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.uid || user.id; // Use uid first, fallback to id
+                option.textContent = user.name || user.email || 'Unknown User';
+                dashboardUserFilter.appendChild(option);
+            });
+
+            // Set default to current logged in user
+            const currentUser = window.app?.authManager?.currentUser;
+            if (currentUser) {
+                dashboardUserFilter.value = currentUser.uid;
+                // Trigger filter update
+                if (window.app.trayManager && window.app.trayManager.currentTrays) {
+                    this.renderDashboardTrays(window.app.trayManager.currentTrays);
+                }
+            }
+        }
+    }
+
+    populateTraysUserFilter(retryCount = 0) {
+        const traysUserFilter = document.getElementById('traysUserFilter');
+        if (!traysUserFilter) return;
+
+        // Clear existing options except "All Users"
+        traysUserFilter.innerHTML = '<option value="">All Users</option>';
+
+        // Get users from DataManager
+        if (window.app?.dataManager?.users && window.app.dataManager.users.size > 0) {
+            const users = Array.from(window.app.dataManager.users.values())
+                .filter(user => user.active !== false) // Only show active users
+                .sort((a, b) => {
+                    const nameA = a.name || a.email || '';
+                    const nameB = b.name || b.email || '';
+                    return nameA.localeCompare(nameB);
+                });
+
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.uid || user.id; // Use uid first, fallback to id
+                option.textContent = user.name || user.email || 'Unknown User';
+                traysUserFilter.appendChild(option);
+            });
+
+            // Set default to current logged in user
+            const currentUser = window.app?.authManager?.currentUser;
+            if (currentUser) {
+                traysUserFilter.value = currentUser.uid;
+                // Trigger filter update
+                if (window.app.trayManager && window.app.trayManager.currentTrays) {
+                    window.app.trayManager.renderTrays(window.app.trayManager.currentTrays);
+                }
+            }
+        } else if (retryCount < 5) {
+            // Data not loaded yet, retry after delay (max 5 retries)
+            setTimeout(() => {
+                this.populateTraysUserFilter(retryCount + 1);
+            }, 1000);
+        }
     }
 
     renderTeamMembers(users) {
@@ -654,7 +798,25 @@ export class ViewManager {
         return icons[tray.type] || 'fas fa-medical-bag';
     }
 
-    getLocationText(locationId) {
+    getLocationText(locationId, tray = null) {
+        // Delegate to TrayManager's enhanced location text method if available
+        if (window.app?.trayManager?.getLocationText) {
+            return window.app.trayManager.getLocationText(locationId, tray);
+        }
+
+        // Fallback implementation (same as TrayManager logic)
+        // Special handling for Rep Trunk - show user's facility if tray is assigned
+        if (locationId === 'trunk' || locationId === 'Rep Trunk' || locationId === 'rep_trunk') {
+            if (tray && tray.assignedTo) {
+                const userFacilityName = this.getUserFacilityName(tray.assignedTo);
+                if (userFacilityName) {
+                    return `Rep Trunk: ${userFacilityName}`;
+                }
+            }
+            // Fallback to generic Rep Trunk if no assigned user or facility found
+            return 'Rep Trunk';
+        }
+
         // Get location from Firebase collection using the ID
         if (window.app.locationManager && window.app.locationManager.currentLocations) {
             const location = window.app.locationManager.currentLocations.find(
@@ -669,7 +831,9 @@ export class ViewManager {
         const staticLocations = {
             'trunk': 'Rep Trunk',
             'facility': 'Medical Facility',
-            'corporate': 'SI-BONE Corporate'
+            'corporate': 'SI-BONE Corporate',
+            'cleaning': 'Cleaning Facility',
+            'maintenance': 'Maintenance'
         };
 
         return staticLocations[locationId] || locationId || 'Unknown Location';
@@ -688,6 +852,55 @@ export class ViewManager {
 
         // Users not loaded yet
         return 'Loading user...';
+    }
+
+    /**
+     * Get the facility name for a user's location_facility_id
+     */
+    getUserFacilityName(userId) {
+        if (!userId) return null;
+
+        // Get user data
+        if (window.app?.dataManager?.users && window.app.dataManager.users.size > 0) {
+            const user = window.app.dataManager.users.get(userId);
+            if (user && user.location_facility_id) {
+                // Look up the facility name using the facility ID
+                const facilityName = this.getFacilityNameById(user.location_facility_id);
+                return facilityName;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Get facility name by ID for location display (no fallback messages)
+     */
+    getFacilityNameById(facilityId) {
+        if (!facilityId) {
+            return null;
+        }
+        
+        // Try facilityManager first
+        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
+            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
+            if (facility) {
+                return facility.account_name || facility.name;
+            }
+        }
+        
+        // Fallback to dataManager
+        if (window.app.dataManager) {
+            const facilities = window.app.dataManager.getFacilities();
+            if (facilities && facilities.length > 0) {
+                const facility = facilities.find(f => f.id === facilityId);
+                if (facility) {
+                    return facility.account_name || facility.name;
+                }
+            }
+        }
+        
+        return null;
     }
 
     getSurgeonName(surgeonId) {
@@ -1357,6 +1570,73 @@ export class ViewManager {
                                     </div>
                                     <div id="trayTimestampMigrationStatus" class="alert alert-secondary d-none"></div>
                                     <div id="trayTimestampMigrationResult" class="alert d-none"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-4">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="fas fa-building"></i> Facility ID Null Removal</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p>Removes <code>id: null</code> fields from facility documents that prevent proper ID resolution in dropdowns.</p>
+                                    <div class="mb-3">
+                                        <button class="btn btn-info btn-sm" onclick="checkFacilityIdNullStatus()">
+                                            <i class="fas fa-search"></i> Check Status
+                                        </button>
+                                        <button class="btn btn-primary" onclick="runFacilityIdNullRemovalFromUI()">
+                                            <i class="fas fa-play"></i> Run Migration
+                                        </button>
+                                    </div>
+                                    <div id="facilityIdNullStatus" class="alert alert-secondary d-none"></div>
+                                    <div id="facilityIdNullResult" class="alert d-none"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="fas fa-map-marker-alt"></i> Facility Geocoding</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p>Geocodes facility addresses to update missing or invalid <code>latitude</code> and <code>longitude</code> coordinates.</p>
+                                    <div class="mb-3">
+                                        <button class="btn btn-info btn-sm" onclick="checkFacilityGeocodingStatus()">
+                                            <i class="fas fa-search"></i> Check Status
+                                        </button>
+                                        <button class="btn btn-primary" onclick="runFacilityGeocodingFromUI()">
+                                            <i class="fas fa-play"></i> Run Migration
+                                        </button>
+                                    </div>
+                                    <div id="facilityGeocodingStatus" class="alert alert-secondary d-none"></div>
+                                    <div id="facilityGeocodingResult" class="alert d-none"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-4">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="fas fa-edit"></i> Facility Name to Account Name</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p>Moves data from <code>facilities.name</code> to <code>facilities.account_name</code> field for consistency.</p>
+                                    <div class="mb-3">
+                                        <button class="btn btn-info btn-sm" onclick="checkFacilityNameToAccountNameStatus()">
+                                            <i class="fas fa-search"></i> Check Status
+                                        </button>
+                                        <button class="btn btn-primary" onclick="runFacilityNameToAccountNameFromUI()">
+                                            <i class="fas fa-play"></i> Run Migration
+                                        </button>
+                                    </div>
+                                    <div id="facilityNameToAccountNameStatus" class="alert alert-secondary d-none"></div>
+                                    <div id="facilityNameToAccountNameResult" class="alert d-none"></div>
                                 </div>
                             </div>
                         </div>

@@ -1,56 +1,92 @@
+// Vercel serverless function for notifications API
 const express = require('express');
-const router = express.Router();
-
-console.log('🚨 NOTIFICATIONS ROUTE - COMPLETELY NEW FILE LOADING');
+const cors = require('cors');
 
 // Initialize Twilio client
 let twilioClient = null;
-console.log('📱 Starting Twilio initialization with API Key...');
-console.log('📱 TWILIO_ACCOUNT_SID:', process.env.TWILIO_ACCOUNT_SID ? 'Found' : 'Missing');
-console.log('📱 TWILIO_API_SID:', process.env.TWILIO_API_SID ? 'Found' : 'Missing');
-console.log('📱 TWILIO_API_SECRET:', process.env.TWILIO_API_SECRET ? 'Found' : 'Missing');
-console.log('📱 TWILIO_PHONE_NUMBER:', process.env.TWILIO_PHONE_NUMBER ? 'Found' : 'Missing');
-
 try {
-  if (process.env.TWILIO_API_SID && process.env.TWILIO_API_SECRET && process.env.TWILIO_ACCOUNT_SID) {
+  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
     const twilio = require('twilio');
-    twilioClient = twilio(process.env.TWILIO_API_SID, process.env.TWILIO_API_SECRET, {
-      accountSid: process.env.TWILIO_ACCOUNT_SID
-    });
-    console.log('✅ Twilio client initialized with API Key method!');
-    console.log('📱 Using Account SID:', process.env.TWILIO_ACCOUNT_SID);
-    console.log('📱 Using API SID:', process.env.TWILIO_API_SID);
+    twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    console.log('✅ Twilio client initialized successfully');
   } else {
-    console.log('⚠️  Missing required Twilio API Key credentials');
-    console.log('📱 Need: TWILIO_ACCOUNT_SID, TWILIO_API_SID, TWILIO_API_SECRET');
+    console.log('⚠️  Twilio credentials not found in environment variables');
   }
 } catch (error) {
-  console.error('❌ Twilio initialization failed:', error.message);
-  console.error('❌ Full error:', error);
+  console.error('❌ Error initializing Twilio client:', error.message);
 }
 
-// Basic info endpoint
-router.get('/', (req, res) => {
-  console.log('📡 Notifications info endpoint called');
+// Create Express app for this serverless function
+const app = express();
+
+// Middleware
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// GET /api/notifications - Basic info endpoint
+app.get('/api/notifications', (req, res) => {
   res.json({
-    message: 'TrayTracker Notifications API',
+    message: 'TrayTracker Notifications API (Serverless)',
     endpoints: {
       'info': '/api/notifications',
-      'test': '/api/notifications/test (POST)',
-      'email': '/api/notifications/email (POST)',
       'sms': '/api/notifications/sms (POST)',
-      'sms-test': '/api/notifications/sms/test (POST)',
+      'sms-test': '/api/notifications/sms-test (POST)',
       'tray-status': '/api/notifications/tray-status (POST)'
     },
-    status: 'Active with SMS support',
+    status: 'Notifications API is active',
     services: {
-      twilio: twilioClient ? 'Connected ✅' : 'Not configured ❌'
-    }
+      twilio: twilioClient ? 'Connected' : 'Not configured'
+    },
+    environment: 'serverless'
   });
 });
 
+// POST /api/notifications/sms-test - Test SMS endpoint
+app.post('/api/notifications/sms-test', async (req, res) => {
+  try {
+    if (!twilioClient) {
+      return res.status(500).json({
+        success: false,
+        error: 'Twilio SMS service not configured',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const { phone } = req.body;
+    const testPhone = phone || '+14155552671'; // Twilio test number if no phone provided
+    
+    const message = await twilioClient.messages.create({
+      body: `🧪 TrayTracker SMS Test (Serverless) - ${new Date().toLocaleString()}`,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: testPhone
+    });
+
+    res.json({
+      success: true,
+      message: 'Test SMS sent successfully',
+      details: {
+        messageSid: message.sid,
+        to: message.to,
+        from: message.from,
+        status: message.status
+      },
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('SMS test error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      twilioError: error.code || 'Unknown',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // POST /api/notifications/tray-status - Send SMS to all users about tray status change
-router.post('/tray-status', async (req, res) => {
+app.post('/api/notifications/tray-status', async (req, res) => {
   try {
     const IS_DO_LIVE_SMS_SENDING = process.env.IS_DO_LIVE_SMS_SENDING === 'true' || false;
     
@@ -221,42 +257,124 @@ router.post('/tray-status', async (req, res) => {
   }
 });
 
-// SMS test endpoint
-router.post('/sms/test', async (req, res) => {
-  console.log('📱 SMS test endpoint called');
+// POST /api/notifications/sms - Send SMS message
+app.post('/api/notifications/sms', async (req, res) => {
   try {
     if (!twilioClient) {
       return res.status(500).json({
         success: false,
-        error: 'Twilio not configured'
+        error: 'Twilio SMS service not configured',
+        timestamp: new Date().toISOString()
       });
     }
 
-    const testPhone = '+14155552671'; // Twilio test number
-    const message = await twilioClient.messages.create({
-      body: '🧪 TrayTracker SMS Test - Working!',
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: testPhone
+    const { to, message, from } = req.body;
+    
+    // Validate required fields
+    if (!to || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: to and message are required',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Validate phone number format (basic)
+    const phoneRegex = /^\+?[\d\s\-\(\)]+$/;
+    if (!phoneRegex.test(to)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid phone number format. Use format: +1234567890',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Ensure phone number has country code
+    let formattedPhone = to.replace(/\D/g, ''); // Remove non-digits
+    if (!to.startsWith('+')) {
+      if (formattedPhone.length === 10) {
+        formattedPhone = '+1' + formattedPhone; // Assume US if 10 digits
+      } else if (formattedPhone.length === 11 && formattedPhone.startsWith('1')) {
+        formattedPhone = '+' + formattedPhone;
+      } else {
+        formattedPhone = '+' + formattedPhone;
+      }
+    } else {
+      formattedPhone = to;
+    }
+
+    // Send SMS
+    const smsMessage = await twilioClient.messages.create({
+      body: message,
+      from: from || process.env.TWILIO_PHONE_NUMBER,
+      to: formattedPhone
     });
 
     res.json({
       success: true,
-      message: 'SMS sent successfully!',
+      message: 'SMS sent successfully',
       details: {
-        messageSid: message.sid,
-        to: message.to,
-        from: message.from
-      }
+        messageSid: smsMessage.sid,
+        to: smsMessage.to,
+        from: smsMessage.from,
+        status: smsMessage.status,
+        messageLength: message.length
+      },
+      timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    console.error('SMS error:', error);
-    res.status(500).json({
+    console.error('SMS sending error:', error);
+    
+    // Handle Twilio-specific errors
+    let errorMessage = error.message;
+    let statusCode = 500;
+    
+    if (error.code) {
+      switch (error.code) {
+        case 21211:
+          errorMessage = 'Invalid phone number';
+          statusCode = 400;
+          break;
+        case 21614:
+          errorMessage = 'Phone number is not a valid mobile number';
+          statusCode = 400;
+          break;
+        case 21408:
+          errorMessage = 'Permission to send SMS to this number denied';
+          statusCode = 403;
+          break;
+        case 21610:
+          errorMessage = 'Message contains prohibited content';
+          statusCode = 400;
+          break;
+        default:
+          errorMessage = `Twilio error: ${error.message}`;
+      }
+    }
+
+    res.status(statusCode).json({
       success: false,
-      error: error.message
+      error: errorMessage,
+      twilioCode: error.code || null,
+      timestamp: new Date().toISOString()
     });
   }
 });
 
-console.log('📱 Notifications route setup complete - SMS endpoints added');
-module.exports = router;
+// Handle all other routes
+app.all('*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Endpoint not found',
+    availableEndpoints: [
+      'GET /api/notifications',
+      'POST /api/notifications/sms',
+      'POST /api/notifications/sms-test',
+      'POST /api/notifications/tray-status'
+    ],
+    timestamp: new Date().toISOString()
+  });
+});
+
+module.exports = app;

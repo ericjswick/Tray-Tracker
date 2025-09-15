@@ -88,11 +88,12 @@ export class DataManager {
             snapshot.forEach((doc) => {
                 const facilityData = doc.data();
                 if (facilityData.active !== false) { // Only include active facilities
-                    facilities.push({ id: doc.id, ...facilityData });
+                    // Ensure document ID overrides any id field in the data
+                    const facility = { ...facilityData, id: doc.id };
+                    facilities.push(facility);
                 }
             });
             this.facilities = facilities;
-            console.log('Facilities updated from Firebase:', this.facilities.length);
             
             // Trigger tray re-render when facilities are loaded/updated
             if (window.app.trayManager && facilities.length > 0) {
@@ -308,6 +309,29 @@ export class DataManager {
 
     async updateTray(id, updates) {
         try {
+            // Get current tray data to check for status changes
+            let previousTrayData = null;
+            let shouldSendSMS = false;
+            
+            if (updates.status) {
+                try {
+                    const currentTrayDoc = await getDoc(doc(this.db, 'tray_tracking', id));
+                    if (currentTrayDoc.exists()) {
+                        previousTrayData = currentTrayDoc.data();
+                        // Check if status is actually changing
+                        shouldSendSMS = previousTrayData.status !== updates.status;
+                        console.log('📊 Tray status change detected:', {
+                            trayId: id,
+                            previousStatus: previousTrayData.status,
+                            newStatus: updates.status,
+                            willSendSMS: shouldSendSMS
+                        });
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch previous tray data for SMS check:', error.message);
+                }
+            }
+            
             const updateData = {
                 ...updates,
                 lastModified: serverTimestamp(),
@@ -315,6 +339,12 @@ export class DataManager {
             };
 
             await updateDoc(doc(this.db, 'tray_tracking', id), updateData);
+            
+            // Send SMS notification if status changed
+            if (shouldSendSMS && previousTrayData) {
+                this.sendTrayStatusSMSNotification(id, updates, previousTrayData);
+            }
+            
             return true;
         } catch (error) {
             console.error('Error updating tray:', error);
@@ -329,6 +359,73 @@ export class DataManager {
         } catch (error) {
             console.error('Error deleting tray:', error);
             throw error;
+        }
+    }
+
+    async sendTrayStatusSMSNotification(trayId, updates, previousTrayData) {
+        try {
+            console.log('📱 Preparing SMS notification for tray status change...');
+            
+            // Get current user info
+            const currentUser = window.app.authManager.getCurrentUser();
+            const changedBy = currentUser?.name || currentUser?.email || 'Unknown User';
+            
+            // Get all users with phone numbers
+            const users = Array.from(this.users.values())
+                .filter(user => user.active !== false && user.phone) // Only active users with phone numbers
+                .map(user => ({
+                    id: user.id,
+                    name: user.name,
+                    phone: user.phone
+                }));
+                
+            if (users.length === 0) {
+                console.log('📱 No users with phone numbers found, skipping SMS notifications');
+                return;
+            }
+            
+            // Prepare SMS notification data
+            const notificationData = {
+                trayId,
+                trayName: updates.tray_name || previousTrayData.tray_name || `Tray ${trayId.substring(0, 8)}...`,
+                previousStatus: previousTrayData.status,
+                newStatus: updates.status,
+                changedBy,
+                timestamp: new Date().toISOString(),
+                users
+            };
+            
+            console.log('📱 Sending SMS notification request:', {
+                trayId,
+                statusChange: `${previousTrayData.status} → ${updates.status}`,
+                userCount: users.length
+            });
+            
+            // Send SMS notification request to API (don't await to avoid blocking tray update)
+            fetch('/api/notifications/tray-status', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(notificationData)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    console.log('✅ SMS notification request sent successfully:', result.message);
+                    if (result.details?.isLiveSendingDisabled) {
+                        console.log('ℹ️ Live SMS sending is disabled - notifications were simulated');
+                    }
+                } else {
+                    console.error('❌ SMS notification request failed:', result.error);
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error sending SMS notification request:', error);
+            });
+            
+        } catch (error) {
+            console.error('❌ Error preparing SMS notification:', error);
         }
     }
 
@@ -502,7 +599,6 @@ export class DataManager {
             snapshot.forEach((doc) => {
                 const data = { id: doc.id, ...doc.data() };
                 activities.push(data);
-                console.log('📋 System activity doc:', data);
             });
             
             return activities;

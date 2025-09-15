@@ -28,6 +28,10 @@ export class AuthManager {
         
         this.setupAuthListener();
         this.setupFormListeners();
+        
+        // Make debugging functions globally accessible
+        window.debugUserAuth = this.debugUserAuth.bind(this);
+        window.refreshUserDisplay = this.refreshUserDisplay.bind(this);
     }
 
     setupAuthListener() {
@@ -43,6 +47,13 @@ export class AuthManager {
         this.checkRedirectResult();
 
         this.unsubscribeAuth = onAuthStateChanged(this.auth, async (user) => {
+            console.log('🔔 AUTH STATE CHANGE detected:', {
+                userExists: !!user,
+                email: user?.email,
+                uid: user?.uid,
+                timestamp: new Date().toISOString()
+            });
+            
             if (user) {
                 // User is signed in
                 window.is_enable_api_logging && window.frontendLogger?.info('Authentication state: user signed in', {
@@ -57,12 +68,20 @@ export class AuthManager {
                     email: user.email,
                     ...userData
                 };
+                
+                console.log('🔍 AuthManager: Current user object created:', {
+                    uid: this.currentUser.uid,
+                    email: this.currentUser.email,
+                    name: this.currentUser.name,
+                    displayName: this.currentUser.name || this.currentUser.email
+                });
 
                 this.updateUserDisplay();
                 this.showMainApp();
                 this.checkInitialData();
             } else {
                 // User is signed out
+                console.log('🔔 AUTH STATE: User signed out');
                 window.is_enable_api_logging && window.frontendLogger?.info('Authentication state: user signed out', null, 'auth');
                 this.currentUser = null;
                 this.showLogin();
@@ -71,11 +90,20 @@ export class AuthManager {
     }
 
     updateUserDisplay() {
+        console.log('🔍 AuthManager: Updating user display with data:', {
+            uid: this.currentUser?.uid,
+            name: this.currentUser?.name,
+            email: this.currentUser?.email,
+            displayName: this.currentUser?.name || this.currentUser?.email
+        });
+        
         const userNameElement = document.getElementById('currentUserName');
         const userAvatarElement = document.getElementById('userAvatar');
 
         if (userNameElement) {
-            userNameElement.textContent = this.currentUser.name || this.currentUser.email;
+            const displayName = this.currentUser.name || this.currentUser.email;
+            userNameElement.textContent = displayName;
+            console.log('🔍 AuthManager: Set display name to:', displayName);
         }
 
         if (userAvatarElement) {
@@ -263,8 +291,21 @@ export class AuthManager {
 
     async getUserData(uid) {
         try {
+            console.log('🔍 AuthManager: Fetching user data for UID:', uid);
             const userDoc = await getDoc(doc(this.db, 'users', uid));
-            return userDoc.exists() ? userDoc.data() : {};
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                console.log('🔍 AuthManager: User data retrieved:', {
+                    uid: uid,
+                    name: userData.name,
+                    email: userData.email,
+                    active: userData.active
+                });
+                return userData;
+            } else {
+                console.warn('🔍 AuthManager: No user document found for UID:', uid);
+                return {};
+            }
         } catch (error) {
             console.error('Error fetching user data:', error);
             return {};
@@ -414,6 +455,74 @@ export class AuthManager {
 
     getCurrentUser() {
         return this.currentUser;
+    }
+    
+    // Debugging utility - can be called from browser console
+    async debugUserAuth() {
+        console.log('🔍 === USER AUTHENTICATION DEBUG ===');
+        
+        // Check Firebase Auth user
+        const firebaseUser = this.auth.currentUser;
+        console.log('🔍 Firebase Auth User:', {
+            uid: firebaseUser?.uid,
+            email: firebaseUser?.email,
+            displayName: firebaseUser?.displayName
+        });
+        
+        // Check AuthManager currentUser
+        console.log('🔍 AuthManager currentUser:', {
+            uid: this.currentUser?.uid,
+            email: this.currentUser?.email,
+            name: this.currentUser?.name
+        });
+        
+        // Check what's displayed in UI
+        const userNameElement = document.getElementById('currentUserName');
+        console.log('🔍 UI Display:', {
+            elementExists: !!userNameElement,
+            displayedText: userNameElement?.textContent
+        });
+        
+        // Re-fetch user data directly from Firestore
+        if (firebaseUser) {
+            console.log('🔍 Re-fetching user data from Firestore...');
+            const freshUserData = await this.getUserData(firebaseUser.uid);
+            console.log('🔍 Fresh Firestore data:', freshUserData);
+        }
+        
+        console.log('🔍 === END USER AUTHENTICATION DEBUG ===');
+    }
+    
+    // Force refresh user display - can be called from browser console  
+    async refreshUserDisplay() {
+        console.log('🔄 Forcing user display refresh...');
+        
+        const firebaseUser = this.auth.currentUser;
+        if (!firebaseUser) {
+            console.log('❌ No Firebase user found');
+            return;
+        }
+        
+        console.log('🔄 Re-fetching user data...');
+        const freshUserData = await this.getUserData(firebaseUser.uid);
+        
+        // Update currentUser with fresh data
+        this.currentUser = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            ...freshUserData
+        };
+        
+        console.log('🔄 Updated currentUser:', {
+            uid: this.currentUser.uid,
+            email: this.currentUser.email, 
+            name: this.currentUser.name
+        });
+        
+        // Force UI update
+        this.updateUserDisplay();
+        
+        console.log('✅ User display refresh completed');
     }
 
     getErrorMessage(error) {

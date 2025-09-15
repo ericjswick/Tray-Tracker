@@ -17,7 +17,9 @@ const testRoutes = require('./routes/test');
 // const migrationsRoutes = require('./routes/migrations'); // TEMP DISABLED
 // const geocodingRoutes = require('./routes/geocoding'); // Broken - has sendSuccess/sendError issues
 const geocodingSimpleRoutes = require('./routes/geocoding-simple');
+console.log('🔧 About to load notifications route...');
 const notificationsRoutes = require('./routes/notifications');
+console.log('🔧 Notifications route loaded successfully!');
 
 // Import middleware
 const authMiddleware = require('./middleware/auth');
