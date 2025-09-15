@@ -2832,3 +2832,30 @@ gmp-place-autocomplete *::selection {
 .location-link:hover:after {
     opacity: 1;
 }
+
+/* Clickable No Trays Container */
+.clickable-no-trays {
+    transition: all 0.2s ease;
+    border-radius: 8px;
+    padding: 2rem;
+}
+
+.clickable-no-trays:hover {
+    background-color: var(--light-blue);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.clickable-no-trays:hover i {
+    transform: scale(1.1);
+    color: var(--secondary-blue) !important;
+}
+
+.clickable-no-trays:hover p {
+    color: var(--secondary-blue);
+}
+
+.clickable-no-trays:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-sm);
+}

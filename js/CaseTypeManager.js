@@ -636,16 +636,29 @@ export class CaseTypeManager {
         try {
             // Get all trays from DataManager
             const trays = await window.app.dataManager.getAllTrays();
-            
+
+            // Debug: Log first tray to see structure
+            if (trays && trays.length > 0) {
+                console.log('🔍 DEBUG: First tray object structure:', trays[0]);
+                console.log('🔍 DEBUG: Tray properties:', Object.keys(trays[0]));
+            }
+
             // Clear existing options
             dropdown.innerHTML = '<option value="">Select a tray...</option>';
-            
+
             // Add tray options
             if (trays && trays.length > 0) {
-                trays.forEach(tray => {
+                // Sort trays alphabetically by name
+                const sortedTrays = [...trays].sort((a, b) => {
+                    const nameA = (a.tray_name || a.name || a.tray_id || a.id || '').toLowerCase();
+                    const nameB = (b.tray_name || b.name || b.tray_id || b.id || '').toLowerCase();
+                    return nameA.localeCompare(nameB);
+                });
+
+                sortedTrays.forEach(tray => {
                     const option = document.createElement('option');
                     option.value = tray.tray_id || tray.id;
-                    option.textContent = tray.name || tray.tray_id || tray.id;
+                    option.textContent = tray.tray_name || tray.name || tray.tray_id || tray.id;
                     dropdown.appendChild(option);
                 });
                 dropdown.disabled = false;

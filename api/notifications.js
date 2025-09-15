@@ -4,16 +4,28 @@ const cors = require('cors');
 
 // Initialize Twilio client
 let twilioClient = null;
+console.log('📱 Starting Twilio initialization with API Key...');
+console.log('📱 TWILIO_ACCOUNT_SID:', process.env.TWILIO_ACCOUNT_SID ? 'Found' : 'Missing');
+console.log('📱 TWILIO_API_SID:', process.env.TWILIO_API_SID ? 'Found' : 'Missing');
+console.log('📱 TWILIO_API_SECRET:', process.env.TWILIO_API_SECRET ? 'Found' : 'Missing');
+console.log('📱 TWILIO_PHONE_NUMBER:', process.env.TWILIO_PHONE_NUMBER ? 'Found' : 'Missing');
+
 try {
-  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+  if (process.env.TWILIO_API_SID && process.env.TWILIO_API_SECRET && process.env.TWILIO_ACCOUNT_SID) {
     const twilio = require('twilio');
-    twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-    console.log('✅ Twilio client initialized successfully');
+    twilioClient = twilio(process.env.TWILIO_API_SID, process.env.TWILIO_API_SECRET, {
+      accountSid: process.env.TWILIO_ACCOUNT_SID
+    });
+    console.log('✅ Twilio client initialized with API Key method!');
+    console.log('📱 Using Account SID:', process.env.TWILIO_ACCOUNT_SID);
+    console.log('📱 Using API SID:', process.env.TWILIO_API_SID);
   } else {
-    console.log('⚠️  Twilio credentials not found in environment variables');
+    console.log('⚠️  Missing required Twilio API Key credentials');
+    console.log('📱 Need: TWILIO_ACCOUNT_SID, TWILIO_API_SID, TWILIO_API_SECRET');
   }
 } catch (error) {
-  console.error('❌ Error initializing Twilio client:', error.message);
+  console.error('❌ Twilio initialization failed:', error.message);
+  console.error('❌ Full error:', error);
 }
 
 // Create Express app for this serverless function
@@ -23,6 +35,68 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Phone number validation function (matching Express server logic)
+function isValidPhoneNumber(phone) {
+  if (!phone || typeof phone !== 'string') {
+    return false;
+  }
+
+  // Remove all non-digit characters
+  const cleaned = phone.replace(/\D/g, '');
+
+  // Check for valid US/Canada phone number patterns
+  if (cleaned.length === 10) {
+    // 10 digits: 2125551234
+    const areaCode = cleaned.substr(0, 3);
+    const exchange = cleaned.substr(3, 3);
+    // Area code cannot start with 0 or 1, exchange cannot start with 0 or 1
+    return areaCode[0] >= '2' && areaCode[0] <= '9' &&
+           exchange[0] >= '2' && exchange[0] <= '9';
+  } else if (cleaned.length === 11 && cleaned[0] === '1') {
+    // 11 digits starting with 1: 12125551234
+    const areaCode = cleaned.substr(1, 3);
+    const exchange = cleaned.substr(4, 3);
+    return areaCode[0] >= '2' && areaCode[0] <= '9' &&
+           exchange[0] >= '2' && exchange[0] <= '9';
+  }
+
+  // Check for international format starting with +
+  if (phone.trim().startsWith('+')) {
+    // Allow international numbers but require minimum length
+    return cleaned.length >= 10 && cleaned.length <= 15;
+  }
+
+  return false;
+}
+
+// Format phone number for SMS sending (matching Express server logic)
+function formatPhoneNumber(phone) {
+  if (!phone || typeof phone !== 'string') {
+    return null;
+  }
+
+  const cleaned = phone.replace(/\D/g, '');
+
+  // Handle US/Canada numbers
+  if (cleaned.length === 10) {
+    return '+1' + cleaned;
+  } else if (cleaned.length === 11 && cleaned[0] === '1') {
+    return '+' + cleaned;
+  }
+
+  // For international numbers starting with +, return as-is if valid
+  if (phone.trim().startsWith('+') && cleaned.length >= 10 && cleaned.length <= 15) {
+    return phone.trim();
+  }
+
+  // For other international numbers, add + prefix
+  if (cleaned.length >= 10 && cleaned.length <= 15) {
+    return '+' + cleaned;
+  }
+
+  return null;
+}
 
 // GET /api/notifications - Basic info endpoint
 app.get('/api/notifications', (req, res) => {
@@ -34,11 +108,12 @@ app.get('/api/notifications', (req, res) => {
       'sms-test': '/api/notifications/sms-test (POST)',
       'tray-status': '/api/notifications/tray-status (POST)'
     },
-    status: 'Notifications API is active',
+    status: 'Active with SMS support',
     services: {
-      twilio: twilioClient ? 'Connected' : 'Not configured'
+      twilio: twilioClient ? 'Connected ✅' : 'Not configured ❌'
     },
-    environment: 'serverless'
+    environment: 'serverless',
+    authentication: 'API Key method'
   });
 });
 
@@ -125,21 +200,32 @@ app.post('/api/notifications/tray-status', async (req, res) => {
       // Live SMS sending enabled - actually send SMS messages
       console.log(`📱 Sending SMS to ${users.length} users (LIVE MODE)`);
       
+      // Validate all phone numbers first and report stats
+      const validNumbers = users.filter(user => isValidPhoneNumber(user.phone));
+      const invalidNumbers = users.filter(user => !isValidPhoneNumber(user.phone));
+
+      console.log(`📊 Phone validation results: ${validNumbers.length} valid, ${invalidNumbers.length} invalid out of ${users.length} total users`);
+      if (invalidNumbers.length > 0) {
+        console.log(`⚠️  Users with invalid numbers: ${invalidNumbers.map(u => `${u.name} (${u.phone || 'N/A'})`).join(', ')}`);
+      }
+
       for (const user of users) {
         try {
-          if (user.phone && user.phone.trim()) {
-            // Format phone number
-            let formattedPhone = user.phone.replace(/\D/g, '');
-            if (!user.phone.startsWith('+')) {
-              if (formattedPhone.length === 10) {
-                formattedPhone = '+1' + formattedPhone;
-              } else if (formattedPhone.length === 11 && formattedPhone.startsWith('1')) {
-                formattedPhone = '+' + formattedPhone;
-              } else {
-                formattedPhone = '+' + formattedPhone;
-              }
-            } else {
-              formattedPhone = user.phone;
+          // Validate phone number first
+          if (isValidPhoneNumber(user.phone)) {
+            const formattedPhone = formatPhoneNumber(user.phone);
+
+            if (!formattedPhone) {
+              console.warn(`⚠️  Failed to format phone number for ${user.name}: ${user.phone}`);
+              results.push({
+                userId: user.id,
+                name: user.name,
+                phone: user.phone,
+                success: false,
+                error: 'Invalid phone number format'
+              });
+              failureCount++;
+              continue;
             }
             
             const message = await twilioClient.messages.create({
@@ -161,12 +247,13 @@ app.post('/api/notifications/tray-status', async (req, res) => {
             console.log(`✅ SMS sent to ${user.name} (${formattedPhone}): ${message.sid}`);
             
           } else {
+            console.warn(`⚠️  Invalid phone number for ${user.name}: ${user.phone || 'N/A'}`);
             results.push({
               userId: user.id,
               name: user.name,
               phone: user.phone || 'N/A',
               success: false,
-              error: 'No phone number provided'
+              error: user.phone ? 'Invalid phone number format' : 'No phone number provided'
             });
             failureCount++;
           }
@@ -204,25 +291,38 @@ app.post('/api/notifications/tray-status', async (req, res) => {
     } else {
       // Live SMS sending disabled - simulate the process
       console.log(`📱 Simulating SMS to ${users.length} users (TEST MODE)`);
-      
+
+      // Validate all phone numbers first and report stats
+      const validNumbers = users.filter(user => isValidPhoneNumber(user.phone));
+      const invalidNumbers = users.filter(user => !isValidPhoneNumber(user.phone));
+
+      console.log(`📊 [TEST MODE] Phone validation results: ${validNumbers.length} valid, ${invalidNumbers.length} invalid out of ${users.length} total users`);
+      if (invalidNumbers.length > 0) {
+        console.log(`⚠️  [TEST MODE] Users with invalid numbers: ${invalidNumbers.map(u => `${u.name} (${u.phone || 'N/A'})`).join(', ')}`);
+      }
+
       for (const user of users) {
-        if (user.phone && user.phone.trim()) {
+        // Validate phone number in simulation mode too
+        if (isValidPhoneNumber(user.phone)) {
+          const formattedPhone = formatPhoneNumber(user.phone);
+
           results.push({
             userId: user.id,
             name: user.name,
-            phone: user.phone,
+            phone: formattedPhone || user.phone,
             success: true,
             simulated: true,
             message: 'SMS would be sent in live mode'
           });
           successCount++;
         } else {
+          console.warn(`⚠️  [TEST MODE] Invalid phone number for ${user.name}: ${user.phone || 'N/A'}`);
           results.push({
             userId: user.id,
             name: user.name,
             phone: user.phone || 'N/A',
             success: false,
-            error: 'No phone number provided'
+            error: user.phone ? 'Invalid phone number format' : 'No phone number provided'
           });
           failureCount++;
         }

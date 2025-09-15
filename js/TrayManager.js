@@ -732,9 +732,9 @@ export class TrayManager {
 
         if (trays.length === 0) {
             trayCardView.innerHTML = `
-                <div class="loading-state">
-                    <i class="fas fa-box fa-3x mb-3" style="color: var(--gray-300);"></i>
-                    <p>No trays found. Add a new tray to get started.</p>
+                <div class="loading-state clickable-no-trays" style="cursor: pointer;" onclick="window.app.viewManager.viewAllTrays()">
+                    <i class="fas fa-eye fa-3x mb-3" style="color: var(--primary-color);"></i>
+                    <p>No trays found. <strong>Click here to View All Trays.</strong></p>
                 </div>
             `;
             return;
@@ -757,9 +757,9 @@ export class TrayManager {
 
         if (trays.length === 0) {
             trayHorizontalCards.innerHTML = `
-                <div class="loading-state">
-                    <i class="fas fa-box fa-3x mb-3" style="color: var(--gray-300);"></i>
-                    <p>No trays found. Add a new tray to get started.</p>
+                <div class="loading-state clickable-no-trays" style="cursor: pointer;" onclick="window.app.viewManager.viewAllTrays()">
+                    <i class="fas fa-eye fa-3x mb-3" style="color: var(--primary-color);"></i>
+                    <p>No trays found. <strong>Click here to View All Trays.</strong></p>
                 </div>
             `;
             return;
@@ -1785,5 +1785,36 @@ export class TrayManager {
         const query = encodeURIComponent(address || facilityName);
         const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
         window.open(url, '_blank');
+    }
+
+    /**
+     * Clear all filters and show all trays
+     */
+    viewAllTrays() {
+        // Clear all filters
+        this.selectedStatus = 'all';
+        this.selectedFacility = 'all';
+        this.selectedPhysician = 'all';
+        this.selectedAvailability = 'all';
+
+        // Update filter UI elements (only the ones that exist on trays page)
+        const traysStatusFilter = document.getElementById('traysStatusFilter');
+        if (traysStatusFilter) traysStatusFilter.value = '';
+
+        const traysUserFilter = document.getElementById('traysUserFilter');
+        if (traysUserFilter) {
+            console.log('🧹 TrayManager clearing traysUserFilter to All Users');
+            console.log('🔍 Before setting:', traysUserFilter.value);
+            traysUserFilter.value = '';
+            console.log('🔍 After setting:', traysUserFilter.value);
+        }
+
+        // Navigate to trays view if not already there
+        if (window.app.viewManager && window.location.hash !== '#trays') {
+            window.app.viewManager.showView('trays');
+        } else {
+            // Refresh the current trays display
+            this.loadTrays();
+        }
     }
 }

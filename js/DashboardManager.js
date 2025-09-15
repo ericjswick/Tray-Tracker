@@ -155,9 +155,9 @@ export class DashboardManager {
         const facilities = this.dataManager.getFacilities();
         const caseTypes = this.dataManager.getCaseTypes();
         
-        const surgeon = surgeons.find(s => s.id === caseItem.physician_id);
-        const facility = facilities.find(f => f.id === caseItem.facility_id);
-        const caseType = caseTypes.find(ct => ct.id === caseItem.caseTypeId);
+        const surgeon = surgeons.find(s => s && s.id === caseItem.physician_id);
+        const facility = facilities.find(f => f && f.id === caseItem.facility_id);
+        const caseType = caseTypes.find(ct => ct && ct.id === caseItem.caseTypeId);
         
         const scheduledDateTime = new Date(caseItem.scheduledDate + 'T' + (caseItem.scheduledTime || '08:00'));
         const dateStr = scheduledDateTime.toLocaleDateString();

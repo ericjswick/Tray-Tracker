@@ -261,7 +261,7 @@ export class ViewManager {
                     window.app.trayManager.renderTrays(window.app.trayManager.currentTrays);
                 }
             }
-            
+
             // Set up trays page filter listeners
             const traysFilter = document.getElementById('traysStatusFilter');
             if (traysFilter) {
@@ -271,7 +271,7 @@ export class ViewManager {
                     }
                 });
             }
-            
+
             const traysUserFilter = document.getElementById('traysUserFilter');
             if (traysUserFilter) {
                 traysUserFilter.addEventListener('change', () => {
@@ -280,9 +280,15 @@ export class ViewManager {
                     }
                 });
             }
-            
-            // Populate trays user filter
-            this.populateTraysUserFilter();
+
+            // Populate trays user filter (unless viewAllTrays flag is set)
+            console.log('🏁 initializeTraysView: window._trayViewShowingAllTrays =', window._trayViewShowingAllTrays);
+            if (!window._trayViewShowingAllTrays) {
+                console.log('📞 Calling populateTraysUserFilter from initializeTraysView');
+                this.populateTraysUserFilter();
+            } else {
+                console.log('⏭️ Skipping populateTraysUserFilter due to _trayViewShowingAllTrays flag');
+            }
         }, 100);
     }
 
@@ -424,13 +430,13 @@ export class ViewManager {
         });
 
         if (filteredTrays.length === 0) {
-            const message = statusFilter ? 
-                `No trays found with status: ${statusFilter}` : 
-                'No trays found. Add a new tray to get started.';
+            const message = statusFilter ?
+                `No trays found with status: ${statusFilter}` :
+                'No trays found';
             container.innerHTML = `
-                <div class="loading-state">
-                    <i class="fas fa-box fa-3x mb-3" style="color: var(--gray-300);"></i>
-                    <p>${message}</p>
+                <div class="loading-state clickable-no-trays" style="cursor: pointer;" onclick="window.app.viewManager.viewAllTrays()">
+                    <i class="fas fa-eye fa-3x mb-3" style="color: var(--primary-color);"></i>
+                    <p>${message}. <strong>Click here to View All Trays.</strong></p>
                 </div>
             `;
             return;
@@ -572,7 +578,8 @@ export class ViewManager {
         }
     }
 
-    populateTraysUserFilter(retryCount = 0) {
+    populateTraysUserFilter(retryCount = 0, setToAllUsers = false) {
+        console.log('🔍 populateTraysUserFilter called:', { retryCount, setToAllUsers, globalFlag: window._trayViewShowingAllTrays });
         const traysUserFilter = document.getElementById('traysUserFilter');
         if (!traysUserFilter) return;
 
@@ -580,6 +587,11 @@ export class ViewManager {
         traysUserFilter.innerHTML = '<option value="">All Users</option>';
 
         // Get users from DataManager
+        console.log('🔍 Checking for users data:', {
+            dataManagerExists: !!window.app?.dataManager,
+            usersExists: !!window.app?.dataManager?.users,
+            usersSize: window.app?.dataManager?.users?.size || 0
+        });
         if (window.app?.dataManager?.users && window.app.dataManager.users.size > 0) {
             const users = Array.from(window.app.dataManager.users.values())
                 .filter(user => user.active !== false) // Only show active users
@@ -596,19 +608,28 @@ export class ViewManager {
                 traysUserFilter.appendChild(option);
             });
 
-            // Set default to current logged in user
-            const currentUser = window.app?.authManager?.currentUser;
-            if (currentUser) {
-                traysUserFilter.value = currentUser.uid;
-                // Trigger filter update
-                if (window.app.trayManager && window.app.trayManager.currentTrays) {
-                    window.app.trayManager.renderTrays(window.app.trayManager.currentTrays);
+            // Set default to current logged in user (unless explicitly showing all users)
+            if (!setToAllUsers) {
+                const currentUser = window.app?.authManager?.currentUser;
+                if (currentUser) {
+                    console.log('👤 Setting filter to current user:', currentUser.uid);
+                    traysUserFilter.value = currentUser.uid;
                 }
+            } else {
+                console.log('👥 Setting filter to All Users');
+                traysUserFilter.value = ''; // Set to "All Users"
+            }
+
+            console.log('📋 Final filter value:', traysUserFilter.value);
+
+            // Trigger filter update
+            if (window.app.trayManager && window.app.trayManager.currentTrays) {
+                window.app.trayManager.renderTrays(window.app.trayManager.currentTrays);
             }
         } else if (retryCount < 5) {
             // Data not loaded yet, retry after delay (max 5 retries)
             setTimeout(() => {
-                this.populateTraysUserFilter(retryCount + 1);
+                this.populateTraysUserFilter(retryCount + 1, setToAllUsers);
             }, 1000);
         }
     }
@@ -1693,7 +1714,7 @@ export class ViewManager {
             const timestamp = new Date().toLocaleTimeString();
             const color = type === 'error' ? '#ff6b6b' : '#4ecdc4';
             const prefix = type === 'error' ? '❌' : '📝';
-            
+
             consoleOutput.innerHTML += `
                 <div style="color: ${color}; margin-bottom: 5px;">
                     [${timestamp}] ${prefix} ${message}
@@ -1701,5 +1722,45 @@ export class ViewManager {
             `;
             consoleOutput.scrollTop = consoleOutput.scrollHeight;
         }
+    }
+
+    /**
+     * Clear all tray filters and navigate to trays view to show all trays
+     */
+    viewAllTrays() {
+        console.log('🚀 viewAllTrays() called');
+        // Set global flag to prevent initializeTraysView from overriding user filter
+        window._trayViewShowingAllTrays = true;
+        console.log('🎯 Set window._trayViewShowingAllTrays = true, current value:', window._trayViewShowingAllTrays);
+
+        // Navigate to trays view
+        console.log('🔄 About to call showView, flag value:', window._trayViewShowingAllTrays);
+        this.showView('trays');
+        console.log('✅ showView completed, flag value:', window._trayViewShowingAllTrays);
+
+        // Clear filters and set to show all users after view loads
+        setTimeout(() => {
+            console.log('⏰ viewAllTrays timeout (200ms) executing');
+            // Populate user filter with setToAllUsers flag
+            console.log('📞 Calling populateTraysUserFilter(0, true) from viewAllTrays');
+            this.populateTraysUserFilter(0, true);
+
+            // Let the tray manager handle clearing other filters (but not user filter since we just set it)
+            if (window.app.trayManager && window.app.trayManager.viewAllTrays) {
+                // Don't call it since it will override our user filter setting
+                console.log('⏭️ Skipping TrayManager.viewAllTrays to prevent user filter override');
+                // Just clear the status filter manually
+                const traysStatusFilter = document.getElementById('traysStatusFilter');
+                if (traysStatusFilter) traysStatusFilter.value = '';
+                // Refresh the display
+                if (window.app.trayManager && window.app.trayManager.currentTrays) {
+                    window.app.trayManager.renderTrays(window.app.trayManager.currentTrays);
+                }
+            }
+
+            // Clear the flag after setup is complete
+            window._trayViewShowingAllTrays = false;
+            console.log('🏁 Cleared window._trayViewShowingAllTrays flag');
+        }, 200);
     }
 }

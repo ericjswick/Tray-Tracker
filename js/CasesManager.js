@@ -583,7 +583,7 @@ export class CasesManager {
                                                 <small>${caseItem.scheduledTime || '08:00'}</small>
                                             </div>
                                             <small class="text-muted">
-                                                ${this.dataManager.getSurgeons().find(s => s.id === caseItem.physician_id)?.full_name || 'Unknown Surgeon'}
+                                                ${this.dataManager.getSurgeons().find(s => s && s.id === caseItem.physician_id)?.full_name || 'Unknown Surgeon'}
                                             </small>
                                         </div>
                                     </div>
@@ -1003,9 +1003,9 @@ export class CasesManager {
     }
 
     showCaseDetailsModal(caseData) {
-        const surgeon = this.dataManager.getSurgeons().find(s => s.id === caseData.physician_id);
-        const facility = this.dataManager.getFacilities().find(f => f.id === caseData.facility_id);
-        const caseType = this.dataManager.getCaseTypes().find(ct => ct.id === caseData.caseTypeId);
+        const surgeon = this.dataManager.getSurgeons().find(s => s && s.id === caseData.physician_id);
+        const facility = this.dataManager.getFacilities().find(f => f && f.id === caseData.facility_id);
+        const caseType = this.dataManager.getCaseTypes().find(ct => ct && ct.id === caseData.caseTypeId);
 
         const modalBody = document.getElementById('caseDetailsModalBody');
         if (modalBody) {
