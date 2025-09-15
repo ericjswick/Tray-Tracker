@@ -1034,8 +1034,9 @@ export class ModalManager {
             if (surgeonSelect) {
                 const surgeons = this.dataManager.getSurgeons();
                 console.log('Loading surgeons for dropdown:', surgeons.length);
-                const surgeonOptions = '<option value="">Select Physician</option>' + 
-                    surgeons.map(surgeon => `<option value="${surgeon.id}">${surgeon.full_name}</option>`).join('');
+                const surgeonOptions = '<option value="">Select Physician</option>' +
+                    surgeons.filter(surgeon => surgeon && surgeon.id && surgeon.full_name)
+                            .map(surgeon => `<option value="${surgeon.id}">${surgeon.full_name}</option>`).join('');
                 surgeonSelect.innerHTML = surgeonOptions;
                 if (editSurgeonSelect) editSurgeonSelect.innerHTML = surgeonOptions;
             }
@@ -1046,8 +1047,9 @@ export class ModalManager {
             if (facilitySelect) {
                 const facilities = this.dataManager.getFacilities();
                 console.log('Loading facilities for dropdown:', facilities.length);
-                const facilityOptions = '<option value="">Select Facility</option>' + 
-                    facilities.map(facility => `<option value="${facility.id}">${facility.account_name}</option>`).join('');
+                const facilityOptions = '<option value="">Select Facility</option>' +
+                    facilities.filter(facility => facility && facility.id && facility.account_name)
+                              .map(facility => `<option value="${facility.id}">${facility.account_name}</option>`).join('');
                 facilitySelect.innerHTML = facilityOptions;
                 if (editFacilitySelect) editFacilitySelect.innerHTML = facilityOptions;
             }
@@ -1096,8 +1098,9 @@ export class ModalManager {
                         }
                     }, 1000);
                 } else {
-                    const caseTypeOptions = '<option value="">Select Case Type</option>' + 
-                        caseTypes.map(caseType => `<option value="${caseType.id}">${caseType.name}</option>`).join('');
+                    const caseTypeOptions = '<option value="">Select Case Type</option>' +
+                        caseTypes.filter(caseType => caseType && caseType.id && caseType.name)
+                                 .map(caseType => `<option value="${caseType.id}">${caseType.name}</option>`).join('');
                     
                     // Log before setting innerHTML
                     if (window.is_enable_api_logging && window.frontendLogger) {
@@ -1131,7 +1134,7 @@ export class ModalManager {
                         window.frontendLogger.info('Case types dropdown populated successfully', {
                             count: caseTypes.length,
                             optionsGenerated: caseTypeOptions.length,
-                            caseTypeNames: caseTypes.map(ct => ct.name),
+                            caseTypeNames: caseTypes.filter(ct => ct && ct.name).map(ct => ct.name),
                             hasEditSelect: !!editCaseTypeSelect,
                             generatedHTML: caseTypeOptions,
                             selectElementInfo: {
@@ -1365,6 +1368,9 @@ export class ModalManager {
                 }, 'tray-requirements-debug');
             }
             const trays = await this.dataManager.getAllTrays();
+            
+            // Sort trays alphabetically by name
+            trays.sort((a, b) => (a.tray_name || '').localeCompare(b.tray_name || ''));
             
             // Clear placeholder text if this is the first requirement
             if (container.children.length === 1 && container.children[0].classList.contains('text-muted')) {
