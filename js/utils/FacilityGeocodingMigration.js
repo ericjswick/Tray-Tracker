@@ -123,14 +123,17 @@ export class FacilityGeocodingMigration {
             }
 
             const data = await response.json();
-            
-            if (data.success && data.coordinates) {
+
+            if (data.success && data.data && data.data.latitude && data.data.longitude) {
                 return {
-                    lat: data.coordinates.lat,
-                    lng: data.coordinates.lng
+                    lat: data.data.latitude,
+                    lng: data.data.longitude
                 };
             } else {
-                throw new Error(data.error || 'Unknown geocoding error');
+                // More detailed error logging
+                console.error('Geocoding API response:', data);
+                const errorMsg = data.error || data.message || 'Unknown geocoding error';
+                throw new Error(`Geocoding failed: ${errorMsg}`);
             }
             
         } catch (error) {
