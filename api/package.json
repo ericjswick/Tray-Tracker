@@ -1,0 +1,11 @@
+{
+  "name": "tray-tracker-api",
+  "version": "1.0.0",
+  "description": "TrayTracker Vercel API functions",
+  "dependencies": {
+    "twilio": "^4.19.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
