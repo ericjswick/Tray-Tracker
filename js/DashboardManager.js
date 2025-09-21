@@ -57,16 +57,19 @@ export class DashboardManager {
         try {
             const allCases = await this.dataManager.getAllCases();
             let filteredCases = this.filterCasesByDate(allCases, this.dateFilter);
-            
+
             // Apply status filter if selected
             if (this.statusFilter) {
                 filteredCases = filteredCases.filter(caseItem => caseItem.status === this.statusFilter);
             }
-            
-            // Store the filtered cases for use by other methods like checkInTraysForCase
-            this.currentCases = filteredCases;
-            
-            await this.renderDashboardCases(filteredCases);
+
+            // Limit dashboard to 20 cases for better performance
+            const limitedCases = filteredCases.slice(0, 20);
+
+            // Store the filtered cases for use by other methods like automatedBulkCheckInForCase
+            this.currentCases = limitedCases;
+
+            await this.renderDashboardCases(limitedCases);
         } catch (error) {
             console.error('Error loading dashboard cases:', error);
             this.showErrorState();
@@ -74,44 +77,47 @@ export class DashboardManager {
     }
 
     filterCasesByDate(cases, filterType) {
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        
+        // Use string-based date comparison to avoid timezone issues
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+
         const filtered = cases.filter(caseItem => {
-            const caseDate = new Date(caseItem.scheduledDate);
-            const caseDateOnly = new Date(caseDate.getFullYear(), caseDate.getMonth(), caseDate.getDate());
-            
+            const caseDate = caseItem.scheduledDate; // Already in YYYY-MM-DD format
+
             switch (filterType) {
                 case 'today':
-                    return caseDateOnly.getTime() === today.getTime();
-                
+                    return caseDate === today;
+
                 case 'tomorrow':
-                    const tomorrow = new Date(today);
-                    tomorrow.setDate(tomorrow.getDate() + 1);
-                    return caseDateOnly.getTime() === tomorrow.getTime();
-                
+                    const tomorrowDate = new Date();
+                    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+                    const tomorrow = tomorrowDate.toISOString().split('T')[0];
+                    return caseDate === tomorrow;
+
                 case 'week':
-                    const weekEnd = new Date(today);
-                    weekEnd.setDate(weekEnd.getDate() + 7);
-                    return caseDateOnly >= today && caseDateOnly <= weekEnd;
-                
+                    const weekEndDate = new Date();
+                    weekEndDate.setDate(weekEndDate.getDate() + 7);
+                    const weekEnd = weekEndDate.toISOString().split('T')[0];
+                    return caseDate >= today && caseDate <= weekEnd;
+
                 case 'upcoming':
-                    return caseDateOnly >= today;
+                    return caseDate >= today;
                 
                 case 'month':
-                    const monthEnd = new Date(today);
-                    monthEnd.setMonth(monthEnd.getMonth() + 1);
-                    return caseDateOnly >= today && caseDateOnly <= monthEnd;
-                
+                    const monthEndDate = new Date();
+                    monthEndDate.setMonth(monthEndDate.getMonth() + 1);
+                    const monthEnd = monthEndDate.toISOString().split('T')[0];
+                    return caseDate >= today && caseDate <= monthEnd;
+
                 case 'recent':
                     // Last 7 days (past cases)
-                    const sevenDaysAgo = new Date(today);
-                    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-                    return caseDateOnly >= sevenDaysAgo && caseDateOnly < today;
-                
+                    const sevenDaysAgoDate = new Date();
+                    sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 7);
+                    const sevenDaysAgo = sevenDaysAgoDate.toISOString().split('T')[0];
+                    return caseDate >= sevenDaysAgo && caseDate < today;
+
                 case 'past':
                     // All past cases
-                    return caseDateOnly < today;
+                    return caseDate < today;
                 
                 default:
                     return true;
@@ -134,28 +140,34 @@ export class DashboardManager {
     }
 
     async renderDashboardCases(cases) {
+        console.log('🎯 renderDashboardCases() called with', cases?.length || 0, 'cases');
+
         const container = document.getElementById('dashboardCasesContent');
-        if (!container) return;
+        if (!container) {
+            console.warn('❌ dashboardCasesContent container not found');
+            return;
+        }
+
+        console.log('✅ Cases container found, current innerHTML:', container.innerHTML.includes('Loading cases') ? 'Shows loading spinner' : 'Shows content');
 
         if (cases.length === 0) {
             container.innerHTML = this.getEmptyState();
             return;
         }
 
-        // Render cards with loading state for tray status
-        const limitedCases = cases.slice(0, 6);
+        // Render all cases passed to this function (already limited to 20 in loadUpcomingCases)
         const cardsHTML = await Promise.all(
-            limitedCases.map(caseItem => this.renderCaseCard(caseItem))
+            cases.map(caseItem => this.renderCaseCard(caseItem))
         );
         container.innerHTML = cardsHTML.join('');
     }
 
     async renderCaseCard(caseItem) {
-        const surgeons = this.dataManager.getSurgeons();
         const facilities = this.dataManager.getFacilities();
         const caseTypes = this.dataManager.getCaseTypes();
-        
-        const surgeon = surgeons.find(s => s && s.id === caseItem.physician_id);
+
+        // Use the same getSurgeonName method that works everywhere else
+        const surgeonName = this.getSurgeonName(caseItem.physician_id);
         const facility = facilities.find(f => f && f.id === caseItem.facility_id);
         const caseType = caseTypes.find(ct => ct && ct.id === caseItem.caseTypeId);
         
@@ -213,7 +225,7 @@ export class DashboardManager {
                 <div class="tray-card-content">
                     <div class="tray-detail">
                         <i class="fas fa-user-md"></i>
-                        <span class="tray-detail-value">${surgeon ? surgeon.full_name : (surgeons.length === 0 ? 'Loading...' : 'Unknown Physician')}</span>
+                        <span class="tray-detail-value">${surgeonName || 'Unknown Physician'}</span>
                     </div>
                     <div class="tray-detail">
                         <i class="fas fa-hospital"></i>
@@ -246,13 +258,10 @@ export class DashboardManager {
                         <i class="fas fa-eye"></i>
                     </button>
                     ${caseItem.status === CASE_STATUS.SCHEDULED ? `
-                        <button class="btn btn-sm btn-outline-warning" onclick="window.app.dashboardManager.checkInTraysForCase('${caseItem.id}')" title="Check-in Available Trays">
-                            <i class="fas fa-check-circle"></i> Check-in
+                        <button class="btn btn-sm btn-outline-primary" onclick="window.app.dashboardManager.showManualCheckInModal('${caseItem.id}')" title="Select Trays to Check In">
+                            <i class="fas fa-hand-pointer"></i> Check In
                         </button>
                     ` : ''}
-                    <button class="btn btn-sm btn-outline-success" onclick="window.app.navigation.navigate('cases')" title="Go to Cases">
-                        <i class="fas fa-arrow-right"></i>
-                    </button>
                 </div>
             </div>
         `;
@@ -272,40 +281,18 @@ export class DashboardManager {
                 return [];
             }
             
-            // Step 2: Log all tray requirement sources
+            // Step 2: Log tray requirements field
             if (window.is_enable_api_logging && window.frontendLogger && (caseData.id?.includes('aa') || caseData.patientName?.includes('aa'))) {
-                window.frontendLogger.error(`🔍 STEP 2: Checking all possible tray requirement sources`, {
+                window.frontendLogger.error(`🔍 STEP 2: Checking tray_requirements field`, {
                     caseId: caseData.id,
-                    hasTrayCRequirements: !!caseData.tray_requirements,
+                    hasTrayRequirements: !!caseData.tray_requirements,
                     trayRequirementsLength: Array.isArray(caseData.tray_requirements) ? caseData.tray_requirements.length : 'NOT_ARRAY',
-                    trayRequirementsValue: caseData.tray_requirements,
-                    hasTrayRequirements: !!caseData.trayRequirements,
-                    trayRequirementsType: typeof caseData.trayRequirements,
-                    trayRequirementsValueAlt: caseData.trayRequirements,
-                    allKeys: Object.keys(caseData || {})
+                    trayRequirementsValue: caseData.tray_requirements
                 });
             }
             
-            // Step 3: Check if we have string-based requirements that need conversion
-            const stringRequirements = caseData.trayRequirements;
-            const objectRequirements = caseData.tray_requirements;
-            
-            if (window.is_enable_api_logging && window.frontendLogger && (caseData.id?.includes('aa') || caseData.patientName?.includes('aa'))) {
-                window.frontendLogger.error(`🔍 STEP 3: Source analysis`, {
-                    caseId: caseData.id,
-                    hasStringRequirements: !!stringRequirements,
-                    stringRequirements: stringRequirements,
-                    stringIsArray: Array.isArray(stringRequirements),
-                    hasObjectRequirements: !!objectRequirements,
-                    objectRequirements: objectRequirements,
-                    objectIsArray: Array.isArray(objectRequirements)
-                });
-            }
-            
-            // Step 4: ONLY use tray_requirements field, ignore trayRequirements string array
-            let requirements = objectRequirements || [];
-            
-            // Step 5: REMOVED - No longer process string requirements
+            // Use only tray_requirements field (underscore format)
+            let requirements = caseData.tray_requirements || [];
             
             // Step 6: Validate array type
             if (!Array.isArray(requirements)) {
@@ -375,8 +362,7 @@ export class DashboardManager {
                 patientName: caseItem.patientName,
                 functionName: 'analyzeTrayAvailabilityForCase',
                 caseDataKeys: Object.keys(caseItem || {}),
-                hasTrayRequirements: !!caseItem.tray_requirements,
-                hasTrayRequirementsAlt: !!caseItem.trayRequirements
+                hasTrayRequirements: !!caseItem.tray_requirements
             });
         }
 
@@ -1282,286 +1268,380 @@ export class DashboardManager {
         return surgeonId; // Fallback to original value
     }
 
+    getCaseTypeName(caseTypeId) {
+        if (!caseTypeId) return 'N/A';
+
+        // Try to find case type by ID
+        const caseTypes = this.dataManager.getCaseTypes();
+        if (caseTypes) {
+            const caseType = caseTypes.find(ct => ct.id === caseTypeId);
+            return caseType ? caseType.name : caseTypeId;
+        }
+
+        return caseTypeId; // Fallback to original value
+    }
+
     async renderTrayRequirementsStatus(caseItem) {
-        // STEP 1: Log entry to renderTrayRequirementsStatus
-        if (window.is_enable_api_logging && window.frontendLogger && (caseItem.id.includes('aa') || (caseItem.patientName && caseItem.patientName.includes('aa')))) {
-            window.frontendLogger.error(`🎯 RENDER STEP 1: renderTrayRequirementsStatus called`, {
-                caseId: caseItem.id,
-                patientName: caseItem.patientName,
-                functionName: 'renderTrayRequirementsStatus'
-            });
-        }
+        try {
+            // Get tray requirements for the case
+            const requirements = this.getTrayRequirements(caseItem);
 
-        // Use centralized analysis function
-        const analysis = await this.analyzeTrayAvailabilityForCase(caseItem);
-        
-        // STEP 2: Log analysis result
-        if (window.is_enable_api_logging && window.frontendLogger && (caseItem.id.includes('aa') || (caseItem.patientName && caseItem.patientName.includes('aa')))) {
-            window.frontendLogger.error(`🎯 RENDER STEP 2: analyzeTrayAvailabilityForCase completed`, {
-                caseId: caseItem.id,
-                analysis: analysis,
-                requirementCount: analysis.requirementCount,
-                availableCount: analysis.availableCount,
-                issues: analysis.issues,
-                checkedInTrays: analysis.checkedInTrays
-            });
-        }
-        
-        if (analysis.requirementCount === 0) {
-            return 'No Trays Required';
-        }
+            if (requirements.length === 0) {
+                return 'No Trays Required';
+            }
 
-        // Handle errors
-        if (analysis.error) {
-            return `${analysis.requirementCount} Tray${analysis.requirementCount > 1 ? 's' : ''} Required`;
-        }
+            // Calculate days until case starts
+            const caseDate = new Date(caseItem.scheduledDate);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // Reset time for accurate date comparison
+            caseDate.setHours(0, 0, 0, 0);
+            const daysUntilCase = Math.ceil((caseDate - today) / (1000 * 60 * 60 * 24));
 
-        // Build status display based on case status and tray availability
-        let statusHtml = `${analysis.requirementCount} Tray${analysis.requirementCount > 1 ? 's' : ''} Required`;
-        let statusDetails = '';
-        
-        if (caseItem.status === CASE_STATUS.SCHEDULED) {
-            // For scheduled cases, show availability status with conflict consideration
-            // Available trays (including those with conflicts) + effectively checked in trays = total ready
-            const availableTrays = analysis.availableCount; // Already includes trays with conflicts
-            const checkedInTrays = analysis.effectivelyCheckedIn;
-            const totalReady = availableTrays + checkedInTrays;
-            
-            if (totalReady === analysis.requirementCount) {
-                // Use issues array for conflict count (unavailable trays)
-                if (analysis.issues.length > 0) {
-                    statusHtml += ` <span class="text-warning"><i class="fas fa-exclamation-triangle"></i></span>`;
-                    statusDetails = `All trays ready (${analysis.issues.length} conflict${analysis.issues.length > 1 ? 's' : ''})`;
-                } else {
-                    statusHtml += ` <span class="text-success"><i class="fas fa-check-circle"></i></span>`;
-                    statusDetails = 'All trays ready';
+            // Get all available trays to match with requirements
+            const allTrays = await this.dataManager.getAllTrays();
+            const trayDisplays = [];
+            let hasUnavailableTrays = false;
+
+            // Calculate warning colors based on days until case
+            const isWithin2Days = daysUntilCase <= 2;
+            const unavailableColor = isWithin2Days ? '#dc3545' : '#ffc107'; // Red if within 2 days, yellow otherwise
+
+            // Process each requirement to show tray name and status
+            for (const requirement of requirements) {
+                let trayName = 'Unknown Tray';
+                let status = 'Not Found';
+                let statusColor = unavailableColor; // Use warning color for not found
+                let statusIcon = 'fas fa-times-circle';
+                let isUnavailable = true;
+
+                // Find the matching tray
+                const matchingTray = allTrays.find(tray =>
+                    (tray.tray_id === requirement.tray_id || tray.id === requirement.tray_id)
+                );
+
+                // Debug log to see tray data
+                if (matchingTray && (matchingTray.status === 'in-use' || matchingTray.status === 'checked-in')) {
+                    console.log('Tray debug:', {
+                        trayId: matchingTray.id,
+                        trayName: matchingTray.name,
+                        status: matchingTray.status,
+                        assignedCaseId: matchingTray.assignedCaseId,
+                        currentCaseId: caseItem.id
+                    });
                 }
-            } else if (totalReady > 0) {
-                statusHtml += ` <span class="text-warning"><i class="fas fa-exclamation-triangle"></i></span>`;
-                let readyDetails = `${totalReady}/${analysis.requirementCount} ready`;
-                
-                // Build detailed breakdown
-                let breakdown = [];
-                if (availableTrays > 0) breakdown.push(`${availableTrays} available`);
-                if (checkedInTrays > 0) breakdown.push(`${checkedInTrays} checked in`);
-                // Show conflicts based on issues array (unavailable trays)
-                if (analysis.issues.length > 0) breakdown.push(`${analysis.issues.length} conflict${analysis.issues.length > 1 ? 's' : ''}`);
-                
-                if (breakdown.length > 0) {
-                    readyDetails += ` (${breakdown.join(', ')})`;
-                }
-                statusDetails = readyDetails;
-            } else {
-                statusHtml += ` <span class="text-danger"><i class="fas fa-times-circle"></i></span>`;
-                statusDetails = 'No trays ready';
-            }
-        }
 
-        // Combine all warnings and issues
-        let allDetails = [];
-        if (analysis.issues.length > 0) {
-            allDetails = allDetails.concat(analysis.issues);
-        }
-        if (analysis.conflictWarnings.length > 0) {
-            allDetails = allDetails.concat(analysis.conflictWarnings);
-        }
+                if (matchingTray) {
+                    trayName = matchingTray.name || matchingTray.tray_name || `Tray ${matchingTray.id.slice(-4)}`;
 
-        // Debug logging for case "aa" - check what should be displayed
-        if (window.is_enable_api_logging && window.frontendLogger && (caseItem.id.includes('aa') || (caseItem.patientName && caseItem.patientName.includes('aa')))) {
-            window.frontendLogger.error(`🎯 CASE AA DEBUG: Display decision`, {
-                caseId: caseItem.id,
-                shouldShowDetails: allDetails.length > 0 || analysis.checkedInTrays.length > 0,
-                allDetailsCount: allDetails.length,
-                checkedInTraysCount: analysis.checkedInTrays.length,
-                allDetailsList: allDetails,
-                checkedInTraysList: analysis.checkedInTrays,
-                analysisIssues: analysis.issues,
-                analysisConflicts: analysis.conflictWarnings
-            });
-        }
-
-        // Debug logging for case "aa" - check why details might not be showing
-        if (window.is_enable_api_logging && window.frontendLogger && (caseItem.id.includes('aa') || (caseItem.patientName && caseItem.patientName.includes('aa')))) {
-            window.frontendLogger.error(`🎯 CASE AA DEBUG: Final display check before render`, {
-                caseId: caseItem.id,
-                shouldShowDetails: allDetails.length > 0 || analysis.checkedInTrays.length > 0,
-                allDetailsLength: allDetails.length,
-                checkedInTraysLength: analysis.checkedInTrays.length,
-                issuesLength: analysis.issues.length,
-                conflictWarningsLength: analysis.conflictWarnings.length,
-                statusHtml: statusHtml,
-                statusDetails: statusDetails,
-                requirementCount: analysis.requirementCount,
-                availableCount: analysis.availableCount,
-                effectivelyCheckedIn: analysis.effectivelyCheckedIn
-            });
-        }
-
-        // Add detailed information if there are issues, conflicts, checked-in trays, OR if not all trays are available
-        const showDetails = allDetails.length > 0 || 
-                           analysis.checkedInTrays.length > 0 || 
-                           (analysis.requirementCount > 0 && !analysis.allTraysAvailable);
-        
-        if (showDetails) {
-            const hasConflicts = analysis.hasConflicts;
-            const hasIssues = analysis.issues.length > 0;
-            
-            // Separate issues and conflicts for better formatting
-            let detailsHtml = '';
-            
-            // Show checked-in trays first (positive information)
-            if (analysis.checkedInTrays.length > 0) {
-                detailsHtml += `
-                    <div class="tray-status-checked-in" style="font-size: 0.8em; color: #28a745; margin-top: 3px; padding: 4px; background-color: #f8fff9; border-left: 3px solid #28a745; border-radius: 2px;">
-                        <div style="font-weight: 500; margin-bottom: 2px;">
-                            <i class="fas fa-check-circle"></i> Ready Trays:
-                        </div>
-                        <div style="line-height: 1.4;">
-                            ${analysis.checkedInTrays.map((tray, index, array) => `<div style="margin-bottom: 4px; padding-bottom: 3px; ${index < array.length - 1 ? 'border-bottom: 1px solid #d4edda;' : ''}">${tray}</div>`).join('')}
-                        </div>
-                    </div>
-                `;
-            }
-            
-            // Log issues array for debugging
-            if (window.is_enable_tray_availability_logic_api_logging) {
-                fetch('https://traytracker-dev.serverdatahost.com/api/debug/log', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        level: 'info',
-                        message: 'ISSUES ARRAY FOR DISPLAY',
-                        context: 'display-issues',
-                        data: {
-                            caseId: caseItem.id,
-                            patientName: caseItem.patientName,
-                            issuesCount: analysis.issues.length,
-                            issues: analysis.issues,
-                            allIssues: analysis.issues
-                        }
-                    })
-                }).catch(e => {});
-            }
-
-            if (analysis.issues.length > 0) {
-                detailsHtml += `
-                    <div class="tray-status-issues" style="font-size: 0.8em; color: #dc3545; margin-top: 3px; padding: 4px; background-color: #fff5f5; border-left: 3px solid #dc3545; border-radius: 2px;">
-                        <div style="font-weight: 500; margin-bottom: 2px;">
-                            <i class="fas fa-exclamation-circle"></i> Unavailable Trays:
-                        </div>
-                        <div style="line-height: 1.4;">
-                            ${analysis.issues.map((issue, index, array) => `<div style="margin-bottom: 4px; padding-bottom: 3px; ${index < array.length - 1 ? 'border-bottom: 1px solid #ffdddd;' : ''}">${issue}</div>`).join('')}
-                        </div>
-                    </div>
-                `;
-            }
-            
-            // Show comprehensive unavailability info if not all trays are ready but no specific issues were captured
-            if (!analysis.allTraysAvailable && analysis.issues.length === 0 && analysis.conflictWarnings.length === 0) {
-                const missingCount = analysis.requirementCount - (analysis.availableCount + analysis.effectivelyCheckedIn);
-                const readyCount = analysis.availableCount + analysis.effectivelyCheckedIn;
-                
-                // Build detailed fallback message
-                let fallbackMessage = '';
-                if (missingCount > 0) {
-                    fallbackMessage += `${missingCount} tray${missingCount > 1 ? 's' : ''} not accounted for`;
-                    
-                    // Add breakdown if some trays are ready
-                    if (readyCount > 0) {
-                        fallbackMessage += ` (${readyCount}/${analysis.requirementCount} ready)`;
+                    // Determine status display based on tray status
+                    switch (matchingTray.status) {
+                        case 'available':
+                            status = 'Available';
+                            statusColor = '#28a745'; // Green
+                            statusIcon = 'fas fa-check-circle';
+                            isUnavailable = false;
+                            break;
+                        case 'in-use':
+                        case 'checked-in':
+                            if (matchingTray.assignedCaseId === caseItem.id) {
+                                status = 'Ready';
+                                statusColor = '#28a745'; // Green
+                                statusIcon = 'fas fa-check-circle';
+                                isUnavailable = false;
+                            } else {
+                                status = 'In Use';
+                                statusColor = unavailableColor; // Use warning color
+                                statusIcon = 'fas fa-exclamation-triangle';
+                                hasUnavailableTrays = true;
+                            }
+                            break;
+                        case 'picked-up':
+                            status = 'In Surgery';
+                            statusColor = '#6c757d'; // Gray
+                            statusIcon = 'fas fa-clock';
+                            isUnavailable = false; // Consider picked-up as available for this case
+                            break;
+                        default:
+                            status = 'Unavailable';
+                            statusColor = unavailableColor; // Use warning color
+                            statusIcon = 'fas fa-times-circle';
+                            hasUnavailableTrays = true;
                     }
-                    
-                    // Add possible reasons
-                    fallbackMessage += ` - Possible reasons: trays not in system, data sync issues, or unusual tray statuses`;
-                } else {
-                    fallbackMessage += `Tray availability calculation error - ${analysis.requirementCount} required, ${readyCount} appear ready, but system reports not all available`;
+                } else if (requirement.tray_name) {
+                    // Use tray name from requirement if tray not found in system
+                    trayName = requirement.tray_name;
+                    hasUnavailableTrays = true;
                 }
-                
-                detailsHtml += `
-                    <div class="tray-status-issues" style="font-size: 0.8em; color: #dc3545; margin-top: 3px; padding: 4px; background-color: #fff5f5; border-left: 3px solid #dc3545; border-radius: 2px;">
-                        <div style="font-weight: 500; margin-bottom: 2px;">
-                            <i class="fas fa-exclamation-circle"></i> Diagnostic Information:
-                        </div>
-                        <div style="line-height: 1.3;">
-                            ${fallbackMessage}
-                        </div>
-                        <div style="line-height: 1.3; margin-top: 4px; font-size: 0.9em; color: #666;">
-                            Debug: Required=${analysis.requirementCount}, Available=${analysis.availableCount}, CheckedIn=${analysis.effectivelyCheckedIn}, InUse=${analysis.inUseCount}
-                        </div>
+
+                // Add clickable info icon for unavailable trays with escaped data
+                const trayId = (matchingTray ? matchingTray.id : requirement.tray_id || '').replace(/'/g, "\\'");
+                const escapedTrayName = trayName.replace(/'/g, "\\'");
+                const escapedStatus = status.replace(/'/g, "\\'");
+                const assignedCaseId = (matchingTray && matchingTray.assignedCaseId ? matchingTray.assignedCaseId : '').replace(/'/g, "\\'");
+                const infoIcon = isUnavailable ? `<i class="fas fa-info-circle" style="color: ${statusColor}; margin-left: 8px; font-size: 0.9em; cursor: pointer;" onclick="window.app.dashboardManager.showTrayInfoPopup('${trayId}', '${escapedTrayName}', '${escapedStatus}', '${assignedCaseId}')" title="Tray details"></i>` : '';
+
+                // Use status color for tray name to match icon and status text
+                const trayNameColor = statusColor;
+
+                trayDisplays.push(`
+                    <div style="font-size: 1.4em; font-weight: 500; margin-bottom: 8px; display: flex; align-items: center;">
+                        <i class="${statusIcon}" style="color: ${statusColor}; margin-right: 10px; font-size: 1em;"></i>
+                        <span style="color: ${trayNameColor};">${trayName}</span>
+                        <span style="margin-left: 10px; font-size: 1em; color: ${statusColor}; font-weight: 400;">(${status})</span>
+                        ${infoIcon}
+                    </div>
+                `);
+            }
+
+            // Get case details for the info popup - escape single quotes for JavaScript safety
+            const facilityName = (this.getFacilityName(caseItem.facility_id) || 'Unknown Facility').replace(/'/g, "\\'");
+            const physicianName = (this.getSurgeonName(caseItem.physician_id) || 'Unknown Physician').replace(/'/g, "\\'");
+            const caseTypeName = (this.getCaseTypeName(caseItem.caseTypeId) || 'Unknown Case Type').replace(/'/g, "\\'");
+            const caseDateFormatted = caseItem.scheduledDate ?
+                `${new Date(caseItem.scheduledDate).toLocaleDateString()}${caseItem.scheduledTime ? ' ' + caseItem.scheduledTime : ''}` : 'Unknown Date';
+            const patientName = (caseItem.patientName || 'Unknown Patient').replace(/'/g, "\\'");
+
+            // Determine warning display for unavailable trays
+            let warningDisplay = '';
+            if (hasUnavailableTrays) {
+                const isWithin2Days = daysUntilCase <= 2;
+                const warningColor = isWithin2Days ? '#dc3545' : '#ffc107'; // Red if within 2 days, yellow otherwise
+                const warningIcon = isWithin2Days ? 'fas fa-exclamation-circle' : 'fas fa-exclamation-triangle';
+                const warningText = isWithin2Days ? 'URGENT: Trays Unavailable' : 'Trays Unavailable';
+
+                warningDisplay = `
+                    <div style="display: flex; align-items: center; margin-bottom: 8px; font-size: 1.2em; font-weight: 600;">
+                        <i class="${warningIcon}" style="color: ${warningColor}; margin-right: 8px;"></i>
+                        <span style="color: ${warningColor};">${warningText}</span>
                     </div>
                 `;
             }
-            
-            if (analysis.conflictWarnings.length > 0) {
-                detailsHtml += `
-                    <div class="tray-status-conflicts" style="font-size: 0.8em; color: #f57c00; margin-top: 3px; padding: 4px; background-color: #fffbf0; border-left: 3px solid #f57c00; border-radius: 2px;">
-                        <div style="font-weight: 500; margin-bottom: 2px;">
-                            <i class="fas fa-exclamation-triangle"></i> Action Required:
-                        </div>
-                        <div style="line-height: 1.4; font-size: 0.95em;">
-                            ${analysis.conflictWarnings.map((warning, index, array) => `<div style="margin-bottom: 4px; padding-bottom: 3px; ${index < array.length - 1 ? 'border-bottom: 1px solid #ffe4b3;' : ''}">${warning}</div>`).join('')}
-                        </div>
-                    </div>
-                `;
-            }
-            
-            const finalHtml = `
-                <div>
-                    <div>${statusHtml}</div>
-                    <div class="tray-status-details" style="font-size: 0.85em; color: ${hasIssues ? '#dc3545' : '#f57c00'}; margin-top: 2px;">
-                        <i class="fas fa-info-circle"></i> ${statusDetails}
-                    </div>
-                    ${detailsHtml}
-                </div>
-            `;
-            
-            // RENDER STEP 3: Log final HTML output
-            if (window.is_enable_api_logging && window.frontendLogger && (caseItem.id.includes('aa') || (caseItem.patientName && caseItem.patientName.includes('aa')))) {
-                window.frontendLogger.error(`🎯 RENDER STEP 3: Final HTML with details (Case ${caseItem.id})`, {
-                    caseId: caseItem.id,
-                    statusHtml: statusHtml,
-                    statusDetails: statusDetails,
-                    detailsHtml: detailsHtml,
-                    finalHtml: finalHtml,
-                    htmlLength: finalHtml.length
-                });
-            }
-            
-            return finalHtml;
-        } else if (statusDetails) {
-            const simpleHtml = `
-                <div>
-                    <div>${statusHtml}</div>
-                    <div class="tray-status-details" style="font-size: 0.85em; color: #6c757d; margin-top: 2px;">
-                        <i class="fas fa-info-circle"></i> ${statusDetails}
+
+            return `
+                <div style="position: relative;">
+                    <div style="flex-grow: 1;">
+                        ${warningDisplay}
+                        ${trayDisplays.join('')}
                     </div>
                 </div>
             `;
-            
-            // RENDER STEP 3: Log simple HTML output
-            if (window.is_enable_api_logging && window.frontendLogger && (caseItem.id.includes('aa') || (caseItem.patientName && caseItem.patientName.includes('aa')))) {
-                window.frontendLogger.error(`🎯 RENDER STEP 3: Simple HTML (Case ${caseItem.id})`, {
-                    caseId: caseItem.id,
-                    statusHtml: statusHtml,
-                    statusDetails: statusDetails,
-                    simpleHtml: simpleHtml,
-                    htmlLength: simpleHtml.length
-                });
+
+        } catch (error) {
+            console.error('Error rendering tray requirements status:', error);
+            return 'Error loading tray status';
+        }
+    }
+
+    showCaseInfoPopup(caseId, patientName, caseDate, physicianName, facilityName, caseTypeName) {
+        // Create modal HTML
+        const modalHtml = `
+            <div class="modal fade" id="caseInfoModal" tabindex="-1" role="dialog" aria-labelledby="caseInfoModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-sm" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header bg-light">
+                            <h5 class="modal-title" id="caseInfoModalLabel">
+                                <i class="fas fa-info-circle text-info"></i> Case Details
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="case-info-details">
+                                <div class="detail-row">
+                                    <strong>Case Name:</strong>
+                                    <span>${patientName}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <strong>Date:</strong>
+                                    <span>${caseDate}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <strong>Physician:</strong>
+                                    <span>${physicianName}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <strong>Case Type:</strong>
+                                    <span>${caseTypeName}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <strong>Facility:</strong>
+                                    <span>${facilityName}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <style>
+                .case-info-details .detail-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    padding: 8px 0;
+                    border-bottom: 1px solid #eee;
+                }
+                .case-info-details .detail-row:last-child {
+                    border-bottom: none;
+                }
+                .case-info-details .detail-row strong {
+                    color: #495057;
+                    font-weight: 600;
+                    flex-shrink: 0;
+                    margin-right: 15px;
+                }
+                .case-info-details .detail-row span {
+                    text-align: right;
+                    color: #333;
+                    flex-grow: 1;
+                    word-break: break-word;
+                }
+            </style>
+        `;
+
+        // Remove existing modal if it exists
+        const existingModal = document.getElementById('caseInfoModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Add modal to body
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // Show the modal
+        const modal = new bootstrap.Modal(document.getElementById('caseInfoModal'));
+        modal.show();
+
+        // Clean up modal after it's hidden
+        document.getElementById('caseInfoModal').addEventListener('hidden.bs.modal', function() {
+            this.remove();
+        });
+    }
+
+    async showTrayInfoPopup(trayId, trayName, status, assignedCaseId) {
+        // Get case information if tray is assigned to another case
+        let caseInfo = null;
+        console.log('Tray popup debug:', { trayId, trayName, status, assignedCaseId });
+
+        if (assignedCaseId) {
+            try {
+                const allCases = await this.dataManager.getAllCases();
+                const assignedCase = allCases.find(c => c.id === assignedCaseId);
+                console.log('Found assigned case:', assignedCase);
+
+                if (assignedCase) {
+                    caseInfo = {
+                        patientName: assignedCase.patientName || 'Unknown Patient',
+                        date: assignedCase.scheduledDate ?
+                            `${new Date(assignedCase.scheduledDate).toLocaleDateString()}${assignedCase.scheduledTime ? ' ' + assignedCase.scheduledTime : ''}` : 'Unknown Date',
+                        physician: this.getSurgeonName(assignedCase.physician_id) || 'Unknown Physician',
+                        facility: this.getFacilityName(assignedCase.facility_id) || 'Unknown Facility',
+                        caseType: this.getCaseTypeName(assignedCase.caseTypeId) || 'Unknown Case Type'
+                    };
+                    console.log('Created case info:', caseInfo);
+                }
+            } catch (error) {
+                console.error('Error fetching case information:', error);
             }
-            
-            return simpleHtml;
         }
 
-        // RENDER STEP 3: Log minimal HTML output
-        if (window.is_enable_api_logging && window.frontendLogger && (caseItem.id.includes('aa') || (caseItem.patientName && caseItem.patientName.includes('aa')))) {
-            window.frontendLogger.error(`🎯 RENDER STEP 3: Minimal HTML (Case ${caseItem.id})`, {
-                caseId: caseItem.id,
-                statusHtml: statusHtml,
-                htmlLength: statusHtml.length
-            });
+        // Create modal HTML for tray details
+        const modalHtml = `
+            <div class="modal fade" id="trayInfoModal" tabindex="-1" role="dialog" aria-labelledby="trayInfoModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-sm" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header bg-light">
+                            <h5 class="modal-title" id="trayInfoModalLabel">
+                                <i class="fas fa-toolbox text-info"></i> Tray Details
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="tray-info-details">
+                                ${caseInfo ? `
+                                    <div class="detail-row">
+                                        <strong>Case Name:</strong>
+                                        <span>${caseInfo.patientName}</span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <strong>Date:</strong>
+                                        <span>${caseInfo.date}</span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <strong>Location:</strong>
+                                        <span>${caseInfo.facility}</span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <strong>Physician:</strong>
+                                        <span>${caseInfo.physician}</span>
+                                    </div>
+                                ` : `
+                                    <div class="detail-row">
+                                        <strong>Tray Name:</strong>
+                                        <span>${trayName}</span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <strong>Status:</strong>
+                                        <span>${status}</span>
+                                    </div>
+                                    <div class="detail-row">
+                                        <strong>Issue:</strong>
+                                        <span>${status === 'Not Found' ? 'Tray not found in system inventory' :
+                                               'Tray is currently unavailable'}</span>
+                                    </div>
+                                `}
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <style>
+                .tray-info-details .detail-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    padding: 8px 0;
+                    border-bottom: 1px solid #eee;
+                }
+                .tray-info-details .detail-row:last-child {
+                    border-bottom: none;
+                }
+                .tray-info-details .detail-row strong {
+                    color: #495057;
+                    font-weight: 600;
+                    flex-shrink: 0;
+                    margin-right: 15px;
+                }
+                .tray-info-details .detail-row span {
+                    text-align: right;
+                    color: #333;
+                    flex-grow: 1;
+                    word-break: break-word;
+                }
+            </style>
+        `;
+
+        // Remove existing modal if it exists
+        const existingModal = document.getElementById('trayInfoModal');
+        if (existingModal) {
+            existingModal.remove();
         }
 
-        return statusHtml;
+        // Add modal to body
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // Show the modal
+        const modal = new bootstrap.Modal(document.getElementById('trayInfoModal'));
+        modal.show();
+
+        // Clean up modal after it's hidden
+        document.getElementById('trayInfoModal').addEventListener('hidden.bs.modal', function() {
+            this.remove();
+        });
     }
 
     getStatusClass(status) {
@@ -1592,7 +1672,7 @@ export class DashboardManager {
     }
 
     // Check in all available trays for a specific case
-    async checkInTraysForCase(caseId) {
+    async automatedBulkCheckInForCase(caseId) {
         try {
             // Find the case in filtered cases first, then in all cases if not found
             let caseData = this.currentCases.find(c => c.id === caseId);
@@ -1789,6 +1869,576 @@ export class DashboardManager {
         } catch (error) {
             console.error('Error checking in trays:', error);
             this.showErrorNotification('Error checking in trays: ' + error.message);
+        }
+    }
+
+    // Show manual check-in modal for selecting trays and taking photos
+    async showManualCheckInModal(caseId) {
+        try {
+            // Find the case data
+            let caseData = this.currentCases.find(c => c.id === caseId);
+            if (!caseData) {
+                const allCases = await this.dataManager.getAllCases();
+                caseData = allCases.find(c => c.id === caseId);
+            }
+
+            if (!caseData) {
+                this.showErrorNotification('Case not found');
+                return;
+            }
+
+            // Get tray requirements for the case
+            const requirements = this.getTrayRequirements(caseData);
+            if (requirements.length === 0) {
+                this.showInfoNotification('No tray requirements found for this case');
+                return;
+            }
+
+            // Get all available trays
+            const allTrays = await this.dataManager.getAllTrays();
+
+            // Show the manual check-in modal
+            this.displayManualCheckInModal(caseData, requirements, allTrays);
+
+        } catch (error) {
+            console.error('Error showing manual check-in modal:', error);
+            this.showErrorNotification('Error loading manual check-in: ' + error.message);
+        }
+    }
+
+    // Display the manual check-in modal with tray selection and photo options
+    displayManualCheckInModal(caseData, requirements, allTrays) {
+        const modalHtml = '<div class="modal fade" id="manualCheckInModal" tabindex="-1" role="dialog" aria-labelledby="manualCheckInModalLabel" aria-hidden="true">' +
+            '<div class="modal-dialog modal-xl" role="document">' +
+                '<div class="modal-content">' +
+                    '<div class="modal-header">' +
+                        '<h5 class="modal-title" id="manualCheckInModalLabel">' +
+                            '<i class="fas fa-hand-pointer"></i> Check In - ' + (caseData.case_type || 'Case') +
+                        '</h5>' +
+                        '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" onclick="window.app.dashboardManager.closeManualCheckInModal()"></button>' +
+                    '</div>' +
+                    '<div class="modal-body">' +
+                        '<div class="case-info mb-4">' +
+                            '<div class="row">' +
+                                '<div class="col-md-4">' +
+                                    '<h6><i class="fas fa-calendar"></i> Case Information</h6>' +
+                                    '<p><strong>Date:</strong> ' + (caseData.scheduledDate || 'N/A') + '</p>' +
+                                    '<p><strong>Time:</strong> ' + (caseData.scheduledTime || 'N/A') + '</p>' +
+                                '</div>' +
+                                '<div class="col-md-4">' +
+                                    '<p><strong>Physician:</strong> ' + this.getSurgeonName(caseData.physician_id) + '</p>' +
+                                    '<p><strong>Facility:</strong> ' + this.getFacilityName(caseData.facility_id) + '</p>' +
+                                '</div>' +
+                                '<div class="col-md-4">' +
+                                    '<p><strong>Case name:</strong> ' + (caseData.patientName || 'N/A') + '</p>' +
+                                    '<p><strong>Case Type:</strong> ' + this.getCaseTypeName(caseData.caseTypeId) + '</p>' +
+                                '</div>' +
+                            '</div>' +
+                        '</div>' +
+                        '<h6><i class="fas fa-box"></i> Tray Requirements (' + requirements.length + ' trays)</h6>' +
+                        '<div id="manualTrayList" class="tray-requirements-list">' +
+                            this.generateManualTrayRows(requirements, allTrays, caseData.caseTypeId || caseData.case_type_id) +
+                        '</div>' +
+
+                        '<div class="mt-4 border-top pt-4">' +
+                            '<h6><i class="fas fa-camera"></i> Photos for All Checked-In Trays</h6>' +
+                            '<p class="text-muted mb-3">These photos will be added to the history of all checked-in trays:</p>' +
+
+                            '<div class="mb-3">' +
+                                '<button type="button" class="btn btn-outline-primary btn-sm" onclick="window.app.dashboardManager.addPhotoSlot()">' +
+                                    '<i class="fas fa-plus"></i> Add Photo' +
+                                '</button>' +
+                            '</div>' +
+
+                            '<div id="globalPhotoContainer">' +
+                                // Initial photo slot will be added by JavaScript
+                            '</div>' +
+                        '</div>' +
+
+                    '</div>' +
+                    '<div class="modal-footer">' +
+                        '<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick="window.app.dashboardManager.closeManualCheckInModal()">Cancel</button>' +
+                        '<button type="button" class="btn btn-primary" onclick="window.app.dashboardManager.processManualCheckIn(\'' + caseData.id + '\')">' +
+                            '<i class="fas fa-check"></i> Check In Selected Trays' +
+                        '</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+
+        // Remove existing modal if present
+        const existingModal = document.getElementById('manualCheckInModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Add modal to document
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // Show the modal using Bootstrap's JavaScript API
+        const modal = document.getElementById('manualCheckInModal');
+        if (window.bootstrap && window.bootstrap.Modal) {
+            // Bootstrap 5
+            const bootstrapModal = new window.bootstrap.Modal(modal);
+            bootstrapModal.show();
+        } else if (window.Modal) {
+            // Bootstrap 4/5 alternative
+            const bootstrapModal = new window.Modal(modal);
+            bootstrapModal.show();
+        } else {
+            // Fallback - add show class manually
+            modal.classList.add('show');
+            modal.style.display = 'block';
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('modal-open');
+
+            // Add backdrop
+            const backdrop = document.createElement('div');
+            backdrop.className = 'modal-backdrop fade show';
+            backdrop.id = 'manualCheckInBackdrop';
+            document.body.appendChild(backdrop);
+        }
+
+        // Set up photo preview functionality
+        this.setupManualCheckInPhotoPreview();
+    }
+
+    setupManualCheckInPhotoPreview() {
+        // Initialize with one photo slot
+        this.globalPhotoCounter = 0;
+        this.addPhotoSlot();
+    }
+
+    addPhotoSlot() {
+        this.globalPhotoCounter++;
+        const photoId = `globalPhoto${this.globalPhotoCounter}`;
+
+        const photoSlotHtml = `
+            <div class="photo-slot mb-4 p-3 border rounded" id="${photoId}Container">
+                <div class="row">
+                    <div class="col-md-8">
+                        <label class="form-label">Photo ${this.globalPhotoCounter}</label>
+                        <div class="camera-container">
+                            <video id="${photoId}Camera" class="d-none" autoplay></video>
+                            <canvas id="${photoId}Canvas" class="d-none"></canvas>
+                            <div class="photo-controls mb-2">
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="app.photoManager.startCamera('${photoId}')">
+                                    <i class="fas fa-camera"></i> Take Photo
+                                </button>
+                                <input type="file" class="form-control mt-2" id="${photoId}File" accept="image/*" onchange="app.photoManager.handleFileSelect('${photoId}', this)">
+                            </div>
+                        </div>
+                        <input type="text" class="form-control" id="${photoId}Note" placeholder="Add a note for this photo (optional)">
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <button type="button" class="btn btn-outline-danger btn-sm" onclick="window.app.dashboardManager.removePhotoSlot('${photoId}Container')">
+                            <i class="fas fa-trash"></i> Remove
+                        </button>
+                    </div>
+                </div>
+                <div id="${photoId}Preview" class="photo-preview mt-3"></div>
+            </div>
+        `;
+
+        const container = document.getElementById('globalPhotoContainer');
+        if (container) {
+            container.insertAdjacentHTML('beforeend', photoSlotHtml);
+
+            // Set up event listener for file input (not the camera button, that's handled by PhotoManager)
+            const fileInput = document.getElementById(`${photoId}File`);
+            if (fileInput) {
+                fileInput.addEventListener('change', (e) => {
+                    this.handlePhotoPreview(e, document.getElementById(`${photoId}Preview`));
+                });
+            }
+        }
+    }
+
+    removePhotoSlot(containerId) {
+        const container = document.getElementById(containerId);
+        if (container) {
+            container.remove();
+        }
+    }
+
+    // Direct photo upload method as fallback
+    async uploadPhotoDirectly(file, folder = 'tray-checkin-photos') {
+        try {
+            // Get Firebase storage from the global app
+            const storage = window.app?.storage;
+            if (!storage) {
+                console.error('Firebase storage not available');
+                return null;
+            }
+
+            // Import Firebase storage functions dynamically
+            const { ref, uploadBytes, getDownloadURL } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-storage.js");
+
+            const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`;
+            const storageRef = ref(storage, fileName);
+
+            const snapshot = await uploadBytes(storageRef, file);
+            const downloadURL = await getDownloadURL(snapshot.ref);
+
+            return downloadURL;
+        } catch (error) {
+            console.error('Direct photo upload error:', error);
+            return null;
+        }
+    }
+
+    handlePhotoPreview(event, previewContainer) {
+        const file = event.target.files[0];
+        if (file && file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewContainer.innerHTML = `
+                    <div class="position-relative d-inline-block">
+                        <img src="${e.target.result}" class="img-thumbnail" style="max-height: 200px;">
+                        <button type="button" class="btn btn-sm btn-danger position-absolute top-0 end-0"
+                                onclick="this.parentElement.parentElement.innerHTML = ''; this.parentElement.parentElement.previousElementSibling.value = '';"
+                                title="Remove photo">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                `;
+            };
+            reader.readAsDataURL(file);
+        } else {
+            previewContainer.innerHTML = '';
+        }
+    }
+
+    // Generate tray rows for manual selection
+    generateManualTrayRows(requirements, allTrays, caseTypeId = null) {
+        return requirements.map((req, index) => {
+            // Filter trays by case type compatibility if case type is available
+            let filteredTrays = allTrays;
+            if (caseTypeId && window.app?.dataManager?.filterForTrayCompatibilityType) {
+                filteredTrays = window.app.dataManager.filterForTrayCompatibilityType(caseTypeId, allTrays);
+                console.log(`🎯 Check-in: Filtered ${allTrays.length} trays to ${filteredTrays.length} compatible trays for case type: ${caseTypeId}`);
+            }
+
+            // Sort filtered trays alphabetically
+            const sortedTrays = [...filteredTrays].sort((a, b) => {
+                const nameA = (a.tray_name || a.name || a.tray_id || '').toLowerCase();
+                const nameB = (b.tray_name || b.name || b.tray_id || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+
+            const trayOptions = sortedTrays.map(tray => {
+                const isCheckedIn = tray.status === 'in-use';
+                const statusText = isCheckedIn ? ' (Already Checked In)' : ' (' + (tray.status || 'Available') + ')';
+                const isRecommended = (tray.tray_id === req.tray_id || tray.id === req.tray_id);
+
+                return '<option value="' + (tray.id || tray.tray_id) + '" data-tray-name="' + (tray.tray_name || tray.name || tray.tray_id) + '" ' +
+                    (isCheckedIn ? 'disabled' : '') + (isRecommended ? ' selected' : '') + '>' +
+                    (isRecommended ? '⭐ ' : '') + (tray.tray_name || tray.name || tray.tray_id) + ' - ' + (tray.location || 'Unknown Location') + statusText +
+                '</option>';
+            }).join('');
+
+            const statusMessage = '<small class="text-info"><i class="fas fa-exchange-alt"></i> Select any tray to check in (⭐ = recommended for this case)</small>';
+
+            return '<div class="tray-requirement-row mb-4 p-3 border rounded" data-requirement-index="' + index + '">' +
+                '<div class="row">' +
+                    '<div class="col-md-6">' +
+                        '<h6 class="text-primary">' + (req.tray_name || req.tray_id) + '</h6>' +
+                        '<p class="text-muted mb-1">Required: ' + (req.requirement_type || 'Standard') + '</p>' +
+                        '<div class="custom-control custom-checkbox">' +
+                            '<input type="checkbox" class="custom-control-input tray-select-checkbox" id="selectTray_' + index + '" checked>' +
+                            '<label class="custom-control-label" for="selectTray_' + index + '">' +
+                                'Check In This Tray' +
+                            '</label>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="col-md-6">' +
+                        '<label for="traySelect_' + index + '" class="form-label">Select Tray:</label>' +
+                        '<select class="form-control tray-selector" id="traySelect_' + index + '" onchange="window.app.dashboardManager.updateTraySelection(' + index + ')">' +
+                            '<option value="">Choose tray...</option>' +
+                            trayOptions +
+                        '</select>' +
+                        statusMessage +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+    }
+
+
+    // Process manual check-in with selected trays and photos
+    async processManualCheckIn(caseId) {
+        try {
+            const selectedTrays = [];
+            const trayRows = document.querySelectorAll('.tray-requirement-row');
+
+            // Collect selected trays
+            trayRows.forEach((row, index) => {
+                const checkbox = row.querySelector('.tray-select-checkbox');
+                const traySelector = row.querySelector('.tray-selector');
+
+                if (checkbox.checked && traySelector.value) {
+                    selectedTrays.push({
+                        trayId: traySelector.value,
+                        trayName: traySelector.options[traySelector.selectedIndex].dataset.trayName,
+                        requirementIndex: index
+                    });
+                }
+            });
+
+            if (selectedTrays.length === 0) {
+                this.showWarningNotification('Please select at least one tray to check in');
+                return;
+            }
+
+            // Find the case data
+            let caseData = this.currentCases.find(c => c.id === caseId);
+            if (!caseData) {
+                const allCases = await this.dataManager.getAllCases();
+                caseData = allCases.find(c => c.id === caseId);
+            }
+
+            if (!caseData) {
+                this.showErrorNotification('Case not found');
+                return;
+            }
+
+            // Collect and upload all global photos with their notes
+            const globalPhotos = [];
+            const photoSlots = document.querySelectorAll('.photo-slot');
+            console.log(`🔍 Found ${photoSlots.length} photo slots`);
+
+            for (let i = 0; i < photoSlots.length; i++) {
+                const slot = photoSlots[i];
+                const photoInput = slot.querySelector('input[type="file"]');
+                const noteInput = slot.querySelector('input[type="text"]');
+                const note = noteInput ? noteInput.value.trim() : '';
+
+                // Check if PhotoManager has a captured photo for this slot
+                const photoId = slot.id.replace('Container', '');
+                const hasPhotoManagerPhoto = window.app?.photoManager?.hasPhoto(photoId);
+
+                let file = null;
+                let photoSource = '';
+
+                if (hasPhotoManagerPhoto) {
+                    // Use PhotoManager captured photo
+                    photoSource = 'camera';
+                    console.log(`📷 Processing camera photo ${i + 1}, note: "${note}"`);
+                } else if (photoInput && photoInput.files.length > 0) {
+                    // Use file input photo
+                    file = photoInput.files[0];
+                    photoSource = 'file';
+                    console.log(`📷 Processing file photo ${i + 1}: ${file.name}, size: ${file.size}, note: "${note}"`);
+                }
+
+                if (hasPhotoManagerPhoto || file) {
+                    try {
+                        let photoUrl = null;
+
+                        if (hasPhotoManagerPhoto) {
+                            // Upload PhotoManager photo
+                            photoUrl = await window.app.photoManager.uploadPhoto(photoId, 'tray-checkin-photos');
+                        } else if (file) {
+                            // Upload file input photo
+                            if (window.app?.photoManager) {
+                                const tempPhotoContext = `globalPhoto_${Date.now()}_${i}`;
+                                window.app.photoManager.capturedPhotos.set(tempPhotoContext, file);
+                                photoUrl = await window.app.photoManager.uploadPhoto(tempPhotoContext, 'tray-checkin-photos');
+                            } else {
+                                photoUrl = await this.uploadPhotoDirectly(file, 'tray-checkin-photos');
+                            }
+                        }
+
+                        if (photoUrl) {
+                            globalPhotos.push({
+                                url: photoUrl,
+                                note: note
+                            });
+                            console.log(`📸 Global photo uploaded (${photoSource}): ${photoUrl} with note: "${note}"`);
+                        }
+                    } catch (photoError) {
+                        console.error(`Failed to upload global photo:`, photoError);
+                        // Continue with check-in even if photo upload fails
+                    }
+                }
+            }
+
+            console.log(`📊 Photo collection complete: ${globalPhotos.length} photos uploaded`);
+            globalPhotos.forEach((photo, index) => {
+                console.log(`  Photo ${index + 1}: ${photo.url}, note: "${photo.note}"`);
+            });
+
+            // Process check-in for each selected tray
+            let successCount = 0;
+            let errorCount = 0;
+            const errors = [];
+
+            for (const tray of selectedTrays) {
+                try {
+
+                    // Get current user for assignment
+                    const currentUser = window.app?.authManager?.getCurrentUser();
+                    const currentUserId = currentUser?.uid || 'unknown';
+
+                    // Update tray status and assignment (focus only on tray data)
+                    await this.dataManager.updateTray(tray.trayId, {
+                        status: TRAY_STATUS.IN_USE,
+                        assignedCaseId: caseId,
+                        facility: caseData.facility_id,
+                        surgeon: caseData.physician_id,
+                        caseDate: caseData.scheduledDate,
+                        assignedTo: currentUserId,
+                        checkedInAt: new Date().toISOString(),
+                        checkedInBy: currentUserId
+                    });
+
+                    // Create history message with case and user info
+                    const facilityName = this.getFacilityName(caseData.facility_id) || caseData.facility_id || 'Unknown Facility';
+                    const physicianName = this.getSurgeonName(caseData.physician_id) || caseData.physician_id || 'Unknown Physician';
+                    const userName = currentUser?.name || currentUser?.email || 'Unknown User';
+                    const historyMessage = `Check-in to ${facilityName} for case on ${caseData.scheduledDate} with ${physicianName}. Assigned to ${userName}.`;
+
+                    // Add history entries with all global photos and notes
+                    if (globalPhotos.length > 0) {
+                        console.log(`🎯 Adding ${globalPhotos.length} photo history entries for tray: ${tray.trayName}`);
+                        // Add one history entry per photo with its note
+                        for (const photo of globalPhotos) {
+                            const photoHistoryMessage = photo.note ?
+                                `${historyMessage}\n\nNote: ${photo.note}` :
+                                historyMessage;
+
+                            console.log(`📝 Creating history entry with photo: ${photo.url}`);
+                            await this.dataManager.addHistoryEntry(
+                                tray.trayId,
+                                'checkin',
+                                photoHistoryMessage,
+                                photo.url
+                            );
+                        }
+                    } else {
+                        console.log(`📝 Creating history entry without photos for tray: ${tray.trayName}`);
+                        // Add history entry without photo
+                        await this.dataManager.addHistoryEntry(
+                            tray.trayId,
+                            'checkin',
+                            historyMessage,
+                            null
+                        );
+                    }
+                    console.log(`✅ Check-in successful for tray: ${tray.trayName}`);
+                    successCount++;
+
+                } catch (error) {
+                    console.error(`❌ Error checking in tray ${tray.trayName}:`, error);
+                    errors.push(`${tray.trayName}: ${error.message}`);
+                    errorCount++;
+                }
+            }
+
+            // Close modal properly
+            const modal = document.getElementById('manualCheckInModal');
+            if (modal) {
+                // Try to use Bootstrap Modal API first
+                if (window.bootstrap && window.bootstrap.Modal) {
+                    const bootstrapModal = window.bootstrap.Modal.getInstance(modal);
+                    if (bootstrapModal) {
+                        bootstrapModal.hide();
+                    } else {
+                        // Create modal instance and hide it
+                        const newModalInstance = new window.bootstrap.Modal(modal);
+                        newModalInstance.hide();
+                    }
+                } else {
+                    // Fallback - manually hide modal and backdrop
+                    modal.classList.remove('show');
+                    modal.style.display = 'none';
+                    modal.setAttribute('aria-hidden', 'true');
+                    document.body.classList.remove('modal-open');
+
+                    // Remove all modal backdrops (not just specific ID)
+                    const backdrops = document.querySelectorAll('.modal-backdrop');
+                    backdrops.forEach(backdrop => backdrop.remove());
+                }
+
+                // Clean up - remove modal from DOM after a short delay
+                setTimeout(() => {
+                    if (modal && modal.parentNode) {
+                        modal.remove();
+                    }
+                }, 300);
+            }
+
+            // Show results
+            if (successCount > 0 && errorCount === 0) {
+                this.showSuccessNotification(`Successfully checked in ${successCount} trays`);
+            } else if (successCount > 0 && errorCount > 0) {
+                this.showWarningNotification(`Checked in ${successCount} trays, ${errorCount} failed. Errors: ${errors.join(', ')}`);
+            } else {
+                this.showErrorNotification(`Failed to check in trays. Errors: ${errors.join(', ')}`);
+            }
+
+            // Refresh the dashboard
+            await this.loadUpcomingCases();
+
+        } catch (error) {
+            console.error('Error processing manual check-in:', error);
+            this.showErrorNotification('Error processing manual check-in: ' + error.message);
+        }
+    }
+
+    closeManualCheckInModal() {
+        const modal = document.getElementById('manualCheckInModal');
+        if (modal) {
+            // Try to use Bootstrap Modal API first
+            if (window.bootstrap && window.bootstrap.Modal) {
+                const bootstrapModal = window.bootstrap.Modal.getInstance(modal);
+                if (bootstrapModal) {
+                    bootstrapModal.hide();
+                } else {
+                    // Create modal instance and hide it
+                    const newModalInstance = new window.bootstrap.Modal(modal);
+                    newModalInstance.hide();
+                }
+            } else {
+                // Fallback - manually hide modal and backdrop
+                modal.classList.remove('show');
+                modal.style.display = 'none';
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.classList.remove('modal-open');
+
+                // Remove all modal backdrops
+                const backdrops = document.querySelectorAll('.modal-backdrop');
+                backdrops.forEach(backdrop => backdrop.remove());
+            }
+
+            // Clean up - remove modal from DOM after a short delay
+            setTimeout(() => {
+                if (modal && modal.parentNode) {
+                    modal.remove();
+                }
+            }, 300);
+        }
+    }
+
+    updateTraySelection(requirementIndex) {
+        try {
+            const traySelector = document.getElementById(`traySelect_${requirementIndex}`);
+            if (!traySelector || !traySelector.value) return;
+
+            const selectedOption = traySelector.options[traySelector.selectedIndex];
+            const trayName = selectedOption.dataset.trayName || selectedOption.text;
+
+            // Update any visual indicators if needed
+            console.log(`Tray selection updated for requirement ${requirementIndex}: ${trayName}`);
+
+            // Clear any existing photo for this requirement when tray changes
+            const photoContext = `manualCheckin${requirementIndex}`;
+            if (window.app?.photoManager) {
+                window.app.photoManager.clearPhoto(photoContext);
+            }
+
+        } catch (error) {
+            console.error('Error updating tray selection:', error);
         }
     }
 

@@ -131,9 +131,15 @@ export class ViewManager {
 
     initializeCasesView() {
         console.log('Initializing cases view');
-        setTimeout(() => {
+        setTimeout(async () => {
             if (window.app.casesManager) {
                 try {
+                    // Ensure surgeon data is available for case modal dropdowns
+                    if (window.app.dataManager) {
+                        console.log('🔄 Ensuring surgeon data is available for cases view...');
+                        await window.app.dataManager.ensureSurgeonsLoaded();
+                    }
+
                     window.app.casesManager.initializeViewMode();
                     window.app.casesManager.loadCases();
                     console.log('Cases view initialized');
@@ -403,8 +409,15 @@ export class ViewManager {
     }
 
     renderDashboardTrays(trays) {
+        console.log('🎯 renderDashboardTrays() called with', trays?.length || 0, 'trays');
+
         const container = document.getElementById('dashboardTraysContent');
-        if (!container) return;
+        if (!container) {
+            console.warn('❌ dashboardTraysContent container not found');
+            return;
+        }
+
+        console.log('✅ Container found, current innerHTML:', container.innerHTML.includes('Loading trays') ? 'Shows loading spinner' : 'Shows content');
 
         // Apply dashboard filters
         const statusFilter = document.getElementById('dashboardStatusFilter')?.value || '';
@@ -477,6 +490,12 @@ export class ViewManager {
                 <span class="tray-status-badge ${statusClass}">${tray.status}</span>
             </div>
             <div class="tray-card-content">
+                ${this.getTrayTypeText(tray) ? `
+                    <div class="tray-detail">
+                        <i class="fas fa-layer-group"></i>
+                        <span class="tray-detail-value">${this.getTrayTypeText(tray)}</span>
+                    </div>
+                ` : ''}
                 <div class="tray-detail">
                     ${this.isCheckedIn(tray) ? `
                         <i class="fas fa-hospital"></i>
@@ -514,6 +533,12 @@ export class ViewManager {
                     <div class="tray-detail">
                         <i class="fas fa-user-md"></i>
                         <span class="tray-detail-value">${this.getSurgeonName(tray.surgeon)}</span>
+                    </div>
+                ` : ''}
+                ${this.getCaseTypeCompatibilityText(tray) ? `
+                    <div class="tray-detail">
+                        <i class="fas fa-tags"></i>
+                        <span class="tray-detail-value">${this.getCaseTypeCompatibilityText(tray)}</span>
                     </div>
                 ` : ''}
             </div>
@@ -1662,7 +1687,120 @@ export class ViewManager {
                             </div>
                         </div>
                     </div>
-                    
+
+                    <!-- Duplicate Tray Detection & Cleanup -->
+                    <div class="row mt-4">
+                        <div class="col">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="fas fa-copy"></i> Duplicate Tray Detection & Cleanup</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p class="mb-3">Find and remove duplicate tray entries that share the same tray_id or tray_name.</p>
+
+                                    <!-- Status Alert -->
+                                    <div class="alert alert-info mb-3">
+                                        <i class="fas fa-info-circle"></i>
+                                        <strong>Status:</strong> <span id="duplicateStatusText">Click "Scan for Duplicates" to check for duplicate trays</span>
+                                    </div>
+
+                                    <!-- Metrics Row -->
+                                    <div class="row mb-3">
+                                        <div class="col-md-3">
+                                            <div class="text-center p-3 border rounded bg-light">
+                                                <div class="h4 mb-1 text-primary" id="totalTraysScanned">-</div>
+                                                <div class="small text-muted">Total Trays</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="text-center p-3 border rounded bg-light">
+                                                <div class="h4 mb-1 text-success" id="uniqueTraysFound">-</div>
+                                                <div class="small text-muted">Unique Trays</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="text-center p-3 border rounded bg-light">
+                                                <div class="h4 mb-1 text-warning" id="duplicateTraysFound">-</div>
+                                                <div class="small text-muted">Duplicate Trays</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="text-center p-3 border rounded bg-light">
+                                                <div class="h4 mb-1 text-danger" id="duplicateGroupsFound">-</div>
+                                                <div class="small text-muted">Duplicate Groups</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Action Buttons -->
+                                    <div class="mb-3">
+                                        <button class="btn btn-outline-primary me-2" id="scanDuplicatesBtn" onclick="scanForDuplicateTrays()">
+                                            <i class="fas fa-search"></i> Scan for Duplicates
+                                        </button>
+                                        <button class="btn btn-warning me-2" id="previewCleanupBtn" onclick="previewDuplicateCleanup()" disabled>
+                                            <i class="fas fa-eye"></i> Preview Cleanup
+                                        </button>
+                                        <button class="btn btn-danger" id="cleanupDuplicatesBtn" onclick="cleanupDuplicateTrays()" disabled>
+                                            <i class="fas fa-trash"></i> Remove Duplicates
+                                        </button>
+                                    </div>
+
+                                    <!-- Progress Bar -->
+                                    <div id="duplicateProgressContainer" class="d-none mb-3">
+                                        <label class="form-label">Scanning Progress:</label>
+                                        <div class="progress mb-2">
+                                            <div class="progress-bar" id="duplicateProgressBar" role="progressbar" style="width: 0%">0%</div>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <small id="duplicateProgressText">Ready to start...</small>
+                                            <small id="duplicateProgressEta">ETA: --</small>
+                                        </div>
+                                    </div>
+
+                                    <!-- Duplicate Results Table -->
+                                    <div id="duplicateResultsContainer" class="d-none">
+                                        <h6><i class="fas fa-list"></i> Duplicate Tray Groups</h6>
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Tray Name</th>
+                                                        <th>Tray ID</th>
+                                                        <th>Count</th>
+                                                        <th>Document IDs</th>
+                                                        <th>Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="duplicateTraysTableBody">
+                                                    <!-- Results populated here -->
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    <!-- Cleanup Results -->
+                                    <div id="duplicateCleanupResults" class="alert alert-success d-none">
+                                        <h6><i class="fas fa-check-circle"></i> Cleanup Results</h6>
+                                        <div class="row">
+                                            <div class="col-md-3">
+                                                <strong>Processed:</strong> <span id="cleanupResultProcessed">0</span>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <strong>Removed:</strong> <span id="cleanupResultRemoved">0</span>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <strong>Kept:</strong> <span id="cleanupResultKept">0</span>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <strong>Errors:</strong> <span id="cleanupResultErrors">0</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="row mt-4">
                         <div class="col">
                             <div class="card">
@@ -1762,5 +1900,65 @@ export class ViewManager {
             window._trayViewShowingAllTrays = false;
             console.log('🏁 Cleared window._trayViewShowingAllTrays flag');
         }, 200);
+    }
+
+    getTrayTypeText(tray) {
+        // Only show if tray is checked in - show the case type of the current case
+        if (this.isCheckedIn(tray) && tray.assignedCaseId) {
+            const currentCaseType = this.getCurrentCaseType(tray.assignedCaseId);
+            if (currentCaseType) {
+                return currentCaseType;
+            }
+        }
+
+        // If not checked in, return null to hide the field
+        return null;
+    }
+
+    getCurrentCaseType(caseId) {
+        if (!caseId) return null;
+
+        // Get the case from DataManager
+        if (window.app?.dataManager?.getCases) {
+            const cases = window.app.dataManager.getCases();
+            const currentCase = cases.find(c => c.id === caseId);
+
+            if (currentCase && currentCase.caseTypeId) {
+                // Get the case type name
+                return this.getCaseTypeName(currentCase.caseTypeId);
+            }
+        }
+
+        return null;
+    }
+
+    getCaseTypeName(caseTypeId) {
+        if (!caseTypeId) return null;
+
+        // Get case types from DataManager
+        if (window.app?.dataManager?.getCaseTypes) {
+            const caseTypes = window.app.dataManager.getCaseTypes();
+            const caseType = caseTypes.find(ct => ct.id === caseTypeId);
+            return caseType?.name || null;
+        }
+
+        return null;
+    }
+
+    getCaseTypeCompatibilityText(tray) {
+        if (!tray.case_type_compatibility || !Array.isArray(tray.case_type_compatibility) || tray.case_type_compatibility.length === 0) {
+            return null;
+        }
+
+        // Convert case type IDs to names
+        const caseTypeNames = tray.case_type_compatibility.map(caseTypeId => {
+            return this.getCaseTypeName(caseTypeId);
+        }).filter(name => name); // Filter out null/undefined names
+
+        if (caseTypeNames.length === 0) {
+            return null;
+        }
+
+        return `Compatible with: ${caseTypeNames.join(', ')}`;
     }
 }

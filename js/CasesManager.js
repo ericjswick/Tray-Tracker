@@ -229,7 +229,20 @@ export class CasesManager {
 
             const savedCase = await this.dataManager.saveCase(caseData);
             if (savedCase && savedCase.id) {
-                
+
+                // Update physician's last case type
+                if (physician_id && caseTypeId) {
+                    try {
+                        await this.dataManager.updatePhysician(physician_id, {
+                            last_case_type_id: caseTypeId
+                        });
+                        console.log(`✅ Updated physician ${physician_id} last_case_type_id to ${caseTypeId}`);
+                    } catch (error) {
+                        console.error('Failed to update physician last case type:', error);
+                        // Don't fail the case creation if physician update fails
+                    }
+                }
+
                 // Log case creation activity
                 const facilityName = this.getFacilityName(caseData.facility_id) || 'Unknown Facility';
                 const physicianName = this.getPhysicianName(caseData.physician_id) || 'Unknown Physician';
@@ -239,7 +252,7 @@ export class CasesManager {
                     savedCase.id,
                     'case'
                 );
-                
+
                 if (window.is_enable_api_logging && window.frontendLogger) {
                     window.frontendLogger.info('Case save operation successful', {
                         caseId: savedCase.id,
@@ -326,43 +339,64 @@ export class CasesManager {
             filteredCases = filteredCases.filter(caseItem => caseItem.status === statusFilter);
         }
 
-        // Apply date filter
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const weekFromNow = new Date(today);
-        weekFromNow.setDate(weekFromNow.getDate() + 7);
-        const monthFromNow = new Date(today);
-        monthFromNow.setMonth(monthFromNow.getMonth() + 1);
-        const weekAgo = new Date(today);
-        weekAgo.setDate(weekAgo.getDate() - 7);
+        // Apply date filter - use string-based comparison to avoid timezone issues
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+
+        // Calculate other dates as strings
+        const tomorrowDate = new Date();
+        tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+        const tomorrow = tomorrowDate.toISOString().split('T')[0];
+
+        const weekFromNowDate = new Date();
+        weekFromNowDate.setDate(weekFromNowDate.getDate() + 7);
+        const weekFromNow = weekFromNowDate.toISOString().split('T')[0];
+
+        const monthFromNowDate = new Date();
+        monthFromNowDate.setMonth(monthFromNowDate.getMonth() + 1);
+        const monthFromNow = monthFromNowDate.toISOString().split('T')[0];
+
+        const weekAgoDate = new Date();
+        weekAgoDate.setDate(weekAgoDate.getDate() - 7);
+        const weekAgo = weekAgoDate.toISOString().split('T')[0];
 
         filteredCases = filteredCases.filter(caseItem => {
-            const caseDate = new Date(caseItem.scheduledDate);
-            const caseDateOnly = new Date(caseDate.getFullYear(), caseDate.getMonth(), caseDate.getDate());
+            const caseDate = caseItem.scheduledDate; // Already in YYYY-MM-DD format
 
             switch (dateFilter) {
                 case 'today':
-                    return caseDateOnly.getTime() === today.getTime();
+                    return caseDate === today;
                 case 'tomorrow':
-                    return caseDateOnly.getTime() === tomorrow.getTime();
+                    return caseDate === tomorrow;
                 case 'week':
-                    return caseDateOnly >= today && caseDateOnly <= weekFromNow;
+                    return caseDate >= today && caseDate <= weekFromNow;
                 case 'upcoming':
-                    return caseDateOnly >= today;
+                    return caseDate >= today;
                 case 'month':
-                    return caseDateOnly >= today && caseDateOnly <= monthFromNow;
+                    return caseDate >= today && caseDate <= monthFromNow;
                 case 'recent':
-                    return caseDateOnly >= weekAgo && caseDateOnly < today;
+                    return caseDate >= weekAgo && caseDate < today;
                 case 'past':
-                    return caseDateOnly < today;
+                    return caseDate < today;
                 default:
                     return true;
             }
         });
 
-        return filteredCases;
+        // Sort cases by date and time
+        const sortedCases = filteredCases.sort((a, b) => {
+            const dateA = new Date(a.scheduledDate + 'T' + (a.scheduledTime || '08:00'));
+            const dateB = new Date(b.scheduledDate + 'T' + (b.scheduledTime || '08:00'));
+
+            // For past cases, sort newest first (descending)
+            if (dateFilter === 'recent' || dateFilter === 'past') {
+                return dateB - dateA;
+            } else {
+                // For upcoming cases, sort oldest first (ascending)
+                return dateA - dateB;
+            }
+        });
+
+        return sortedCases;
     }
 
     renderCasesList(cases) {
@@ -480,11 +514,11 @@ export class CasesManager {
 
 
     renderCaseCard(caseItem) {
-        const surgeons = this.dataManager.getSurgeons();
         const facilities = this.dataManager.getFacilities();
         const caseTypes = this.dataManager.getCaseTypes();
-        
-        const surgeon = surgeons.find(s => s && s.id === caseItem.physician_id);
+
+        // Use consistent physician name lookup
+        const surgeonName = this.getSurgeonName(caseItem.physician_id);
         const facility = facilities.find(f => f && f.id === caseItem.facility_id);
         const caseType = caseTypes.find(ct => ct && ct.id === caseItem.caseTypeId);
         
@@ -510,7 +544,7 @@ export class CasesManager {
                     <div class="tray-card-content">
                         <div class="tray-detail">
                             <i class="fas fa-user-md"></i>
-                            <span class="tray-detail-value">${surgeon ? surgeon.full_name : (surgeons.length === 0 ? 'Loading...' : 'Unknown Surgeon')}</span>
+                            <span class="tray-detail-value">${surgeonName || 'Unknown Physician'}</span>
                         </div>
                         <div class="tray-detail">
                             <i class="fas fa-hospital"></i>
@@ -542,9 +576,11 @@ export class CasesManager {
                         <button class="btn btn-sm btn-outline-info" onclick="window.app.casesManager.viewCaseDetails('${caseItem.id}')" title="View Details">
                             <i class="fas fa-eye"></i>
                         </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="window.app.casesManager.deleteCase('${caseItem.id}')" title="Delete Case">
-                            <i class="fas fa-trash"></i>
-                        </button>
+                        ${caseItem.status === CASE_STATUS.SCHEDULED ? `
+                            <button class="btn btn-sm btn-outline-primary" onclick="window.app.casesManager.showManualCheckInModal('${caseItem.id}')" title="Check In">
+                                <i class="fas fa-hand-pointer"></i> Check In
+                            </button>
+                        ` : ''}
                     </div>
                 </div>
             </div>
@@ -583,7 +619,7 @@ export class CasesManager {
                                                 <small>${caseItem.scheduledTime || '08:00'}</small>
                                             </div>
                                             <small class="text-muted">
-                                                ${this.dataManager.getSurgeons().find(s => s && s.id === caseItem.physician_id)?.full_name || 'Unknown Surgeon'}
+                                                ${this.getSurgeonName(caseItem.physician_id) || 'Unknown Physician'}
                                             </small>
                                         </div>
                                     </div>
@@ -668,15 +704,44 @@ export class CasesManager {
                         caseData: {
                             id: caseData.id,
                             patientName: caseData.patientName,
-                            hasTrayRequirements: !!(caseData.tray_requirements || caseData.trayRequirements),
-                            trayRequirementsCount: (caseData.tray_requirements || caseData.trayRequirements || []).length
+                            hasTrayRequirements: !!caseData.tray_requirements,
+                            trayRequirementsCount: (caseData.tray_requirements || []).length
                         }
                     }, 'case-edit-flow');
                 }
                 this.populateEditForm(caseData);
-                
+
+                // Ensure dropdowns are populated before showing modal
+                await window.app.modalManager.populateCaseModalDropdowns();
+
+                // Update modal footer to include delete button on the left
+                const modalFooter = document.querySelector('#editCaseModal .modal-footer');
+                if (modalFooter) {
+                    modalFooter.innerHTML = `
+                        <button type="button" class="btn btn-danger me-auto" onclick="window.app.casesManager.deleteCase('${caseData.id}')" data-bs-dismiss="modal">
+                            <i class="fas fa-trash"></i> Delete Case
+                        </button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="app.casesManager.updateCase()">Update Case</button>
+                    `;
+                }
+
                 const modal = new bootstrap.Modal(document.getElementById('editCaseModal'));
                 modal.show();
+
+                // Re-populate form values after dropdowns are loaded to ensure physician selection works
+                setTimeout(async () => {
+                    // Double-check that physician dropdown is populated before setting values
+                    const editPhysicianSelect = document.getElementById('editCasePhysician');
+                    if (editPhysicianSelect && editPhysicianSelect.options.length <= 1) {
+                        console.log('🔄 Physician dropdown empty on edit, ensuring surgeons loaded...');
+                        if (window.app.dataManager) {
+                            await window.app.dataManager.ensureSurgeonsLoaded();
+                        }
+                    }
+
+                    this.populateEditForm(caseData);
+                }, 100);
             } else {
                 if (window.is_enable_api_logging && window.frontendLogger) {
                     window.frontendLogger.error('No case data received', { caseId: caseId }, 'case-edit-flow');
@@ -696,15 +761,29 @@ export class CasesManager {
 
     async populateEditForm(caseData) {
         if (window.frontendLogger) {
-            window.frontendLogger.info('populateEditForm started', { 
+            window.frontendLogger.info('populateEditForm started', {
                 caseId: caseData.id,
-                patientName: caseData.patientName 
+                patientName: caseData.patientName
             }, 'case-edit-flow');
         }
 
         document.getElementById('editCaseId').value = caseData.id;
         document.getElementById('editPatientName').value = caseData.patientName || '';
-        document.getElementById('editCasePhysician').value = caseData.physician_id || '';
+
+        // Handle physician dropdown - check if it's populated first
+        const physicianSelect = document.getElementById('editCasePhysician');
+        if (physicianSelect) {
+            // Check if dropdown has options (more than just the default option)
+            if (physicianSelect.options.length > 1) {
+                physicianSelect.value = caseData.physician_id || '';
+                console.log(`👨‍⚕️ Set physician value: ${caseData.physician_id}`);
+            } else {
+                console.log('⚠️ Physician dropdown not populated yet, will set value after dropdown loads');
+                // Store the value to be set later
+                physicianSelect.setAttribute('data-pending-value', caseData.physician_id || '');
+            }
+        }
+
         document.getElementById('editCaseFacility').value = caseData.facility_id || '';
         document.getElementById('editCaseType').value = caseData.caseTypeId || '';
         document.getElementById('editScheduledDate').value = caseData.scheduledDate || '';
@@ -896,13 +975,12 @@ export class CasesManager {
 
     // Helper method to get tray requirements from case data (handles both field name formats)
     getTrayRequirements(caseData) {
-        const result = caseData.tray_requirements || caseData.trayRequirements || [];
-        
+        const result = caseData.tray_requirements || [];
+
         if (window.frontendLogger) {
             window.frontendLogger.info('CasesManager.getTrayRequirements() called', {
                 caseId: caseData.id,
                 tray_requirements: caseData.tray_requirements,
-                trayRequirements: caseData.trayRequirements,
                 result: result,
                 resultType: typeof result,
                 resultLength: result?.length,
@@ -949,6 +1027,21 @@ export class CasesManager {
             }
 
             await this.dataManager.updateCase(caseId, updates);
+
+            // Update physician's last case type
+            const physician_id = updates.physician_id;
+            const caseTypeId = updates.caseTypeId;
+            if (physician_id && caseTypeId) {
+                try {
+                    await this.dataManager.updatePhysician(physician_id, {
+                        last_case_type_id: caseTypeId
+                    });
+                    console.log(`✅ Updated physician ${physician_id} last_case_type_id to ${caseTypeId} (case update)`);
+                } catch (error) {
+                    console.error('Failed to update physician last case type:', error);
+                    // Don't fail the case update if physician update fails
+                }
+            }
             
             // Check if case status was changed to "Removed" - if so, move all checked-in trays to trunk
             if (updates.status === 'removed') {
@@ -1049,7 +1142,18 @@ export class CasesManager {
                     ` : ''}
                 </div>
             `;
-            
+
+            // Update modal footer to include delete button on the left
+            const modalFooter = document.querySelector('#caseDetailsModal .modal-footer');
+            if (modalFooter) {
+                modalFooter.innerHTML = `
+                    <button type="button" class="btn btn-danger me-auto" onclick="window.app.casesManager.deleteCase('${caseData.id}')" data-bs-dismiss="modal">
+                        <i class="fas fa-trash"></i> Delete Case
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                `;
+            }
+
             const modal = new bootstrap.Modal(document.getElementById('caseDetailsModal'));
             modal.show();
         }
@@ -1292,5 +1396,36 @@ export class CasesManager {
             return physician ? physician.full_name : null;
         }
         return null;
+    }
+
+    // Helper function to get surgeon name from ID - consistent with DashboardManager
+    getSurgeonName(surgeonId) {
+        if (!surgeonId) return null;
+
+        // If it's already a name (not an ID), return it
+        if (typeof surgeonId === 'string' && !surgeonId.match(/^[a-zA-Z0-9]{20,}$/)) {
+            return surgeonId;
+        }
+
+        // Try to find surgeon by ID
+        if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons) {
+            const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === surgeonId);
+            return surgeon ? `${surgeon.title || 'Dr.'} ${surgeon.full_name}` : null;
+        }
+
+        // Fallback to DataManager
+        const surgeons = this.dataManager.getSurgeons();
+        const surgeon = surgeons.find(s => s && s.id === surgeonId);
+        return surgeon ? `${surgeon.title || 'Dr.'} ${surgeon.full_name}` : null;
+    }
+
+    // Delegate to DashboardManager for check-in functionality
+    async showManualCheckInModal(caseId) {
+        if (window.app.dashboardManager) {
+            await window.app.dashboardManager.showManualCheckInModal(caseId);
+        } else {
+            console.error('DashboardManager not available');
+            this.showErrorNotification('Check-in functionality not available');
+        }
     }
 }

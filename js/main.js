@@ -30,6 +30,7 @@ import { SurgeonManager } from './SurgeonManager.js';
 import { CaseTypeManager } from './CaseTypeManager.js';
 import { CasesManager } from './CasesManager.js';
 import { DashboardManager } from './DashboardManager.js';
+import { DuplicateTrayManager } from './utils/DuplicateTrayManager.js';
 import { MigrationsManager } from './MigrationsManager.js';
 import { emailNotifications } from './utils/EmailNotifications.js';
 import { FrontendLogger } from './utils/FrontendLogger.js';
@@ -89,6 +90,7 @@ class SIBoneApp {
         this.casesManager = new CasesManager(this.dataManager);
         this.dashboardManager = new DashboardManager(this.dataManager);
         this.migrationsManager = new MigrationsManager();
+        this.duplicateTrayManager = new DuplicateTrayManager(db);
         this.emailNotifications = emailNotifications;
         
         // Initialize migration tools
@@ -110,6 +112,7 @@ class SIBoneApp {
         window.facilityIdNullRemovalMigration = this.facilityIdNullRemovalMigration;
         window.facilityGeocodingMigration = this.facilityGeocodingMigration;
         window.facilityNameToAccountNameMigration = this.facilityNameToAccountNameMigration;
+        window.duplicateTrayManager = this.duplicateTrayManager;
         
         // Add convenient global functions for tray field migration
         window.checkTrayCompatibility = () => this.trayMigration.checkCompatibility();

@@ -1,10 +1,12 @@
 // js/TrayManager.js - Updated for Tray Tracker
 import { TRAY_STATUS, normalizeStatus, isInUseStatus, isAvailableStatus, isCheckedInStatus, getStatusDisplayText, getStatusColor } from './constants/TrayStatus.js';
 import { TRAY_LOCATIONS, getLocationDisplayText, getLocationIcon, getLocationCoordinates } from './constants/TrayLocations.js';
+import { collection, addDoc, query, where, getDocs } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
 export class TrayManager {
     constructor(dataManager) {
         this.dataManager = dataManager;
         this.currentTrays = [];
+        console.log('🔧 TrayManager initialized with empty currentTrays array');
         this.viewMode = this.getStoredViewMode();
         console.log('TrayManager constructor - facility debug version loaded');
     }
@@ -301,17 +303,20 @@ export class TrayManager {
             const facility = document.getElementById('checkinFacilityName').value;
             const surgeon = document.getElementById('physician').value;
             const notes = document.getElementById('checkinNotes').value;
-            
+
             // Get selected case info if case method is selected
-            const checkinMethod = document.querySelector('input[name="checkinMethod"]:checked').value;
+            const checkinMethodElement = document.querySelector('input[name="checkinMethod"]:checked');
+            const checkinMethod = checkinMethodElement ? checkinMethodElement.value : 'unknown';
+
             let caseDate = '';
             let selectedCaseId = null;
             
             if (checkinMethod === 'case') {
                 selectedCaseId = document.getElementById('checkinCaseSelect').value;
+
                 // Get case date from selected case
                 if (selectedCaseId && window.app.casesManager) {
-                    const caseData = window.app.casesManager.getCaseById(selectedCaseId);
+                    const caseData = await window.app.casesManager.getCaseById(selectedCaseId);
                     if (caseData && caseData.scheduledDate) {
                         caseDate = caseData.scheduledTime ? `${caseData.scheduledDate}T${caseData.scheduledTime}` : caseData.scheduledDate;
                     }
@@ -359,9 +364,26 @@ export class TrayManager {
             };
 
             await this.dataManager.updateTray(trayId, updates);
+
+            // If checked in for a specific case, add this tray to the case's tray requirements
+            if (selectedCaseId && checkinMethod === 'case') {
+                try {
+                    await this.addTrayToCase(trayId, selectedCaseId);
+                    console.log(`✅ Tray ${trayId} added to case ${selectedCaseId} requirements`);
+                } catch (error) {
+                    console.error('Error adding tray to case requirements:', error);
+                    // Don't fail the entire check-in process if this fails
+                }
+            }
+
             // Create history entry message with assignment info
             const userName = currentUser?.name || currentUser?.email || 'Unknown User';
-            const historyMessage = `Checked in to ${this.getFacilityName(facility)}${caseDate ? ` for case on ${caseDate}` : ''}${surgeon ? ` with ${this.getSurgeonName(surgeon)}` : ''}. Automatically assigned to ${userName}.`;
+            let historyMessage = `Checked in to ${this.getFacilityName(facility)}${caseDate ? ` for case on ${caseDate}` : ''}${surgeon ? ` with ${this.getSurgeonName(surgeon)}` : ''}. Automatically assigned to ${userName}.`;
+
+            // Add notes if provided
+            if (notes && notes.trim()) {
+                historyMessage += `\n\nNote: ${notes.trim()}`;
+            }
             
             await this.dataManager.addHistoryEntry(
                 trayId,
@@ -615,9 +637,23 @@ export class TrayManager {
                         this.facilityCheckAttempts = (this.facilityCheckAttempts || 0) + 1;
                         setTimeout(checkForFacilities, 200);
                     } else {
-                        console.warn('Facility loading timeout after 5 seconds');
+                        const facilityManagerCount = window.app.facilityManager?.currentFacilities?.length || 0;
+                        const dataManagerCount = this.dataManager.getFacilities()?.length || 0;
+                        console.warn('Facility loading timeout after 5 seconds', {
+                            facilityManagerCount,
+                            dataManagerCount,
+                            facilityManagerExists: !!window.app.facilityManager,
+                            dataManagerExists: !!this.dataManager,
+                            hasFacilityManagerData: facilityManagerCount > 0,
+                            hasDataManagerData: dataManagerCount > 0
+                        });
+
+                        // Continue anyway and render with available data
                         this.facilityUpdateScheduled = false;
                         this.facilityCheckAttempts = 0;
+
+                        // Try to render trays anyway, in case facilities load later
+                        this.renderTrays(this.currentTrays);
                     }
                 }
             };
@@ -654,14 +690,20 @@ export class TrayManager {
     }
 
     handleTraysUpdate(trays) {
+        console.log(`🚀 TrayManager.handleTraysUpdate called with ${trays?.length || 0} trays`);
+        console.log('Current view:', window.app.viewManager?.currentView);
+
         this.currentTrays = trays;
         this.renderTrays(trays);
         this.updateStats(trays);
 
         // Update dashboard if currently viewing dashboard
         if (window.app.viewManager && window.app.viewManager.currentView === 'dashboard') {
+            console.log('📊 Updating dashboard with trays...');
             window.app.viewManager.renderDashboardTrays(trays);
             window.app.viewManager.updateTrayStats(trays);
+        } else {
+            console.log('ℹ️ Not on dashboard view, skipping dashboard tray update');
         }
 
         // Update map if available
@@ -791,10 +833,12 @@ export class TrayManager {
                 <span class="tray-status-badge ${statusClass}">${tray.status}</span>
             </div>
             <div class="tray-card-content">
-                <div class="tray-detail">
-                    <i class="fas fa-layer-group"></i>
-                    <span class="tray-detail-value">${this.getTrayTypeText(tray)}</span>
-                </div>
+                ${this.getTrayTypeText(tray) ? `
+                    <div class="tray-detail">
+                        <i class="fas fa-layer-group"></i>
+                        <span class="tray-detail-value">${this.getTrayTypeText(tray)}</span>
+                    </div>
+                ` : ''}
                 <div class="tray-detail">
                     ${this.isCheckedIn(tray) ? `
                         <i class="fas fa-hospital"></i>
@@ -842,6 +886,12 @@ export class TrayManager {
                     <div class="tray-detail">
                         <i class="fas fa-user"></i>
                         <span class="tray-detail-value">Assigned to: ${this.getUserName(tray.assignedTo)}</span>
+                    </div>
+                ` : ''}
+                ${this.getCaseTypeCompatibilityText(tray) ? `
+                    <div class="tray-detail">
+                        <i class="fas fa-tags"></i>
+                        <span class="tray-detail-value">${this.getCaseTypeCompatibilityText(tray)}</span>
                     </div>
                 ` : ''}
             </div>
@@ -943,19 +993,64 @@ export class TrayManager {
     }
 
     getTrayTypeText(tray) {
-        // Support both MyRepData case type compatibility and legacy type
-        if (tray.case_type_compatibility && Array.isArray(tray.case_type_compatibility) && tray.case_type_compatibility.length > 0) {
-            return tray.case_type_compatibility.join(', ');
+        // Only show if tray is checked in - show the case type of the current case
+        if (this.isCheckedIn(tray) && tray.assignedCaseId) {
+            const currentCaseType = this.getCurrentCaseType(tray.assignedCaseId);
+            if (currentCaseType) {
+                return currentCaseType;
+            }
         }
-        
-        // Fallback to legacy type mapping
-        const typeTexts = {
-            'fusion': 'Fusion Set',
-            'revision': 'Revision Kit',
-            'mi': 'Minimally Invasive',
-            'complete': 'Complete System'
-        };
-        return typeTexts[tray.type] || tray.type || 'General Purpose';
+
+        // If not checked in, return null to hide the field
+        return null;
+    }
+
+
+    getCurrentCaseType(caseId) {
+        if (!caseId) return null;
+
+        // Get the case from DataManager
+        if (window.app?.dataManager?.getCases) {
+            const cases = window.app.dataManager.getCases();
+            const currentCase = cases.find(c => c.id === caseId);
+
+            if (currentCase && currentCase.caseTypeId) {
+                // Get the case type name
+                return this.getCaseTypeName(currentCase.caseTypeId);
+            }
+        }
+
+        return null;
+    }
+
+    getCaseTypeName(caseTypeId) {
+        if (!caseTypeId) return null;
+
+        // Get case types from DataManager
+        if (window.app?.dataManager?.getCaseTypes) {
+            const caseTypes = window.app.dataManager.getCaseTypes();
+            const caseType = caseTypes.find(ct => ct.id === caseTypeId);
+            return caseType?.name || null;
+        }
+
+        return null;
+    }
+
+    getCaseTypeCompatibilityText(tray) {
+        if (!tray.case_type_compatibility || !Array.isArray(tray.case_type_compatibility) || tray.case_type_compatibility.length === 0) {
+            return null;
+        }
+
+        // Convert case type IDs to names
+        const caseTypeNames = tray.case_type_compatibility.map(caseTypeId => {
+            return this.getCaseTypeName(caseTypeId);
+        }).filter(name => name); // Filter out null/undefined names
+
+        if (caseTypeNames.length === 0) {
+            return null;
+        }
+
+        return `Compatible with: ${caseTypeNames.join(', ')}`;
     }
 
     getLocationIcon(location) {
@@ -1815,6 +1910,56 @@ export class TrayManager {
         } else {
             // Refresh the current trays display
             this.loadTrays();
+        }
+    }
+
+    async addTrayToCase(trayId, caseId) {
+        try {
+            // Get the current case data
+            const caseData = await this.dataManager.getCase(caseId);
+            if (!caseData) {
+                throw new Error(`Case ${caseId} not found`);
+            }
+
+            // Get tray information
+            const trayData = await this.dataManager.getTray(trayId);
+            if (!trayData) {
+                throw new Error(`Tray ${trayId} not found`);
+            }
+
+            // Initialize tray requirements array from the case document
+            const trayRequirements = caseData.tray_requirements || [];
+
+            // Check if this tray is already in the requirements
+            const existingRequirement = trayRequirements.find(req =>
+                req.tray_id === trayId || req.tray_id === trayData.id
+            );
+
+            if (!existingRequirement) {
+                // Add new tray requirement
+                const newRequirement = {
+                    tray_id: trayId,
+                    tray_name: trayData.name || trayData.tray_name || `Tray ${trayId.slice(-4)}`,
+                    added_via_checkin: true,
+                    added_timestamp: new Date().toISOString()
+                };
+
+                trayRequirements.push(newRequirement);
+
+                // Update the case document with the new tray requirements
+                await this.dataManager.updateCase(caseId, {
+                    tray_requirements: trayRequirements,
+                    updated_at: new Date().toISOString()
+                });
+
+                console.log(`✅ Added new tray ${trayId} to case ${caseId} tray_requirements field`);
+            } else {
+                console.log(`ℹ️ Tray ${trayId} already exists in case tray_requirements field`);
+            }
+
+        } catch (error) {
+            console.error('Error in addTrayToCase:', error);
+            throw error;
         }
     }
 }

@@ -129,6 +129,8 @@ export class AuthManager {
     }
 
     async checkInitialData() {
+        // Commented out to test loading issues
+        /*
         try {
             setTimeout(async () => {
                 if (window.app && window.app.demoManager) {
@@ -143,6 +145,8 @@ export class AuthManager {
         } catch (error) {
             console.error('Error checking initial data:', error);
         }
+        */
+        console.log('🚫 checkInitialData() temporarily disabled for debugging');
     }
 
     showDataInitializedNotification() {
@@ -338,11 +342,19 @@ export class AuthManager {
     }
 
     showMainApp() {
+        console.log('🚀 showMainApp() called - hiding loading state and showing main app');
+
         this.hideLoadingState();
+
+        const mainApp = document.getElementById('mainApp');
+        console.log('Main app element found:', !!mainApp);
+
         document.getElementById('loginScreen').classList.add('d-none');
         document.getElementById('registerScreen').classList.add('d-none');
         document.getElementById('forgotPasswordScreen').classList.add('d-none');
         document.getElementById('mainApp').classList.remove('d-none');
+
+        console.log('✅ Main app should now be visible - screens hidden, mainApp shown');
 
         // Initialize data when user logs in
         if (window.app && window.app.dataManager) {
@@ -358,11 +370,17 @@ export class AuthManager {
 
     async waitForRoutingAndNavigate() {
         console.log('🔄 Waiting for routing to be initialized...');
-        
+        console.log('Current state:', {
+            hasApp: !!window.app,
+            hasViewManager: !!window.app?.viewManager,
+            hasRoutingStrategy: !!window.app?.viewManager?.routingStrategy,
+            viewManagerType: typeof window.app?.viewManager
+        });
+
         // Wait for ViewManager to be available and routing initialized
         const maxWait = 50; // 5 seconds max
         let attempts = 0;
-        
+
         while (attempts < maxWait) {
             if (window.app.viewManager && window.app.viewManager.routingStrategy) {
                 console.log('✅ Routing is ready, determining navigation...');
@@ -392,9 +410,24 @@ export class AuthManager {
             // Wait 100ms before checking again
             await new Promise(resolve => setTimeout(resolve, 100));
             attempts++;
+
+            if (attempts % 10 === 0) { // Log every second
+                console.log(`Still waiting for routing... attempt ${attempts}/50, state:`, {
+                    hasApp: !!window.app,
+                    hasViewManager: !!window.app?.viewManager,
+                    hasRoutingStrategy: !!window.app?.viewManager?.routingStrategy
+                });
+            }
         }
-        
-        console.warn('⚠️ Routing initialization timeout, using fallback navigation');
+
+        console.warn('⚠️ Routing initialization timeout, using fallback navigation', {
+            finalState: {
+                hasApp: !!window.app,
+                hasViewManager: !!window.app?.viewManager,
+                hasRoutingStrategy: !!window.app?.viewManager?.routingStrategy,
+                attempts: attempts
+            }
+        });
         // Fallback navigation if routing doesn't initialize
         if (window.app.viewManager) {
             window.app.viewManager.showView('dashboard');

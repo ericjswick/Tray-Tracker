@@ -35,8 +35,14 @@ export class PhotoManager {
             video.srcObject = this.currentStream;
             video.classList.remove('d-none');
 
-            // Add capture button
+            // Hide the static HTML "Take Photo" button and add dynamic capture button
             const container = video.parentElement;
+            const photoControls = container.querySelector('.photo-controls');
+            const staticButton = photoControls?.querySelector('button');
+            if (staticButton) {
+                staticButton.style.display = 'none';
+            }
+
             let captureBtn = container.querySelector('.capture-btn');
             if (!captureBtn) {
                 captureBtn = document.createElement('button');
@@ -146,7 +152,21 @@ export class PhotoManager {
             this.handlePhotoCapture(context, blob);
         }, 'image/jpeg', 0.8);
 
+        // Automatically close camera after taking photo
         this.stopCamera();
+    }
+
+    updateCaptureButtonToClose(context) {
+        const video = document.getElementById(`${context}Camera`);
+        const container = video?.parentElement;
+
+        if (container) {
+            const captureBtn = container.querySelector('.capture-btn');
+            if (captureBtn) {
+                captureBtn.innerHTML = '<i class="fas fa-times"></i> Close Camera';
+                captureBtn.onclick = () => this.stopCamera();
+            }
+        }
     }
 
     handleFileSelect(context, input) {
@@ -198,34 +218,52 @@ export class PhotoManager {
             // Store the blob for later upload
             this.capturedPhotos.set(context, blob);
 
-            // Show preview
-            const previewDiv = document.getElementById(`${context}PhotoPreview`);
-            if (previewDiv) {
-                const img = document.createElement('img');
-                img.src = URL.createObjectURL(blob);
-                img.className = 'photo-preview';
-                img.style.cssText = `
-                    max-width: 150px;
-                    max-height: 150px;
-                    object-fit: cover;
-                    border-radius: 0.375rem;
-                    border: 1px solid var(--gray-200);
-                    margin-top: 0.5rem;
-                `;
+            // Show preview - try both PhotoPreview and Preview (for photo slots)
+            let previewDiv = document.getElementById(`${context}PhotoPreview`);
+            if (!previewDiv) {
+                previewDiv = document.getElementById(`${context}Preview`);
+            }
 
+            if (previewDiv) {
+                const url = URL.createObjectURL(blob);
                 previewDiv.innerHTML = `
-                    <div class="alert alert-success">
-                        <i class="fas fa-check"></i> Photo captured successfully!
-                        <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="app.photoManager.clearPhoto('${context}')">
-                            <i class="fas fa-trash"></i> Remove
+                    <div class="position-relative d-inline-block">
+                        <img src="${url}" class="img-thumbnail" style="max-width: 150px; max-height: 150px; object-fit: cover;">
+                        <button type="button" class="btn btn-sm btn-danger position-absolute"
+                                style="top: -8px; right: -8px; width: 24px; height: 24px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center;"
+                                onclick="app.photoManager.clearPhoto('${context}'); this.closest('.position-relative').remove();"
+                                title="Remove photo">
+                            <i class="fas fa-times" style="font-size: 12px;"></i>
                         </button>
                     </div>
                 `;
-                previewDiv.appendChild(img);
+
+                // Hide the camera button after photo is taken
+                this.hideCameraButton(context);
             }
         } catch (error) {
             console.error('Photo capture error:', error);
             alert('Error capturing photo: ' + error.message);
+        }
+    }
+
+    hideCameraButton(context) {
+        const container = document.getElementById(`${context}Container`);
+        if (container) {
+            const cameraButton = container.querySelector('button[onclick*="startCamera"]');
+            if (cameraButton) {
+                cameraButton.style.display = 'none';
+            }
+        }
+    }
+
+    showCameraButton(context) {
+        const container = document.getElementById(`${context}Container`);
+        if (container) {
+            const cameraButton = container.querySelector('button[onclick*="startCamera"]');
+            if (cameraButton) {
+                cameraButton.style.display = '';
+            }
         }
     }
 
@@ -263,13 +301,22 @@ export class PhotoManager {
                 video.srcObject = null;
             }
 
-            // Remove camera control buttons
+            // Reset camera control buttons and show static button
             const container = video?.parentElement;
             if (container) {
                 const captureBtn = container.querySelector('.capture-btn');
                 const switchBtn = container.querySelector('.switch-camera-btn');
+
+                // Remove dynamic buttons
                 if (captureBtn) captureBtn.remove();
                 if (switchBtn) switchBtn.remove();
+
+                // Show the static HTML "Take Photo" button again
+                const photoControls = container.querySelector('.photo-controls');
+                const staticButton = photoControls?.querySelector('button');
+                if (staticButton) {
+                    staticButton.style.display = '';
+                }
             }
         }
     }
@@ -280,16 +327,27 @@ export class PhotoManager {
 
     clearPhoto(context) {
         this.capturedPhotos.delete(context);
-        const previewDiv = document.getElementById(`${context}PhotoPreview`);
+
+        // Clear preview - try both PhotoPreview and Preview (for photo slots)
+        let previewDiv = document.getElementById(`${context}PhotoPreview`);
+        if (!previewDiv) {
+            previewDiv = document.getElementById(`${context}Preview`);
+        }
         if (previewDiv) {
             previewDiv.innerHTML = '';
         }
 
-        // Reset photo inputs
+        // Reset photo inputs - try multiple input patterns
         const cameraInput = document.getElementById(`${context}CameraInput`);
         const galleryInput = document.getElementById(`${context}GalleryInput`);
+        const fileInput = document.getElementById(`${context}File`);
+
         if (cameraInput) cameraInput.value = '';
         if (galleryInput) galleryInput.value = '';
+        if (fileInput) fileInput.value = '';
+
+        // Show the camera button again
+        this.showCameraButton(context);
     }
 
     isMobileDevice() {

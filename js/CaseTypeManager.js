@@ -122,6 +122,7 @@ export class CaseTypeManager {
                 
                 for (const requirement of this.tempTrayRequirements) {
                     await addDoc(trayRequirementsCollection, {
+                        case_type_id: docRef.id,
                         case_type_name: caseTypeName,
                         tray_id: requirement.tray_id,
                         tray_name: requirement.tray_name,
@@ -165,12 +166,25 @@ export class CaseTypeManager {
             await updateDoc(doc(this.db, 'casetypes', caseTypeId), updates);
 
             // Update tray requirements in separate collection
-            // First, delete existing requirements for this case type
-            const existingRequirementsQuery = query(
+            // First, delete existing requirements for this case type (using OR logic)
+            const existingRequirementsById = query(
+                collection(this.db, 'tray_requirements'),
+                where('case_type_id', '==', caseTypeId)
+            );
+            const existingRequirementsByName = query(
                 collection(this.db, 'tray_requirements'),
                 where('case_type_name', '==', caseTypeName)
             );
-            const existingSnapshot = await getDocs(existingRequirementsQuery);
+            const [snapshotById, snapshotByName] = await Promise.all([
+                getDocs(existingRequirementsById),
+                getDocs(existingRequirementsByName)
+            ]);
+
+            // Combine results and deduplicate
+            const existingDocs = new Map();
+            snapshotById.forEach(doc => existingDocs.set(doc.id, doc));
+            snapshotByName.forEach(doc => existingDocs.set(doc.id, doc));
+            const existingSnapshot = { docs: Array.from(existingDocs.values()) };
             
             // Delete existing requirements
             for (const docSnapshot of existingSnapshot.docs) {
@@ -183,6 +197,7 @@ export class CaseTypeManager {
                 
                 for (const requirement of this.editTrayRequirements) {
                     await addDoc(trayRequirementsCollection, {
+                        case_type_id: caseTypeId,
                         case_type_name: caseTypeName,
                         tray_id: requirement.tray_id,
                         tray_name: requirement.tray_name,
@@ -212,12 +227,25 @@ export class CaseTypeManager {
         try {
             const userId = window.app.authManager.getCurrentUser()?.uid;
 
-            // Delete associated tray requirements first
-            const existingRequirementsQuery = query(
+            // Delete associated tray requirements first (using OR logic)
+            const existingRequirementsById = query(
+                collection(this.db, 'tray_requirements'),
+                where('case_type_id', '==', caseTypeId)
+            );
+            const existingRequirementsByName = query(
                 collection(this.db, 'tray_requirements'),
                 where('case_type_name', '==', caseTypeName)
             );
-            const existingSnapshot = await getDocs(existingRequirementsQuery);
+            const [snapshotById, snapshotByName] = await Promise.all([
+                getDocs(existingRequirementsById),
+                getDocs(existingRequirementsByName)
+            ]);
+
+            // Combine results and deduplicate
+            const existingDocs = new Map();
+            snapshotById.forEach(doc => existingDocs.set(doc.id, doc));
+            snapshotByName.forEach(doc => existingDocs.set(doc.id, doc));
+            const existingSnapshot = { docs: Array.from(existingDocs.values()) };
             
             for (const docSnapshot of existingSnapshot.docs) {
                 await deleteDoc(doc(this.db, 'tray_requirements', docSnapshot.id));
@@ -332,9 +360,6 @@ export class CaseTypeManager {
                 <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditCaseTypeModal('${caseType.id}')">
                     <i class="fas fa-edit"></i> Edit
                 </button>
-                <button class="btn-danger-custom btn-sm" onclick="app.caseTypeManager.deleteCaseType('${caseType.id}', '${caseType.name}')">
-                    <i class="fas fa-trash"></i> Delete
-                </button>
             </div>
         `;
 
@@ -386,9 +411,6 @@ export class CaseTypeManager {
             <div class="casetype-horizontal-actions">
                 <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditCaseTypeModal('${caseType.id}')">
                     <i class="fas fa-edit"></i> Edit
-                </button>
-                <button class="btn-danger-custom btn-sm" onclick="app.caseTypeManager.deleteCaseType('${caseType.id}', '${caseType.name}')">
-                    <i class="fas fa-trash"></i> Delete
                 </button>
             </div>
         `;
@@ -519,12 +541,33 @@ export class CaseTypeManager {
         const requirementType = document.getElementById('editNewTrayRequirementType').value;
         const quantity = parseInt(document.getElementById('editNewTrayQuantity').value) || 1;
         const notes = document.getElementById('editNewTrayNotes').value.trim();
-        
+
         if (!trayId) {
             alert('Please select a tray from the dropdown');
             return;
         }
-        
+
+        // Check for duplicate tray requirements - be thorough about checking different ID formats
+        const existingRequirement = this.editTrayRequirements.find(req => {
+            return req.tray_id === trayId || req.id === trayId;
+        });
+
+        if (existingRequirement) {
+            console.log('🔍 DEBUG: Duplicate detected:', {
+                attemptedTrayId: trayId,
+                attemptedTrayName: trayName,
+                existingRequirement: existingRequirement
+            });
+            alert(`Tray "${trayName}" is already added to the requirements. Please select a different tray.`);
+            return;
+        }
+
+        console.log('🔍 DEBUG: Adding new requirement:', {
+            trayId,
+            trayName,
+            currentRequirements: this.editTrayRequirements.length
+        });
+
         const requirement = {
             tray_id: trayId,
             tray_name: trayName,
@@ -532,10 +575,13 @@ export class CaseTypeManager {
             quantity: quantity,
             notes: notes
         };
-        
+
         this.editTrayRequirements.push(requirement);
         this.renderTrayRequirements('editCaseTypeTrayRequirements', this.editTrayRequirements);
-        
+
+        // Refresh dropdown to remove the newly added tray from available options
+        this.populateTrayDropdownForEdit();
+
         // Clear the form
         trayDropdown.value = '';
         document.getElementById('editNewTrayRequirementType').value = 'required';
@@ -547,6 +593,8 @@ export class CaseTypeManager {
         if (isEdit) {
             this.editTrayRequirements.splice(index, 1);
             this.renderTrayRequirements('editCaseTypeTrayRequirements', this.editTrayRequirements);
+            // Refresh dropdown to add the removed tray back to available options
+            this.populateTrayDropdownForEdit();
         } else {
             this.tempTrayRequirements.splice(index, 1);
             this.renderTrayRequirements('addCaseTypeTrayRequirements', this.tempTrayRequirements);
@@ -600,30 +648,43 @@ export class CaseTypeManager {
     async loadTrayRequirementsForEdit(caseType) {
         try {
             console.log('🔍 Loading tray requirements for case type:', caseType.name);
-            
-            // Populate the tray dropdown first
-            await this.populateTrayDropdownForEdit();
-            
-            // Load requirements directly from tray_requirements collection
-            const requirementsQuery = query(
-                collection(this.db, 'tray_requirements'),
-                where('case_type_name', '==', caseType.name)
-            );
-            const requirementsSnapshot = await getDocs(requirementsQuery);
-            
-            const requirements = [];
-            requirementsSnapshot.forEach((doc) => {
-                requirements.push({ id: doc.id, ...doc.data() });
+
+            // Use the central function from DataManager
+            const requirements = await window.app.dataManager.getTrayRequirementsByCaseType(caseType.id, caseType.name);
+
+            console.log('🔍 Raw requirements loaded from collection:', requirements);
+
+            // Check for and remove duplicates based on tray_id
+            const uniqueRequirements = [];
+            const seenTrayIds = new Set();
+
+            requirements.forEach(req => {
+                const trayId = req.tray_id;
+                if (trayId && !seenTrayIds.has(trayId)) {
+                    seenTrayIds.add(trayId);
+                    uniqueRequirements.push(req);
+                } else if (trayId) {
+                    console.log('🔍 Found duplicate requirement for tray_id:', trayId, 'removing duplicate');
+                } else {
+                    console.log('🔍 Found requirement without tray_id:', req, 'skipping');
+                }
             });
-            
-            console.log('🔍 Requirements loaded from collection:', requirements);
-            
-            this.editTrayRequirements = requirements;
+
+            console.log(`🔍 Filtered ${requirements.length} raw requirements to ${uniqueRequirements.length} unique requirements`);
+            console.log('🔍 Final unique requirements:', uniqueRequirements);
+
+            this.editTrayRequirements = uniqueRequirements;
             this.renderTrayRequirements('editCaseTypeTrayRequirements', this.editTrayRequirements);
+
+            // Populate dropdown AFTER loading requirements so filtering works correctly
+            await this.populateTrayDropdownForEdit();
+
         } catch (error) {
             console.error('Error loading tray requirements for edit:', error);
             this.editTrayRequirements = [];
             this.renderTrayRequirements('editCaseTypeTrayRequirements', this.editTrayRequirements);
+            // Still populate dropdown even on error
+            await this.populateTrayDropdownForEdit();
         }
     }
     
@@ -632,10 +693,13 @@ export class CaseTypeManager {
     async populateTrayDropdownForEdit() {
         const dropdown = document.getElementById('editCaseTypeTrayDropdown_CT001');
         if (!dropdown) return;
-        
+
         try {
             // Get all trays from DataManager
-            const trays = await window.app.dataManager.getAllTrays();
+            let trays = await window.app.dataManager.getAllTrays();
+
+            // Get the current case type being edited
+            const currentCaseTypeId = document.getElementById('editCaseTypeId')?.value;
 
             // Debug: Log first tray to see structure
             if (trays && trays.length > 0) {
@@ -643,13 +707,45 @@ export class CaseTypeManager {
                 console.log('🔍 DEBUG: Tray properties:', Object.keys(trays[0]));
             }
 
+            // Apply compatibility filtering for case type editing
+            if (currentCaseTypeId && window.app.dataManager.filterForTrayCompatibilityType) {
+                trays = window.app.dataManager.filterForTrayCompatibilityType(currentCaseTypeId, trays);
+                console.log(`🔍 DEBUG: Applied compatibility filtering for case type "${currentCaseTypeId}"`);
+            }
+
             // Clear existing options
             dropdown.innerHTML = '<option value="">Select a tray...</option>';
 
             // Add tray options
             if (trays && trays.length > 0) {
-                // Sort trays alphabetically by name
-                const sortedTrays = [...trays].sort((a, b) => {
+                // Get IDs of trays already in requirements to filter them out
+                // Handle both tray_id and id fields from requirements
+                const usedTrayIds = this.editTrayRequirements.map(req => req.tray_id).filter(Boolean);
+                console.log('🔍 DEBUG: Used tray IDs to filter out:', usedTrayIds);
+                console.log('🔍 DEBUG: Current requirements:', this.editTrayRequirements);
+
+                // Filter out trays that are already in the requirements
+                const availableTrays = trays.filter(tray => {
+                    const trayId = tray.tray_id || tray.id;
+                    const isAlreadyUsed = usedTrayIds.includes(trayId);
+
+                    if (isAlreadyUsed) {
+                        console.log(`🔍 DEBUG: Filtering out already used tray: ${trayId} (${tray.tray_name || tray.name})`);
+                    }
+
+                    return !isAlreadyUsed;
+                });
+
+                console.log(`🔍 DEBUG: Filtered ${trays.length} compatible trays to ${availableTrays.length} available trays`);
+
+                if (availableTrays.length === 0) {
+                    dropdown.innerHTML = '<option value="">All trays have been added</option>';
+                    dropdown.disabled = true;
+                    return;
+                }
+
+                // Sort available trays alphabetically by name
+                const sortedTrays = [...availableTrays].sort((a, b) => {
                     const nameA = (a.tray_name || a.name || a.tray_id || a.id || '').toLowerCase();
                     const nameB = (b.tray_name || b.name || b.tray_id || b.id || '').toLowerCase();
                     return nameA.localeCompare(nameB);

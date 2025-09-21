@@ -221,9 +221,6 @@ export class FacilityManager {
                 <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditFacilityModal('${facility.id}')">
                     <i class="fas fa-edit"></i> Edit
                 </button>
-                <button class="btn-danger-custom btn-sm" onclick="app.facilityManager.deleteFacility('${facility.id}', '${facility.account_name}')">
-                    <i class="fas fa-trash"></i> Delete
-                </button>
             </div>
         `;
         
@@ -280,9 +277,6 @@ export class FacilityManager {
             <div class="location-horizontal-actions">
                 <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditFacilityModal('${facility.id}')">
                     <i class="fas fa-edit"></i> Edit
-                </button>
-                <button class="btn-danger-custom btn-sm" onclick="app.facilityManager.deleteFacility('${facility.id}', '${facility.account_name}')">
-                    <i class="fas fa-trash"></i> Delete
                 </button>
             </div>
         `;

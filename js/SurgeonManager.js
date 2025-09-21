@@ -160,6 +160,11 @@ export class SurgeonManager {
             // Preferred cases functionality removed - set to empty string
             const preferredCasesString = '';
 
+            // Get selected preferred facilities
+            const facilitiesSelect = document.getElementById('editPhysicianPreferredFacilities');
+            const selectedFacilities = facilitiesSelect ?
+                Array.from(facilitiesSelect.selectedOptions).map(option => option.value).filter(v => v) : [];
+
             const updates = {
                 full_name: document.getElementById('editPhysicianName').value,
                 title: document.getElementById('editPhysicianTitle').value,
@@ -170,6 +175,8 @@ export class SurgeonManager {
                 preferredCases: preferredCasesString,
                 notes: document.getElementById('editPhysicianNotes').value,
                 active: document.getElementById('editPhysicianActive').checked,
+                preferred_facilities: selectedFacilities,
+                last_case_type_id: document.getElementById('editPhysicianLastCaseType').value || null,
                 lastModified: serverTimestamp(),
                 modifiedBy: window.app.authManager.getCurrentUser()?.uid
             };
@@ -357,9 +364,6 @@ export class SurgeonManager {
             <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditSurgeonModal('${surgeon.id}')">
                 <i class="fas fa-edit"></i> Edit
             </button>
-            <button class="btn-danger-custom btn-sm" onclick="app.surgeonManager.deleteSurgeon('${surgeon.id}', '${surgeon.full_name}')">
-                <i class="fas fa-trash"></i> Delete
-            </button>
         </div>
     `;
 
@@ -412,9 +416,6 @@ export class SurgeonManager {
         <div class="surgeon-horizontal-actions">
             <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showEditSurgeonModal('${surgeon.id}')">
                 <i class="fas fa-edit"></i> Edit
-            </button>
-            <button class="btn-danger-custom btn-sm" onclick="app.surgeonManager.deleteSurgeon('${surgeon.id}', '${surgeon.full_name}')">
-                <i class="fas fa-trash"></i> Delete
             </button>
         </div>
     `;
@@ -696,7 +697,7 @@ export class SurgeonManager {
                     'Revision Surgery – SI fusion',
                     'Minimally Invasive Spine fusion'
                 ];
-                caseTypes = hardcodedCaseTypes.map(name => ({ name: name, active: true }));
+                caseTypes = hardcodedCaseTypes.map(name => ({ name: name, id: name, active: true }));
             }
 
             dropdown.innerHTML = '<option value="">Select Case Type...</option>';
@@ -708,7 +709,9 @@ export class SurgeonManager {
                 activeCaseTypes
                     .sort((a, b) => a.name.localeCompare(b.name))
                     .forEach(caseType => {
-                        dropdown.innerHTML += `<option value="${caseType.name}">${caseType.name}</option>`;
+                        // Use case type ID as value for proper tray filtering
+                        const value = caseType.id || caseType.name;
+                        dropdown.innerHTML += `<option value="${value}">${caseType.name}</option>`;
                     });
                 console.log('Populated dropdown with', activeCaseTypes.length, 'case types');
             } else {
@@ -790,11 +793,19 @@ export class SurgeonManager {
     async handleCaseTypeChange(event) {
         const selectedCaseType = event.target.value;
         const callId = Date.now() + '-' + Math.random().toString(36).substr(2, 5);
-        
-        console.log(`🔍 [${callId}] Case type change triggered:`, { 
-            selectedCaseType, 
+
+        console.log(`🔍 [${callId}] Case type change triggered:`, {
+            selectedCaseType,
             eventTargetId: event.target.id,
             timestamp: new Date().toISOString()
+        });
+
+        // Enhanced debugging for physician preferences
+        console.log('🔧 PHYSICIAN PREF CASE TYPE CHANGE DEBUG:', {
+            selectedCaseType,
+            eventTargetId: event.target.id,
+            isPhysicianPrefDropdown: event.target.id === 'physicianPrefCaseType',
+            trayDropdownExists: !!document.getElementById('physicianPreferenceTrayIdDropdown')
         });
         
         await this.logToAPI('handleCaseTypeChange triggered', { 
@@ -869,34 +880,48 @@ export class SurgeonManager {
             let trays = [];
             
             if (caseType && caseType.trim() !== '') {
-                // Get trays filtered by case type compatibility
+                // Get trays filtered by case type compatibility using our centralized function
                 await this.logToAPI('Getting trays filtered by case type', { caseType });
                 const allTrays = await window.app.dataManager.getAllTrays();
-                await this.logToAPI('All trays before filtering', { 
+                await this.logToAPI('All trays before filtering', {
                     count: allTrays.length,
-                    trays: allTrays.map(t => ({ id: t.id, tray_id: t.tray_id, name: t.name }))
+                    trays: allTrays.map(t => ({ id: t.id, tray_id: t.tray_id, name: t.tray_name || t.name }))
                 });
-                
-                // Filter trays by case_type_compatibility
-                const filteredTrays = allTrays.filter(tray => {
-                    const compatible = tray.case_type_compatibility && 
-                                     Array.isArray(tray.case_type_compatibility) && 
-                                     tray.case_type_compatibility.includes(caseType);
-                    return compatible;
+
+                // Use the centralized compatibility filter function
+                console.log('🔧 BEFORE FILTERING - About to filter trays:', {
+                    caseType,
+                    totalTrays: allTrays.length,
+                    firstFewTrays: allTrays.slice(0, 3).map(t => ({
+                        id: t.id,
+                        name: t.tray_name || t.name,
+                        case_type_compatibility: t.case_type_compatibility
+                    }))
                 });
-                
+                const filteredTrays = window.app.dataManager.filterForTrayCompatibilityType(caseType, allTrays);
+                console.log('🔧 AFTER FILTERING - Filtered trays result:', {
+                    caseType,
+                    originalCount: allTrays.length,
+                    filteredCount: filteredTrays.length,
+                    filteredTrays: filteredTrays.map(t => ({
+                        id: t.id,
+                        name: t.tray_name || t.name,
+                        case_type_compatibility: t.case_type_compatibility
+                    }))
+                });
+
                 await this.logToAPI('After case type filtering', {
                     caseType,
                     originalCount: allTrays.length,
                     filteredCount: filteredTrays.length,
-                    filteredTrays: filteredTrays.map(t => ({ 
-                        id: t.id, 
-                        tray_id: t.tray_id, 
-                        name: t.name,
+                    filteredTrays: filteredTrays.map(t => ({
+                        id: t.id,
+                        tray_id: t.tray_id,
+                        name: t.tray_name || t.name,
                         case_type_compatibility: t.case_type_compatibility
                     }))
                 });
-                
+
                 // Remove duplicates based on tray ID
                 trays = await this.removeDuplicateTrays(filteredTrays);
                 
@@ -924,9 +949,9 @@ export class SurgeonManager {
             if (trays && trays.length > 0) {
                 await this.logToAPI(`Populating dropdown with ${trays.length} trays`, { count: trays.length, trays });
                 trays.forEach((tray, index) => {
-                    // Use MyRepData-compatible tray_id field, fallback to Firebase id
+                    // Use tray_id for value and tray_name for display
                     const trayId = tray.tray_id || tray.id;
-                    const trayName = tray.name || trayId;
+                    const trayName = tray.tray_name || tray.name || trayId;
                     console.log(`Adding tray ${index}: ID="${trayId}", Name="${trayName}"`, tray);
                     dropdown.innerHTML += `<option value="${trayId}">${trayName}</option>`;
                 });
@@ -1126,12 +1151,21 @@ export class SurgeonManager {
                 await this.populateCaseTypeDropdown();
             }
 
-            const caseType = document.getElementById('physicianPrefCaseType').value.trim();
+            const caseTypeValue = document.getElementById('physicianPrefCaseType').value.trim();
             const trayId = document.getElementById('physicianPreferenceTrayIdDropdown').value.trim();
             const requirementType = document.getElementById('physicianPrefRequirementType').value;
             const quantity = parseInt(document.getElementById('physicianPrefQuantity').value) || 1;
             const notes = document.getElementById('physicianPrefNotes').value.trim();
             const surgeonId = document.getElementById('editPhysicianId').value;
+
+            // Convert case type ID back to name for storage (physician preferences use names)
+            let caseType = caseTypeValue;
+            if (window.app?.dataManager?.caseTypes) {
+                const caseTypeObj = window.app.dataManager.caseTypes.find(ct => ct.id === caseTypeValue);
+                if (caseTypeObj) {
+                    caseType = caseTypeObj.name;
+                }
+            }
 
             if (!caseType || !trayId || !surgeonId) {
                 alert('Please fill in all required fields (Case Type and Tray ID are required)');
@@ -1198,13 +1232,21 @@ export class SurgeonManager {
             }
 
             // Populate the form with current values for editing
-            document.getElementById('physicianPrefCaseType').value = preference.case_type;
+            // Convert case type name to ID for dropdown (dropdown uses IDs but preferences store names)
+            let caseTypeValueForDropdown = preference.case_type;
+            if (window.app?.dataManager?.caseTypes) {
+                const caseTypeObj = window.app.dataManager.caseTypes.find(ct => ct.name === preference.case_type);
+                if (caseTypeObj) {
+                    caseTypeValueForDropdown = caseTypeObj.id;
+                }
+            }
+            document.getElementById('physicianPrefCaseType').value = caseTypeValueForDropdown;
             document.getElementById('physicianPrefRequirementType').value = preference.requirement_type || 'preferred';
             document.getElementById('physicianPrefQuantity').value = preference.quantity || '1';
             document.getElementById('physicianPrefNotes').value = preference.notes || '';
 
             // Populate tray dropdown filtered by case type and select the current tray
-            await this.populateTrayIdDropdown(preference.case_type);
+            await this.populateTrayIdDropdown(caseTypeValueForDropdown);
             setTimeout(() => {
                 document.getElementById('physicianPreferenceTrayIdDropdown').value = preference.tray_id;
             }, 100);

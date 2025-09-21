@@ -1,5 +1,5 @@
 // js/DataManager.js
-import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, addDoc, serverTimestamp, limit } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, addDoc, serverTimestamp, limit, where } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 
 export class DataManager {
     constructor(db) {
@@ -21,14 +21,16 @@ export class DataManager {
     setupRealtimeListeners() {
         if (!this.db) return;
 
-        // Listen to trays collection  
+        // Listen to trays collection
         // Note: Remove orderBy for now since MyRepData uses created_at and system expects createdAt
         const traysQuery = query(collection(this.db, 'tray_tracking'));
         this.traysUnsubscribe = onSnapshot(traysQuery, (snapshot) => {
+            console.log(`📦 DataManager: Tray_tracking collection updated - ${snapshot.size} documents found`);
             const trays = [];
             snapshot.forEach((doc) => {
                 trays.push({ id: doc.id, ...doc.data() });
             });
+            console.log(`📦 DataManager: Processed ${trays.length} trays from tray_tracking`);
 
             if (window.app && window.app.trayManager) {
                 window.app.trayManager.handleTraysUpdate(trays);
@@ -84,23 +86,32 @@ export class DataManager {
         // Listen to Facilities collection
         const facilityQuery = query(collection(this.db, 'facilities'), orderBy('account_name', 'asc'));
         this.facilityUnsubscribe = onSnapshot(facilityQuery, (snapshot) => {
+            console.log(`DataManager: Facilities collection updated - ${snapshot.size} documents found`);
             const facilities = [];
+            let activeCount = 0;
+
             snapshot.forEach((doc) => {
                 const facilityData = doc.data();
                 if (facilityData.active !== false) { // Only include active facilities
                     // Ensure document ID overrides any id field in the data
                     const facility = { ...facilityData, id: doc.id };
                     facilities.push(facility);
+                    activeCount++;
                 }
             });
+
+            console.log(`DataManager: ${activeCount} active facilities loaded`);
             this.facilities = facilities;
-            
+
             // Trigger tray re-render when facilities are loaded/updated
             if (window.app.trayManager && facilities.length > 0) {
                 window.app.trayManager.onFacilitiesLoaded();
+            } else if (window.app.trayManager) {
+                console.warn('DataManager: No facilities to trigger tray re-render with');
             }
         }, (error) => {
             console.error('Error listening to facilities:', error);
+            console.error('Facility query error details:', error.message, error.code);
         });
 
         // Listen to surgeons collection
@@ -116,6 +127,20 @@ export class DataManager {
 
             this.surgeons = surgeons;
             console.log('Surgeons updated from Firebase:', this.surgeons.length);
+
+            // Refresh physician dropdowns in case modals if they exist and are empty
+            if (window.app?.modalManager && surgeons.length > 0) {
+                setTimeout(() => {
+                    const addPhysicianSelect = document.getElementById('addCasePhysician');
+                    const editPhysicianSelect = document.getElementById('editCasePhysician');
+
+                    if ((addPhysicianSelect && addPhysicianSelect.children.length <= 1) ||
+                        (editPhysicianSelect && editPhysicianSelect.children.length <= 1)) {
+                        console.log('🔄 Auto-refreshing case modal physician dropdowns');
+                        window.app.modalManager.refreshPhysicianDropdowns();
+                    }
+                }, 100); // Small delay to ensure DOM is ready
+            }
         }, (error) => {
             console.error('Error listening to surgeons:', error);
         });
@@ -266,9 +291,45 @@ export class DataManager {
                 const trayData = { id: doc.id, ...doc.data() };
                 trays.push(trayData);
             });
-            
-            
-            return trays;
+
+            console.log(`🔍 DEBUG: Retrieved ${trays.length} raw trays from database`);
+
+            // Deduplicate trays based on tray_id (primary identifier)
+            const uniqueTrays = [];
+            const seenTrayIds = new Set();
+            const seenTrayNames = new Set();
+
+            trays.forEach(tray => {
+                const trayId = tray.tray_id || tray.id;
+                const trayName = tray.tray_name || tray.name;
+
+                // Primary deduplication by tray_id
+                if (trayId && !seenTrayIds.has(trayId)) {
+                    seenTrayIds.add(trayId);
+                    if (trayName) seenTrayNames.add(trayName);
+                    uniqueTrays.push(tray);
+                }
+                // Secondary deduplication by tray_name if no tray_id match
+                else if (!trayId && trayName && !seenTrayNames.has(trayName)) {
+                    seenTrayNames.add(trayName);
+                    uniqueTrays.push(tray);
+                }
+                // Log skipped duplicates
+                else {
+                    console.log('🔍 DEBUG: Skipping duplicate tray:', {
+                        duplicateId: trayId,
+                        duplicateName: trayName,
+                        documentId: tray.id,
+                        reason: trayId ? 'duplicate tray_id' : 'duplicate tray_name'
+                    });
+                }
+            });
+
+            if (uniqueTrays.length !== trays.length) {
+                console.log(`🔍 DEBUG: Deduplicated ${trays.length} raw trays to ${uniqueTrays.length} unique trays`);
+            }
+
+            return uniqueTrays;
         } catch (error) {
             console.error('Error getting all trays:', error);
             if (window.is_enable_api_logging && window.frontendLogger) {
@@ -276,6 +337,72 @@ export class DataManager {
             }
             return [];
         }
+    }
+
+    // Filter trays by case type compatibility
+    filterForTrayCompatibilityType(caseType, trays) {
+        if (!caseType || !Array.isArray(trays)) {
+            console.log('🚨 DEBUG: Invalid parameters for compatibility filter:', {
+                caseType,
+                caseTypeType: typeof caseType,
+                traysCount: trays?.length,
+                traysIsArray: Array.isArray(trays)
+            });
+            return trays || [];
+        }
+
+        console.log(`🎯 FILTERING: Starting compatibility filter for case type "${caseType}" with ${trays.length} trays`);
+
+        // TEMPORARY DEBUG: Show if we should bypass filtering for testing
+        if (window.BYPASS_TRAY_FILTERING) {
+            console.log('🚨 BYPASSING FILTERING for debugging - returning all trays');
+            return trays;
+        }
+
+        // Sample a few trays to show their compatibility arrays
+        const sampleTrays = trays.slice(0, 3);
+        sampleTrays.forEach(tray => {
+            console.log(`🔍 Sample tray: "${tray.tray_name || tray.name}" - compatibility:`, tray.case_type_compatibility);
+        });
+
+        const compatibleTrays = trays.filter(tray => {
+            // If tray has no compatibility array, it's compatible with all case types (legacy behavior)
+            if (!tray.case_type_compatibility || !Array.isArray(tray.case_type_compatibility)) {
+                console.log(`🔍 DEBUG: Tray "${tray.tray_name || tray.name}" has no compatibility restrictions - including`);
+                return true;
+            }
+
+            // If compatibility array is empty, it's compatible with all case types
+            if (tray.case_type_compatibility.length === 0) {
+                console.log(`🔍 DEBUG: Tray "${tray.tray_name || tray.name}" has empty compatibility array - including`);
+                return true;
+            }
+
+            // Check if the case type ID is in the compatibility array
+            const isCompatible = tray.case_type_compatibility.includes(caseType);
+
+            if (isCompatible) {
+                console.log(`✅ Tray "${tray.tray_name || tray.name}" is compatible with case type ID "${caseType}"`);
+            } else {
+                console.log(`❌ Tray "${tray.tray_name || tray.name}" is NOT compatible with case type ID "${caseType}" (compatible with IDs: ${tray.case_type_compatibility.join(', ')})`);
+            }
+
+            return isCompatible;
+        });
+
+        console.log(`🎯 FILTERING RESULT: ${compatibleTrays.length}/${trays.length} trays are compatible with case type "${caseType}"`);
+
+        // Show first few compatible trays
+        const firstCompatible = compatibleTrays.slice(0, 3);
+        firstCompatible.forEach(tray => {
+            console.log(`✅ Compatible: "${tray.tray_name || tray.name}"`);
+        });
+
+        if (compatibleTrays.length === 0) {
+            console.warn(`⚠️ NO COMPATIBLE TRAYS FOUND for case type "${caseType}"! This might indicate a data issue.`);
+        }
+
+        return compatibleTrays;
     }
 
     analyzeDuplicates(trays) {
@@ -659,6 +786,47 @@ export class DataManager {
         return this.surgeons || [];
     }
 
+    // Force refresh surgeon data when needed (for SPA navigation issues)
+    async ensureSurgeonsLoaded() {
+        try {
+            console.log('🔄 Ensuring surgeons are loaded...');
+
+            // If we already have surgeons, return them
+            if (this.surgeons && this.surgeons.length > 0) {
+                console.log(`✅ ${this.surgeons.length} surgeons already loaded`);
+                return this.surgeons;
+            }
+
+            // Force fetch surgeons directly from Firestore
+            console.log('📡 Force fetching surgeons from Firestore...');
+            const surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('full_name', 'asc'));
+            const snapshot = await getDocs(surgeonsQuery);
+
+            const surgeons = [];
+            snapshot.forEach((doc) => {
+                const surgeonData = doc.data();
+                if (surgeonData.active !== false) { // Only include active surgeons
+                    surgeons.push({ id: doc.id, ...surgeonData });
+                }
+            });
+
+            this.surgeons = surgeons;
+            console.log(`✅ Force loaded ${surgeons.length} surgeons`);
+
+            // Trigger dropdown refresh if surgeon data was loaded
+            if (surgeons.length > 0 && window.app?.modalManager) {
+                setTimeout(() => {
+                    window.app.modalManager.refreshPhysicianDropdowns();
+                }, 100);
+            }
+
+            return surgeons;
+        } catch (error) {
+            console.error('Error ensuring surgeons loaded:', error);
+            return [];
+        }
+    }
+
     getCaseTypes() {
         const caseTypes = this.caseTypes || [];
         
@@ -790,12 +958,8 @@ export class DataManager {
                         window.frontendLogger.info('Tray requirements analysis', {
                         caseId: id,
                         tray_requirements: caseData.tray_requirements,
-                        trayRequirements: caseData.trayRequirements,
                         tray_requirements_type: typeof caseData.tray_requirements,
-                        tray_requirements_length: caseData.tray_requirements?.length,
-                        trayRequirements_type: typeof caseData.trayRequirements,
-                        trayRequirements_length: caseData.trayRequirements?.length,
-                        hasEitherField: !!(caseData.tray_requirements || caseData.trayRequirements)
+                        tray_requirements_length: caseData.tray_requirements?.length
                     }, 'tray-requirements-debug');
                     }
                 }
@@ -933,6 +1097,18 @@ export class DataManager {
         }
     }
 
+    async updatePhysician(physicianId, updates) {
+        try {
+            const physicianRef = doc(this.db, 'physicians', physicianId);
+            await updateDoc(physicianRef, updates);
+            console.log(`Physician ${physicianId} updated successfully`);
+            return true;
+        } catch (error) {
+            console.error('Error updating physician:', error);
+            throw error;
+        }
+    }
+
     async getCasesByFacility(facility_id) {
         try {
             const casesQuery = query(
@@ -967,6 +1143,57 @@ export class DataManager {
         return this.users;
     }
 
+    // Central function to get tray requirements by case type ID or name (using OR logic)
+    async getTrayRequirementsByCaseType(caseTypeId, caseTypeName) {
+        try {
+            console.log('🔍 Loading tray requirements for case type:', { caseTypeId, caseTypeName });
+
+            if (!caseTypeId && !caseTypeName) {
+                console.warn('No case type ID or name provided to getTrayRequirementsByCaseType');
+                return [];
+            }
+
+            // Create queries for both ID and name (OR logic using separate queries)
+            const promises = [];
+
+            if (caseTypeId) {
+                const requirementsById = query(
+                    collection(this.db, 'tray_requirements'),
+                    where('case_type_id', '==', caseTypeId)
+                );
+                promises.push(getDocs(requirementsById));
+            }
+
+            if (caseTypeName) {
+                const requirementsByName = query(
+                    collection(this.db, 'tray_requirements'),
+                    where('case_type_name', '==', caseTypeName)
+                );
+                promises.push(getDocs(requirementsByName));
+            }
+
+            // Execute queries in parallel
+            const snapshots = await Promise.all(promises);
+
+            // Combine results and deduplicate using Map
+            const requirementsDocs = new Map();
+            snapshots.forEach(snapshot => {
+                snapshot.forEach(doc => {
+                    requirementsDocs.set(doc.id, { id: doc.id, ...doc.data() });
+                });
+            });
+
+            const requirements = Array.from(requirementsDocs.values());
+
+            console.log(`🔍 Found ${requirements.length} unique tray requirements for case type:`, { caseTypeId, caseTypeName });
+
+            return requirements;
+
+        } catch (error) {
+            console.error('Error loading tray requirements by case type:', error);
+            return [];
+        }
+    }
 
     cleanup() {
         if (this.traysUnsubscribe) {
