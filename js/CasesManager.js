@@ -577,6 +577,9 @@ export class CasesManager {
                         <button class="btn btn-sm btn-outline-info" onclick="window.app.casesManager.viewCaseDetails('${caseItem.id}')" title="View Details">
                             <i class="fas fa-eye"></i>
                         </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="window.app.casesManager.showCalendarModal('${caseItem.id}')" title="Add to Calendar">
+                            <i class="fas fa-calendar-plus"></i>
+                        </button>
                         ${caseItem.status === CASE_STATUS.SCHEDULED ? `
                             <button class="btn btn-sm btn-outline-primary" onclick="window.app.casesManager.showManualCheckInModal('${caseItem.id}')" title="Check In">
                                 <i class="fas fa-hand-pointer"></i> Check In
@@ -1420,6 +1423,209 @@ export class CasesManager {
         const surgeons = this.dataManager.getSurgeons();
         const surgeon = surgeons.find(s => s && s.id === surgeonId);
         return surgeon ? `${surgeon.title || 'Dr.'} ${surgeon.full_name}` : null;
+    }
+
+    // Calendar modal functionality - same as DashboardManager
+    async showCalendarModal(caseId) {
+        try {
+            // Get case data
+            const caseData = await this.dataManager.getCase(caseId);
+            if (!caseData) {
+                this.showErrorNotification('Case not found');
+                return;
+            }
+
+            // Get additional data
+            const physicianName = this.getSurgeonName(caseData.physician_id) || 'Unknown Physician';
+            const facilityName = this.getFacilityName(caseData.facility_id) || 'Unknown Facility';
+            const caseTypeName = this.getCaseTypeName(caseData.caseTypeId) || 'Surgery';
+
+            // Create the modal HTML
+            const modalHtml = `
+                <div class="modal fade" id="calendarModal" tabindex="-1" role="dialog" aria-labelledby="calendarModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="calendarModalLabel">
+                                    <i class="fas fa-calendar-plus me-2"></i>Add to Calendar
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="case-info mb-3">
+                                    <h6><strong>Case Details:</strong></h6>
+                                    <p class="mb-1"><strong>Patient:</strong> ${caseData.patientName || 'N/A'}</p>
+                                    <p class="mb-1"><strong>Procedure:</strong> ${caseTypeName}</p>
+                                    <p class="mb-1"><strong>Physician:</strong> ${physicianName}</p>
+                                    <p class="mb-1"><strong>Facility:</strong> ${facilityName}</p>
+                                    <p class="mb-1"><strong>Date:</strong> ${caseData.scheduledDate}</p>
+                                    <p class="mb-1"><strong>Time:</strong> ${caseData.scheduledTime || '08:00'}</p>
+                                </div>
+                                <div class="calendar-options">
+                                    <h6><strong>Choose an option:</strong></h6>
+                                    <div class="d-grid gap-2">
+                                        <button class="btn btn-primary" onclick="window.app.casesManager.addToGoogleCalendar('${caseId}')">
+                                            <i class="fab fa-google me-2"></i>Add to Google Calendar
+                                        </button>
+                                        <button class="btn btn-secondary" onclick="window.app.casesManager.downloadICS('${caseId}')">
+                                            <i class="fas fa-download me-2"></i>Download ICS File
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Remove existing modal if present
+            const existingModal = document.getElementById('calendarModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+
+            // Add modal to document
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('calendarModal'));
+            modal.show();
+
+            // Clean up modal after it's hidden
+            document.getElementById('calendarModal').addEventListener('hidden.bs.modal', function() {
+                this.remove();
+            });
+
+        } catch (error) {
+            console.error('Error showing calendar modal:', error);
+            this.showErrorNotification('Error loading case data');
+        }
+    }
+
+    async addToGoogleCalendar(caseId) {
+        try {
+            const caseData = await this.dataManager.getCase(caseId);
+            if (!caseData) return;
+
+            const physicianName = this.getSurgeonName(caseData.physician_id) || 'Unknown Physician';
+            const facilityName = this.getFacilityName(caseData.facility_id) || 'Unknown Facility';
+            const caseTypeName = this.getCaseTypeName(caseData.caseTypeId) || 'Surgery';
+
+            // Create Google Calendar URL
+            const eventTitle = `${caseTypeName} - ${caseData.patientName || 'Patient'}`;
+            const eventDetails = `Surgical Procedure Details:
+Patient: ${caseData.patientName || 'N/A'}
+Procedure: ${caseTypeName}
+Physician: ${physicianName}
+Facility: ${facilityName}
+Duration: ${caseData.estimatedDuration || 60} minutes
+${caseData.notes ? `Notes: ${caseData.notes}` : ''}`;
+
+            // Format date and time for Google Calendar
+            const eventDate = caseData.scheduledDate.replace(/-/g, '');
+            const eventTime = (caseData.scheduledTime || '08:00').replace(':', '') + '00';
+            const startDateTime = eventDate + 'T' + eventTime;
+
+            // Calculate end time (add estimated duration)
+            const duration = caseData.estimatedDuration || 60;
+            const startTime = new Date(`${caseData.scheduledDate}T${caseData.scheduledTime || '08:00'}`);
+            const endTime = new Date(startTime.getTime() + duration * 60000);
+            const endDateTime = endTime.toISOString().replace(/[-:]/g, '').split('.')[0];
+
+            const googleUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(eventTitle)}&dates=${startDateTime}/${endDateTime}&details=${encodeURIComponent(eventDetails)}&location=${encodeURIComponent(facilityName)}`;
+
+            // Open Google Calendar in new tab
+            window.open(googleUrl, '_blank');
+
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('calendarModal'));
+            if (modal) modal.hide();
+
+        } catch (error) {
+            console.error('Error adding to Google Calendar:', error);
+            this.showErrorNotification('Error creating calendar event');
+        }
+    }
+
+    async downloadICS(caseId) {
+        try {
+            const caseData = await this.dataManager.getCase(caseId);
+            if (!caseData) return;
+
+            const physicianName = this.getSurgeonName(caseData.physician_id) || 'Unknown Physician';
+            const facilityName = this.getFacilityName(caseData.facility_id) || 'Unknown Facility';
+            const caseTypeName = this.getCaseTypeName(caseData.caseTypeId) || 'Surgery';
+
+            // Create ICS content
+            const eventTitle = `${caseTypeName} - ${caseData.patientName || 'Patient'}`;
+            const eventDescription = `Surgical Procedure Details:\\n` +
+                `Patient: ${caseData.patientName || 'N/A'}\\n` +
+                `Procedure: ${caseTypeName}\\n` +
+                `Physician: ${physicianName}\\n` +
+                `Facility: ${facilityName}\\n` +
+                `Duration: ${caseData.estimatedDuration || 60} minutes\\n` +
+                `${caseData.notes ? `Notes: ${caseData.notes}` : ''}`;
+
+            // Format dates for ICS
+            const startDate = new Date(`${caseData.scheduledDate}T${caseData.scheduledTime || '08:00'}`);
+            const endDate = new Date(startDate.getTime() + (caseData.estimatedDuration || 60) * 60000);
+
+            const formatICSDate = (date) => {
+                return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+            };
+
+            const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//TrayTracker//Surgery Calendar//EN
+BEGIN:VEVENT
+UID:${caseId}@traytracker.com
+DTSTAMP:${formatICSDate(new Date())}
+DTSTART:${formatICSDate(startDate)}
+DTEND:${formatICSDate(endDate)}
+SUMMARY:${eventTitle}
+DESCRIPTION:${eventDescription}
+LOCATION:${facilityName}
+END:VEVENT
+END:VCALENDAR`;
+
+            // Create and download file
+            const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `surgery-${caseData.patientName?.replace(/[^a-zA-Z0-9]/g, '-') || 'case'}-${caseData.scheduledDate}.ics`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('calendarModal'));
+            if (modal) modal.hide();
+
+            this.showSuccessNotification('Calendar file downloaded successfully');
+
+        } catch (error) {
+            console.error('Error downloading ICS file:', error);
+            this.showErrorNotification('Error creating calendar file');
+        }
+    }
+
+    // Helper method to get case type name
+    getCaseTypeName(caseTypeId) {
+        const caseTypes = this.dataManager.getCaseTypes();
+        const caseType = caseTypes.find(ct => ct && ct.id === caseTypeId);
+        return caseType ? caseType.name : null;
+    }
+
+    // Helper method to get facility name
+    getFacilityName(facilityId) {
+        const facilities = this.dataManager.getFacilities();
+        const facility = facilities.find(f => f && f.id === facilityId);
+        return facility ? facility.account_name : null;
     }
 
     // Delegate to DashboardManager for check-in functionality
