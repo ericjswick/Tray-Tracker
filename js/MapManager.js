@@ -5,6 +5,7 @@ export class MapManager {
     constructor() {
         this.map = null;
         this.markers = [];
+        this.spiderfier = null;
         this.facilityLocations = {
             'Aurora Medical Center - Grafton': [43.3239, -87.9511],
             'Aurora Medical Center - Summit': [43.0166, -88.0711],
@@ -50,6 +51,9 @@ export class MapManager {
                 maxZoom: 19
             }).addTo(this.map);
 
+            // Initialize OverlappingMarkerSpiderfier
+            this.initializeSpiderfier();
+
             // Ensure map renders properly after initialization
             setTimeout(() => {
                 if (this.map) {
@@ -63,14 +67,83 @@ export class MapManager {
         }
     }
 
+    initializeSpiderfier() {
+        if (!this.map || typeof OverlappingMarkerSpiderfier === 'undefined') {
+            console.warn('🕷️ OverlappingMarkerSpiderfier not available');
+            return;
+        }
+
+        // Create spiderfier instance with custom options
+        this.spiderfier = new OverlappingMarkerSpiderfier(this.map, {
+            keepSpiderfied: true, // Keep spiderfied after marker click
+            nearbyDistance: 20,   // Distance in pixels to consider markers overlapping
+            spiralFootSeparation: 28, // Distance between spiderfied markers
+            spiralLengthStart: 15,    // Initial spiral radius
+            spiralLengthFactor: 4,    // How much the spiral grows
+            circleFootSeparation: 25, // Distance for circular layout
+            legWeight: 3,             // Line thickness connecting markers
+            legColors: {
+                usual: '#222',        // Normal line color
+                highlighted: '#f00'   // Highlighted line color
+            }
+        });
+
+        // Add event listeners for spiderfier events
+        this.spiderfier.addListener('click', (marker) => {
+            // Trigger the marker's popup when clicked
+            marker.openPopup();
+        });
+
+        this.spiderfier.addListener('spiderfy', (markers) => {
+            console.log(`🕷️ Spiderfied ${markers.length} overlapping markers`);
+        });
+
+        this.spiderfier.addListener('unspiderfy', (markers) => {
+            console.log(`🕷️ Unspiderfied ${markers.length} markers`);
+        });
+
+        console.log('🕷️ OverlappingMarkerSpiderfier initialized');
+    }
+
+    clearAllMarkers() {
+        // Clear spiderfier markers first
+        if (this.spiderfier) {
+            this.spiderfier.clearMarkers();
+        }
+
+        // Remove all markers from map
+        this.markers.forEach(marker => {
+            if (this.map.hasLayer(marker)) {
+                this.map.removeLayer(marker);
+            }
+        });
+
+        this.markers = [];
+        console.log('🗺️ All markers cleared');
+    }
+
+    addMarkerWithSpider(marker) {
+        // Add marker to map
+        marker.addTo(this.map);
+
+        // Add marker to spiderfier if available
+        if (this.spiderfier) {
+            this.spiderfier.addMarker(marker);
+        }
+
+        // Add to markers array for tracking
+        this.markers.push(marker);
+
+        return marker;
+    }
+
     updateMap(trays) {
         if (!this.map) return;
         
         console.log('🗺️ DEBUG: updateMap called with', trays.length, 'trays');
 
         // Clear existing markers
-        this.markers.forEach(marker => this.map.removeLayer(marker));
-        this.markers = [];
+        this.clearAllMarkers();
 
         // Apply filters
         const availabilityFilter = document.getElementById('trayStatusFilter')?.value || '';
@@ -114,7 +187,7 @@ export class MapManager {
             }
 
             if (position) {
-                const marker = L.marker(position).addTo(this.map);
+                const marker = L.marker(position);
 
                 const statusClass = `status-${normalizeStatus(tray.status).replace('_', '-')}`;
 
@@ -140,7 +213,7 @@ export class MapManager {
             `;
 
                 marker.bindPopup(popupContent);
-                this.markers.push(marker);
+                this.addMarkerWithSpider(marker);
             }
         });
 
@@ -325,8 +398,7 @@ export class MapManager {
         if (!this.map) return;
 
         // Clear existing markers
-        this.markers.forEach(marker => this.map.removeLayer(marker));
-        this.markers = [];
+        this.clearAllMarkers();
 
         // Get filter values
         const searchTerm = document.getElementById('locationSearch')?.value.toLowerCase() || '';
@@ -379,8 +451,7 @@ export class MapManager {
         if (!this.map) return;
 
         // Clear existing markers
-        this.markers.forEach(marker => this.map.removeLayer(marker));
-        this.markers = [];
+        this.clearAllMarkers();
 
         // Get display option
         const displayFilter = document.getElementById('mapDisplayFilter')?.value || 'both';
@@ -583,7 +654,7 @@ export class MapManager {
                     iconAnchor: [10, 20]
                 });
                 
-                const marker = L.marker(position, { icon: markerIcon }).addTo(this.map);
+                const marker = L.marker(position, { icon: markerIcon });
 
                 const surgeonName = this.getSurgeonName(tray.physician_id);
                 
@@ -643,7 +714,7 @@ export class MapManager {
                 `;
 
                 marker.bindPopup(popupContent);
-                this.markers.push(marker);
+                this.addMarkerWithSpider(marker);
             } else {
                 // Log trays that couldn't be positioned on the map
                 console.warn(`📍 No coordinates available for tray ${tray.tray_name} (ID: ${tray.id}). Location: ${tray.location}, Facility: ${tray.facility || 'none'}`);
@@ -697,7 +768,7 @@ export class MapManager {
                     iconAnchor: [12, 25]
                 });
                 
-                const marker = L.marker(position, { icon: markerIcon }).addTo(this.map);
+                const marker = L.marker(position, { icon: markerIcon });
 
                 const statusClass = location.active ? 'status-active' : 'status-inactive';
                 const statusText = location.active ? 'Active' : 'Inactive';
@@ -729,7 +800,7 @@ export class MapManager {
                 `;
 
                 marker.bindPopup(popupContent);
-                this.markers.push(marker);
+                this.addMarkerWithSpider(marker);
             }
         });
     }
@@ -751,8 +822,7 @@ export class MapManager {
         console.log('🗺️ Clearing all map markers and refreshing...');
         
         // Clear existing markers
-        this.markers.forEach(marker => this.map.removeLayer(marker));
-        this.markers = [];
+        this.clearAllMarkers();
         
         // Check which view we're in and refresh accordingly
         const currentView = window.app.viewManager?.currentView;

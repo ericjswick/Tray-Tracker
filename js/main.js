@@ -28,6 +28,7 @@ import { UserManager } from './UserManager.js';
 import { FacilityManager } from './FacilityManager.js';
 import { SurgeonManager } from './SurgeonManager.js';
 import { CaseTypeManager } from './CaseTypeManager.js';
+import { ImplantTypeManager } from './ImplantTypeManager.js';
 import { CasesManager } from './CasesManager.js';
 import { DashboardManager } from './DashboardManager.js';
 import { DuplicateTrayManager } from './utils/DuplicateTrayManager.js';
@@ -87,6 +88,7 @@ class SIBoneApp {
         this.facilityManager = new FacilityManager(db);
         this.surgeonManager = new SurgeonManager(db);
         this.caseTypeManager = new CaseTypeManager(db);
+        this.implantTypeManager = new ImplantTypeManager(db);
         this.casesManager = new CasesManager(this.dataManager);
         this.dashboardManager = new DashboardManager(this.dataManager);
         this.migrationsManager = new MigrationsManager();
@@ -533,6 +535,12 @@ class SIBoneApp {
             this.caseTypeManager.initializeViewMode();
         }
 
+        if (this.implantTypeManager) {
+            this.implantTypeManager.initializeViewMode();
+            // Load implant types data early to ensure it's available for dropdowns
+            this.implantTypeManager.loadImplantTypes();
+        }
+
         // Initialize UserManager last to ensure DataManager is ready
         if (this.userManager) {
             // Small delay to ensure DataManager listeners are set up
@@ -544,7 +552,6 @@ class SIBoneApp {
         // Initialize URL routing FIRST (before other managers that might navigate)
         if (this.viewManager) {
             this.viewManager.initializeRouting().then(() => {
-                console.log('✅ Routing initialized - ready for authentication flows');
             });
         }
 

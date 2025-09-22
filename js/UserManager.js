@@ -1,6 +1,6 @@
 // js/UserManager.js - Updated for Tray Tracker
 import { createUserWithEmailAndPassword, getAuth } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
-import { doc, setDoc, updateDoc, deleteDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+import { doc, setDoc, updateDoc, deleteDoc, getDoc, serverTimestamp, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 
@@ -302,15 +302,22 @@ export class UserManager {
             const phone = document.getElementById('editUserPhone').value;
             const region = document.getElementById('editUserRegion').value;
             let location_facility_id = document.getElementById('editUserLocationFacility').value;
-            
-            
+
+
             // Convert empty string or 'null' string to actual null
             if (location_facility_id === '' || location_facility_id === 'null') {
                 location_facility_id = null;
             }
             const active = document.getElementById('editUserActive').checked;
 
-            await updateDoc(doc(this.db, 'users', userId), {
+            // Get the current user data to check if location has changed
+            const userDocRef = doc(this.db, 'users', userId);
+            const userDoc = await getDoc(userDocRef);
+            const currentUserData = userDoc.data();
+            const oldLocationFacilityId = currentUserData?.location_facility_id;
+
+            // Update user document
+            await updateDoc(userDocRef, {
                 name,
                 role,
                 phone,
@@ -321,11 +328,96 @@ export class UserManager {
                 modifiedBy: window.app.authManager.getCurrentUser()?.uid
             });
 
+            // If location_facility_id has changed, update all available trays assigned to this user
+            if (oldLocationFacilityId !== location_facility_id) {
+                await this.updateAssignedTraysLocation(userId, location_facility_id, oldLocationFacilityId);
+            }
+
             bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
             this.showSuccessNotification('User updated successfully!');
         } catch (error) {
             console.error('Error updating user:', error);
             this.showErrorNotification('Error updating user: ' + error.message);
+        }
+    }
+
+    async updateAssignedTraysLocation(userId, newLocationFacilityId, oldLocationFacilityId) {
+        try {
+            console.log(`🔄 Updating tray locations for user ${userId}: ${oldLocationFacilityId} -> ${newLocationFacilityId}`);
+
+            // Get all trays assigned to this user that are in 'available' status
+            const traysRef = collection(this.db, 'trays');
+            const assignedTraysQuery = query(
+                traysRef,
+                where('assignedTo', '==', userId),
+                where('status', '==', 'available')
+            );
+
+            const querySnapshot = await getDocs(assignedTraysQuery);
+            const traysToUpdate = [];
+
+            querySnapshot.forEach((doc) => {
+                const trayData = doc.data();
+                traysToUpdate.push({
+                    id: doc.id,
+                    name: trayData.tray_name || trayData.name || doc.id,
+                    currentLocation: trayData.location || trayData.facility_id
+                });
+            });
+
+            if (traysToUpdate.length === 0) {
+                console.log(`📦 No available trays assigned to user ${userId} to update`);
+                return;
+            }
+
+            console.log(`📦 Found ${traysToUpdate.length} available trays to update location for user ${userId}`);
+
+            // Update each tray's location
+            const updatePromises = traysToUpdate.map(async (tray) => {
+                const trayDocRef = doc(this.db, 'trays', tray.id);
+
+                // Update both location and facility_id fields for consistency
+                await updateDoc(trayDocRef, {
+                    location: newLocationFacilityId,
+                    facility_id: newLocationFacilityId,
+                    lastModified: serverTimestamp(),
+                    modifiedBy: window.app.authManager.getCurrentUser()?.uid
+                });
+
+                // Add history entry
+                const facilityName = this.getFacilityName(newLocationFacilityId) || newLocationFacilityId || 'Unassigned';
+                const oldFacilityName = this.getFacilityName(oldLocationFacilityId) || oldLocationFacilityId || 'Unassigned';
+                const currentUser = window.app.authManager.getCurrentUser();
+                const userName = currentUser?.name || currentUser?.email || 'System';
+
+                const historyMessage = `Location updated from ${oldFacilityName} to ${facilityName} due to user reptrunk location change by ${userName}`;
+
+                if (window.app?.dataManager?.addHistoryEntry) {
+                    await window.app.dataManager.addHistoryEntry(
+                        tray.id,
+                        'location-update',
+                        historyMessage,
+                        null
+                    );
+                }
+
+                console.log(`✅ Updated tray ${tray.name} location: ${oldFacilityName} -> ${facilityName}`);
+            });
+
+            // Execute all updates in parallel
+            await Promise.all(updatePromises);
+
+            const facilityName = this.getFacilityName(newLocationFacilityId) || 'Unassigned';
+            console.log(`✅ Successfully updated ${traysToUpdate.length} trays to location: ${facilityName}`);
+
+            // Show notification about tray updates
+            if (traysToUpdate.length > 0) {
+                this.showInfoNotification(`Updated location for ${traysToUpdate.length} assigned available trays to match user's reptrunk location`);
+            }
+
+        } catch (error) {
+            console.error('Error updating assigned trays location:', error);
+            this.showWarningNotification('User updated successfully, but failed to update some tray locations: ' + error.message);
         }
     }
 

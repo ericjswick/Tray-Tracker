@@ -47,12 +47,6 @@ export class AuthManager {
         this.checkRedirectResult();
 
         this.unsubscribeAuth = onAuthStateChanged(this.auth, async (user) => {
-            console.log('🔔 AUTH STATE CHANGE detected:', {
-                userExists: !!user,
-                email: user?.email,
-                uid: user?.uid,
-                timestamp: new Date().toISOString()
-            });
             
             if (user) {
                 // User is signed in
@@ -69,12 +63,6 @@ export class AuthManager {
                     ...userData
                 };
                 
-                console.log('🔍 AuthManager: Current user object created:', {
-                    uid: this.currentUser.uid,
-                    email: this.currentUser.email,
-                    name: this.currentUser.name,
-                    displayName: this.currentUser.name || this.currentUser.email
-                });
 
                 this.updateUserDisplay();
                 this.showMainApp();
@@ -90,12 +78,6 @@ export class AuthManager {
     }
 
     updateUserDisplay() {
-        console.log('🔍 AuthManager: Updating user display with data:', {
-            uid: this.currentUser?.uid,
-            name: this.currentUser?.name,
-            email: this.currentUser?.email,
-            displayName: this.currentUser?.name || this.currentUser?.email
-        });
         
         const userNameElement = document.getElementById('currentUserName');
         const userAvatarElement = document.getElementById('userAvatar');
@@ -103,7 +85,6 @@ export class AuthManager {
         if (userNameElement) {
             const displayName = this.currentUser.name || this.currentUser.email;
             userNameElement.textContent = displayName;
-            console.log('🔍 AuthManager: Set display name to:', displayName);
         }
 
         if (userAvatarElement) {
@@ -295,16 +276,9 @@ export class AuthManager {
 
     async getUserData(uid) {
         try {
-            console.log('🔍 AuthManager: Fetching user data for UID:', uid);
             const userDoc = await getDoc(doc(this.db, 'users', uid));
             if (userDoc.exists()) {
                 const userData = userDoc.data();
-                console.log('🔍 AuthManager: User data retrieved:', {
-                    uid: uid,
-                    name: userData.name,
-                    email: userData.email,
-                    active: userData.active
-                });
                 return userData;
             } else {
                 console.warn('🔍 AuthManager: No user document found for UID:', uid);
@@ -342,19 +316,16 @@ export class AuthManager {
     }
 
     showMainApp() {
-        console.log('🚀 showMainApp() called - hiding loading state and showing main app');
 
         this.hideLoadingState();
 
         const mainApp = document.getElementById('mainApp');
-        console.log('Main app element found:', !!mainApp);
 
         document.getElementById('loginScreen').classList.add('d-none');
         document.getElementById('registerScreen').classList.add('d-none');
         document.getElementById('forgotPasswordScreen').classList.add('d-none');
         document.getElementById('mainApp').classList.remove('d-none');
 
-        console.log('✅ Main app should now be visible - screens hidden, mainApp shown');
 
         // Initialize data when user logs in
         if (window.app && window.app.dataManager) {

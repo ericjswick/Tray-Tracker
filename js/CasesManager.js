@@ -190,6 +190,7 @@ export class CasesManager {
                 physician_id: physician_id,
                 facility_id: document.getElementById('addCaseFacility').value,
                 caseTypeId: caseTypeId,
+                implant_type_id: document.getElementById('addCaseImplantType').value || '',
                 case_type: caseTypeName, // MyRepData compatibility
                 scheduledDate: scheduledDate, // Store date (assume CDT)
                 scheduledTime: scheduledTime, // Store time (assume CDT)
@@ -786,6 +787,7 @@ export class CasesManager {
 
         document.getElementById('editCaseFacility').value = caseData.facility_id || '';
         document.getElementById('editCaseType').value = caseData.caseTypeId || '';
+        document.getElementById('editCaseImplantType').value = caseData.implant_type_id || '';
         document.getElementById('editScheduledDate').value = caseData.scheduledDate || '';
         document.getElementById('editScheduledTime').value = caseData.scheduledTime || '';
         document.getElementById('editEstimatedDuration').value = caseData.estimatedDuration || '';
@@ -1008,6 +1010,7 @@ export class CasesManager {
                 physician_id: document.getElementById('editCasePhysician').value,
                 facility_id: document.getElementById('editCaseFacility').value,
                 caseTypeId: document.getElementById('editCaseType').value,
+                implant_type_id: document.getElementById('editCaseImplantType').value || '',
                 scheduledDate: document.getElementById('editScheduledDate').value,
                 scheduledTime: document.getElementById('editScheduledTime').value,
                 estimatedDuration: parseInt(document.getElementById('editEstimatedDuration').value) || 60,

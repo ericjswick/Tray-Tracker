@@ -4,6 +4,7 @@ class CaseModel {
     this.surgeonId = data.surgeonId || '';
     this.facility_id = data.facility_id || '';
     this.caseTypeId = data.caseTypeId || '';
+    this.implant_type_id = data.implant_type_id || '';
     this.scheduledDate = data.scheduledDate || '';
     this.scheduledTime = data.scheduledTime || '';
     this.estimatedDuration = data.estimatedDuration || 60;
@@ -29,6 +30,7 @@ class CaseModel {
       surgeonId: this.surgeonId,
       facility_id: this.facility_id,
       caseTypeId: this.caseTypeId,
+      implant_type_id: this.implant_type_id,
       scheduledDate: this.scheduledDate,
       scheduledTime: this.scheduledTime,
       estimatedDuration: this.estimatedDuration,
@@ -54,6 +56,7 @@ class CaseModel {
       surgeonId: this.surgeonId,
       facility_id: this.facility_id,
       caseTypeId: this.caseTypeId,
+      implant_type_id: this.implant_type_id,
       scheduledDate: this.scheduledDate,
       scheduledTime: this.scheduledTime,
       estimatedDuration: this.estimatedDuration,

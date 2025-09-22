@@ -25,12 +25,10 @@ export class DataManager {
         // Note: Remove orderBy for now since MyRepData uses created_at and system expects createdAt
         const traysQuery = query(collection(this.db, 'tray_tracking'));
         this.traysUnsubscribe = onSnapshot(traysQuery, (snapshot) => {
-            console.log(`📦 DataManager: Tray_tracking collection updated - ${snapshot.size} documents found`);
             const trays = [];
             snapshot.forEach((doc) => {
                 trays.push({ id: doc.id, ...doc.data() });
             });
-            console.log(`📦 DataManager: Processed ${trays.length} trays from tray_tracking`);
 
             if (window.app && window.app.trayManager) {
                 window.app.trayManager.handleTraysUpdate(trays);
@@ -50,7 +48,6 @@ export class DataManager {
         console.log('Setting up users listener...');
         const usersQuery = query(collection(this.db, 'users'));
         this.usersUnsubscribe = onSnapshot(usersQuery, (snapshot) => {
-            console.log('Users snapshot received, size:', snapshot.size);
 
             const users = new Map();
             let userCount = 0;
@@ -59,12 +56,10 @@ export class DataManager {
                 const userData = { id: doc.id, ...doc.data() };
                 users.set(doc.id, userData);
                 userCount++;
-                console.log(`User ${userCount}:`, doc.id, userData.name || userData.email || 'No name');
             });
 
             const previousUserCount = this.users ? this.users.size : 0;
             this.users = users;
-            console.log('DataManager: Users map updated with', users.size, 'users');
 
             // Notify all components that need user data
             if (window.app && window.app.viewManager) {
@@ -86,7 +81,6 @@ export class DataManager {
         // Listen to Facilities collection
         const facilityQuery = query(collection(this.db, 'facilities'), orderBy('account_name', 'asc'));
         this.facilityUnsubscribe = onSnapshot(facilityQuery, (snapshot) => {
-            console.log(`DataManager: Facilities collection updated - ${snapshot.size} documents found`);
             const facilities = [];
             let activeCount = 0;
 
@@ -100,7 +94,6 @@ export class DataManager {
                 }
             });
 
-            console.log(`DataManager: ${activeCount} active facilities loaded`);
             this.facilities = facilities;
 
             // Trigger tray re-render when facilities are loaded/updated
@@ -126,7 +119,6 @@ export class DataManager {
             });
 
             this.surgeons = surgeons;
-            console.log('Surgeons updated from Firebase:', this.surgeons.length);
 
             // Refresh physician dropdowns in case modals if they exist and are empty
             if (window.app?.modalManager && surgeons.length > 0) {
@@ -136,7 +128,6 @@ export class DataManager {
 
                     if ((addPhysicianSelect && addPhysicianSelect.children.length <= 1) ||
                         (editPhysicianSelect && editPhysicianSelect.children.length <= 1)) {
-                        console.log('🔄 Auto-refreshing case modal physician dropdowns');
                         window.app.modalManager.refreshPhysicianDropdowns();
                     }
                 }, 100); // Small delay to ensure DOM is ready
@@ -182,7 +173,6 @@ export class DataManager {
 
             // Trigger re-render of surgeons if they're already loaded
             if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons && window.app.surgeonManager.currentSurgeons.length > 0) {
-                console.log('Triggering surgeon re-render after case types loaded');
                 setTimeout(() => {
                     window.app.surgeonManager.renderSurgeons(window.app.surgeonManager.currentSurgeons);
                 }, 100);
@@ -292,7 +282,6 @@ export class DataManager {
                 trays.push(trayData);
             });
 
-            console.log(`🔍 DEBUG: Retrieved ${trays.length} raw trays from database`);
 
             // Deduplicate trays based on tray_id (primary identifier)
             const uniqueTrays = [];
@@ -362,7 +351,6 @@ export class DataManager {
         // Sample a few trays to show their compatibility arrays
         const sampleTrays = trays.slice(0, 3);
         sampleTrays.forEach(tray => {
-            console.log(`🔍 Sample tray: "${tray.tray_name || tray.name}" - compatibility:`, tray.case_type_compatibility);
         });
 
         const compatibleTrays = trays.filter(tray => {
@@ -382,9 +370,7 @@ export class DataManager {
             const isCompatible = tray.case_type_compatibility.includes(caseType);
 
             if (isCompatible) {
-                console.log(`✅ Tray "${tray.tray_name || tray.name}" is compatible with case type ID "${caseType}"`);
             } else {
-                console.log(`❌ Tray "${tray.tray_name || tray.name}" is NOT compatible with case type ID "${caseType}" (compatible with IDs: ${tray.case_type_compatibility.join(', ')})`);
             }
 
             return isCompatible;
@@ -609,7 +595,6 @@ export class DataManager {
             // Get system activities (case creation, status changes, etc.)
             const systemActivities = await this.getAllSystemActivities(maxItems);
             if (systemActivities.length > 0) {
-                console.log('📄 System activities sample:', systemActivities[0]);
             }
             systemActivities.forEach(activity => {
                 allActivities.push({
@@ -620,7 +605,6 @@ export class DataManager {
             
             // Get tray activities
             const allTrays = await this.getAllTrays();
-            console.log(`✅ Found ${allTrays.length} total trays`);
             
             if (allTrays.length === 0) {
                 console.error('❌ No trays found in database! Check getAllTrays() method.');
@@ -789,11 +773,9 @@ export class DataManager {
     // Force refresh surgeon data when needed (for SPA navigation issues)
     async ensureSurgeonsLoaded() {
         try {
-            console.log('🔄 Ensuring surgeons are loaded...');
 
             // If we already have surgeons, return them
             if (this.surgeons && this.surgeons.length > 0) {
-                console.log(`✅ ${this.surgeons.length} surgeons already loaded`);
                 return this.surgeons;
             }
 

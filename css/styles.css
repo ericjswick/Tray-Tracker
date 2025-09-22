@@ -860,6 +860,40 @@ body {
     width: 100%;
 }
 
+/* ========== MAP SPIDER STYLES ========== */
+
+/* Style for spider leg lines */
+.oms-leg {
+    stroke: var(--gray-600) !important;
+    stroke-width: 2px !important;
+    stroke-dasharray: 3,3 !important;
+    opacity: 0.8 !important;
+}
+
+/* Highlighted spider leg */
+.oms-leg:hover {
+    stroke: var(--primary-blue) !important;
+    stroke-width: 3px !important;
+    opacity: 1 !important;
+}
+
+/* Style for spiderfied markers */
+.tray-marker.oms-marker {
+    z-index: 1000 !important;
+    transition: all 0.2s ease !important;
+}
+
+/* Enhance marker visibility when spiderfied */
+.tray-marker.oms-marker .marker-pin {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 3px rgba(59, 130, 246, 0.3) !important;
+    transform: scale(1.1) !important;
+}
+
+.location-marker.oms-marker .marker-pin {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 3px rgba(16, 185, 129, 0.3) !important;
+    transform: scale(1.1) rotate(-45deg) !important;
+}
+
 /* ========== VIEW CONTROLS ========== */
 
 .view-controls {
@@ -2368,6 +2402,15 @@ button:focus,
 }
 
 /* ========== CASE TYPE MANAGEMENT ========== */
+
+.content-container {
+    background: white;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--gray-200);
+    margin-top: 1rem;
+}
 
 .casetype-cards-grid {
     display: grid;

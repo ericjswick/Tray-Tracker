@@ -75,6 +75,7 @@ export class TrayManager {
                 tray_name: document.getElementById('trayName').value,
                 type: '', // Keep empty for legacy compatibility if no types selected
                 case_type_compatibility: selectedCaseTypes, // MyRepData format
+                implant_type_id: document.getElementById('trayImplantType').value || '',
                 status: document.getElementById('trayStatus').value || TRAY_STATUS.AVAILABLE, // Use selected status or default to available
                 location: locationValue,
                 facility: '',
@@ -142,10 +143,10 @@ export class TrayManager {
         // Populate dropdowns first
         await window.app.modalManager.populateInitialLocationDropdown();
         await window.app.modalManager.populateCaseTypeCompatibilityDropdown();
+        await window.app.modalManager.populateImplantTypeDropdown();
         await window.app.modalManager.populateTrayStatusDropdown();
         await this.populateUserDropdown();
 
-        console.log('🔧 All dropdowns populated, now setting tray data...');
 
         // Populate form with existing tray data
         document.getElementById('trayName').value = tray.tray_name || '';
@@ -153,14 +154,11 @@ export class TrayManager {
         // Set case type compatibility
         const trayTypeSelect = document.getElementById('trayType');
         if (tray.case_type_compatibility && Array.isArray(tray.case_type_compatibility)) {
-            console.log('🔧 Setting case type compatibility for tray:', tray.tray_name, 'Compatibility:', tray.case_type_compatibility);
-            console.log('🔧 Available options:', Array.from(trayTypeSelect.options).map(o => o.value));
             
             Array.from(trayTypeSelect.options).forEach(option => {
                 const shouldSelect = tray.case_type_compatibility.includes(option.value);
                 option.selected = shouldSelect;
                 if (shouldSelect) {
-                    console.log('✅ Selected option:', option.value);
                 }
             });
         } else {
@@ -172,7 +170,10 @@ export class TrayManager {
         
         // Set status
         document.getElementById('trayStatus').value = tray.status || 'available';
-        
+
+        // Set implant type
+        document.getElementById('trayImplantType').value = tray.implant_type_id || '';
+
         // Set assigned user
         document.getElementById('trayAssignedTo').value = tray.assignedTo || '';
         
@@ -215,6 +216,7 @@ export class TrayManager {
             const updateData = {
                 tray_name: document.getElementById('trayName').value,
                 case_type_compatibility: selectedCaseTypes,
+                implant_type_id: document.getElementById('trayImplantType').value || '',
                 status: document.getElementById('trayStatus').value,
                 location: locationValue,
                 assignedTo: assignedTo,
@@ -343,7 +345,7 @@ export class TrayManager {
             const currentUserId = currentUser?.uid;
 
             const updates = {
-                status: TRAY_STATUS.IN_USE, // Use MyRepData compatible status
+                status: TRAY_STATUS.CHECKED_IN, // Use CHECKED_IN for case-based check-ins
                 location: facility, // Keep legacy location field for backward compatibility
                 facility_id: facility, // Store facility ID for proper matching
                 caseDate: caseDate, // Case date from selected case or current date
@@ -374,6 +376,7 @@ export class TrayManager {
                     console.error('Error adding tray to case requirements:', error);
                     // Don't fail the entire check-in process if this fails
                 }
+
             }
 
             // Create history entry message with assignment info
@@ -439,7 +442,7 @@ export class TrayManager {
             const currentUserId = currentUser?.uid;
 
             const updates = {
-                status: TRAY_STATUS.AVAILABLE,
+                status: TRAY_STATUS.PICKED_UP,
                 location: TRAY_LOCATIONS.TRUNK,
                 facility: '',
                 caseDate: '',
@@ -664,7 +667,6 @@ export class TrayManager {
 
     // Called directly when facilities are loaded - much more reliable than polling
     onFacilitiesLoaded() {
-        console.log('Facilities loaded callback triggered - re-rendering trays immediately');
         
         // Add specific debugging for SPA update issues
         if (window.is_enable_api_logging && window.frontendLogger) {
@@ -690,8 +692,6 @@ export class TrayManager {
     }
 
     handleTraysUpdate(trays) {
-        console.log(`🚀 TrayManager.handleTraysUpdate called with ${trays?.length || 0} trays`);
-        console.log('Current view:', window.app.viewManager?.currentView);
 
         this.currentTrays = trays;
         this.renderTrays(trays);
@@ -830,7 +830,7 @@ export class TrayManager {
                     </div>
                     ${tray.tray_name}
                 </div>
-                <span class="tray-status-badge ${statusClass}">${tray.status}</span>
+                <span class="tray-status-badge ${statusClass}">${getStatusDisplayText(tray.status)}</span>
             </div>
             <div class="tray-card-content">
                 ${this.getTrayTypeText(tray) ? `
@@ -923,7 +923,7 @@ export class TrayManager {
                     </div>
                 </div>
                 <div class="tray-horizontal-status">
-                    <span class="tray-status-badge ${statusClass}">${tray.status}</span>
+                    <span class="tray-status-badge ${statusClass}">${getStatusDisplayText(tray.status)}</span>
                 </div>
             </div>
             
@@ -1351,7 +1351,7 @@ export class TrayManager {
     getTrayActions(tray) {
         let actions = '';
 
-        if (isAvailableStatus(tray.status)) {
+        if (isAvailableStatus(tray.status) || normalizeStatus(tray.status) === TRAY_STATUS.PICKED_UP) {
             actions += `
                 <button class="btn-primary-custom btn-sm" onclick="app.modalManager.showCheckinModal('${tray.id}')">
                     <i class="fas fa-sign-in-alt"></i> Check-in
@@ -1366,6 +1366,14 @@ export class TrayManager {
                 </button>
                 <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showTurnoverModal('${tray.id}')">
                     <i class="fas fa-exchange-alt"></i> Turnover
+                </button>
+            `;
+        }
+
+        if (normalizeStatus(tray.status) === TRAY_STATUS.CHECKED_IN) {
+            actions += `
+                <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
+                    <i class="fas fa-hand-paper"></i> Pickup
                 </button>
             `;
         }
@@ -1962,4 +1970,5 @@ export class TrayManager {
             throw error;
         }
     }
+
 }

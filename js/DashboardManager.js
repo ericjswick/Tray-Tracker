@@ -140,7 +140,6 @@ export class DashboardManager {
     }
 
     async renderDashboardCases(cases) {
-        console.log('🎯 renderDashboardCases() called with', cases?.length || 0, 'cases');
 
         const container = document.getElementById('dashboardCasesContent');
         if (!container) {
@@ -148,7 +147,6 @@ export class DashboardManager {
             return;
         }
 
-        console.log('✅ Cases container found, current innerHTML:', container.innerHTML.includes('Loading cases') ? 'Shows loading spinner' : 'Shows content');
 
         if (cases.length === 0) {
             container.innerHTML = this.getEmptyState();
@@ -1314,55 +1312,71 @@ export class DashboardManager {
                 let statusIcon = 'fas fa-times-circle';
                 let isUnavailable = true;
 
+                // Debug: Show what requirements we're processing
+
                 // Find the matching tray
                 const matchingTray = allTrays.find(tray =>
                     (tray.tray_id === requirement.tray_id || tray.id === requirement.tray_id)
                 );
 
-                // Debug log to see tray data
-                if (matchingTray && (matchingTray.status === 'in-use' || matchingTray.status === 'checked-in')) {
-                    console.log('Tray debug:', {
-                        trayId: matchingTray.id,
-                        trayName: matchingTray.name,
-                        status: matchingTray.status,
-                        assignedCaseId: matchingTray.assignedCaseId,
-                        currentCaseId: caseItem.id
-                    });
-                }
-
                 if (matchingTray) {
                     trayName = matchingTray.name || matchingTray.tray_name || `Tray ${matchingTray.id.slice(-4)}`;
 
-                    // Determine status display based on tray status
-                    switch (matchingTray.status) {
-                        case 'available':
-                            status = 'Available';
+                    // Determine status display based on tray status (normalize to handle both formats)
+                    const normalizedStatus = normalizeStatus(matchingTray.status);
+                    switch (normalizedStatus) {
+                        case TRAY_STATUS.AVAILABLE:
+                            status = getStatusDisplayText(normalizedStatus); // Use central function
                             statusColor = '#28a745'; // Green
                             statusIcon = 'fas fa-check-circle';
                             isUnavailable = false;
                             break;
-                        case 'in-use':
-                        case 'checked-in':
-                            if (matchingTray.assignedCaseId === caseItem.id) {
-                                status = 'Ready';
+                        case TRAY_STATUS.IN_USE:
+                        case TRAY_STATUS.CHECKED_IN:
+                            // Check if tray is assigned to this case OR has matching facility/physician
+                            const trayFacility = matchingTray.facility_id || matchingTray.facility;
+                            const traySurgeon = matchingTray.physician_id || matchingTray.surgeon;
+                            const caseFacility = caseItem.facility_id || caseItem.facility;
+                            const caseSurgeon = caseItem.physician_id || caseItem.surgeon;
+                            const facilityMatches = trayFacility && caseFacility && trayFacility === caseFacility;
+                            const surgeonMatches = traySurgeon && caseSurgeon && traySurgeon === caseSurgeon;
+
+
+                            if (matchingTray.assignedCaseId === caseItem.id || (facilityMatches && surgeonMatches)) {
+                                status = 'Checked In And Ready'; // Updated to show new status
                                 statusColor = '#28a745'; // Green
                                 statusIcon = 'fas fa-check-circle';
                                 isUnavailable = false;
                             } else {
-                                status = 'In Use';
+                                status = getStatusDisplayText(normalizedStatus); // Use central function for other cases
                                 statusColor = unavailableColor; // Use warning color
                                 statusIcon = 'fas fa-exclamation-triangle';
                                 hasUnavailableTrays = true;
                             }
                             break;
-                        case 'picked-up':
-                            status = 'In Surgery';
-                            statusColor = '#6c757d'; // Gray
-                            statusIcon = 'fas fa-clock';
-                            isUnavailable = false; // Consider picked-up as available for this case
+                        case TRAY_STATUS.PICKED_UP:
+                            // Check if tray is for this case
+                            const trayFacilityPickup = matchingTray.facility_id || matchingTray.facility;
+                            const traySurgeonPickup = matchingTray.physician_id || matchingTray.surgeon;
+                            const caseFacilityPickup = caseItem.facility_id || caseItem.facility;
+                            const caseSurgeonPickup = caseItem.physician_id || caseItem.surgeon;
+                            const facilityMatchesPickup = trayFacilityPickup && caseFacilityPickup && trayFacilityPickup === caseFacilityPickup;
+                            const surgeonMatchesPickup = traySurgeonPickup && caseSurgeonPickup && traySurgeonPickup === caseSurgeonPickup;
+
+                            if (matchingTray.assignedCaseId === caseItem.id || (facilityMatchesPickup && surgeonMatchesPickup)) {
+                                status = getStatusDisplayText(normalizedStatus); // Use central function to show "Picked Up"
+                                statusColor = '#6c757d'; // Gray
+                                statusIcon = 'fas fa-clock';
+                                isUnavailable = false;
+                            } else {
+                                status = getStatusDisplayText(normalizedStatus); // Use central function
+                                statusColor = unavailableColor; // Use warning color if not for this case
+                                statusIcon = 'fas fa-exclamation-triangle';
+                                hasUnavailableTrays = true;
+                            }
                             break;
                         default:
-                            status = 'Unavailable';
+                            status = getStatusDisplayText(normalizedStatus); // Use central function
                             statusColor = unavailableColor; // Use warning color
                             statusIcon = 'fas fa-times-circle';
                             hasUnavailableTrays = true;
@@ -1743,7 +1757,7 @@ export class DashboardManager {
                     
                     // Update tray with case details
                     await this.dataManager.updateTray(tray.id, {
-                        status: TRAY_STATUS.IN_USE,
+                        status: TRAY_STATUS.CHECKED_IN,
                         assignedCaseId: caseId,
                         facility: caseFacility,
                         surgeon: caseSurgeon,
@@ -1941,6 +1955,28 @@ export class DashboardManager {
                         '</div>' +
 
                         '<div class="mt-4 border-top pt-4">' +
+                            '<h6><i class="fas fa-plus"></i> Additional Trays</h6>' +
+                            '<p class="text-muted mb-3">Select additional trays to check in and add to case requirements:</p>' +
+                            '<div class="row">' +
+                                '<div class="col-md-8">' +
+                                    '<label for="additionalTraySelect" class="form-label">Select Additional Tray:</label>' +
+                                    '<select class="form-control" id="additionalTraySelect">' +
+                                        '<option value="">Choose an additional tray...</option>' +
+                                        this.generateAdditionalTrayOptions(allTrays, caseData.caseTypeId || caseData.case_type_id) +
+                                    '</select>' +
+                                '</div>' +
+                                '<div class="col-md-4 d-flex align-items-end">' +
+                                    '<button type="button" class="btn btn-outline-primary" onclick="window.app.dashboardManager.addAdditionalTray()">' +
+                                        '<i class="fas fa-plus"></i> Add Tray' +
+                                    '</button>' +
+                                '</div>' +
+                            '</div>' +
+                            '<div id="additionalTraysList" class="mt-3">' +
+                                '<!-- Additional selected trays will appear here -->' +
+                            '</div>' +
+                        '</div>' +
+
+                        '<div class="mt-4 border-top pt-4">' +
                             '<h6><i class="fas fa-camera"></i> Photos for All Checked-In Trays</h6>' +
                             '<p class="text-muted mb-3">These photos will be added to the history of all checked-in trays:</p>' +
 
@@ -2127,7 +2163,7 @@ export class DashboardManager {
             });
 
             const trayOptions = sortedTrays.map(tray => {
-                const isCheckedIn = tray.status === 'in-use';
+                const isCheckedIn = tray.status === TRAY_STATUS.IN_USE || tray.status === TRAY_STATUS.CHECKED_IN;
                 const statusText = isCheckedIn ? ' (Already Checked In)' : ' (' + (tray.status || 'Available') + ')';
                 const isRecommended = (tray.tray_id === req.tray_id || tray.id === req.tray_id);
 
@@ -2180,9 +2216,24 @@ export class DashboardManager {
                     selectedTrays.push({
                         trayId: traySelector.value,
                         trayName: traySelector.options[traySelector.selectedIndex].dataset.trayName,
-                        requirementIndex: index
+                        requirementIndex: index,
+                        isAdditional: false
                     });
                 }
+            });
+
+            // Collect additional trays
+            const additionalTrayItems = document.querySelectorAll('.additional-tray-item');
+            additionalTrayItems.forEach((item) => {
+                const trayId = item.getAttribute('data-additional-tray-id');
+                const trayName = item.querySelector('strong').textContent;
+
+                selectedTrays.push({
+                    trayId: trayId,
+                    trayName: trayName,
+                    requirementIndex: -1, // Mark as additional tray
+                    isAdditional: true
+                });
             });
 
             if (selectedTrays.length === 0) {
@@ -2282,7 +2333,7 @@ export class DashboardManager {
 
                     // Update tray status and assignment (focus only on tray data)
                     await this.dataManager.updateTray(tray.trayId, {
-                        status: TRAY_STATUS.IN_USE,
+                        status: TRAY_STATUS.CHECKED_IN,
                         assignedCaseId: caseId,
                         facility: caseData.facility_id,
                         surgeon: caseData.physician_id,
@@ -2332,6 +2383,20 @@ export class DashboardManager {
                     console.error(`❌ Error checking in tray ${tray.trayName}:`, error);
                     errors.push(`${tray.trayName}: ${error.message}`);
                     errorCount++;
+                }
+            }
+
+            // Add additional trays to case requirements
+            const additionalTrays = selectedTrays.filter(tray => tray.isAdditional);
+            if (additionalTrays.length > 0) {
+                try {
+                    for (const additionalTray of additionalTrays) {
+                        await window.app.trayManager.addTrayToCase(additionalTray.trayId, caseId);
+                        console.log(`✅ Additional tray ${additionalTray.trayName} added to case ${caseId} requirements`);
+                    }
+                } catch (error) {
+                    console.error('Error adding additional trays to case requirements:', error);
+                    // Don't fail the entire process if this fails
                 }
             }
 
@@ -2542,6 +2607,81 @@ export class DashboardManager {
         }
     }
 
+    generateAdditionalTrayOptions(allTrays, caseTypeId = null) {
+        // Filter trays by case type compatibility if case type is available
+        let filteredTrays = allTrays;
+        if (caseTypeId && window.app?.dataManager?.filterForTrayCompatibilityType) {
+            filteredTrays = window.app.dataManager.filterForTrayCompatibilityType(caseTypeId, allTrays);
+        }
+
+        // Sort filtered trays alphabetically
+        const sortedTrays = [...filteredTrays].sort((a, b) => {
+            const nameA = (a.tray_name || a.name || a.tray_id || '').toLowerCase();
+            const nameB = (b.tray_name || b.name || b.tray_id || '').toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+
+        return sortedTrays.map(tray => {
+            const isCheckedIn = tray.status === TRAY_STATUS.IN_USE || tray.status === TRAY_STATUS.CHECKED_IN;
+            const statusText = isCheckedIn ? ' (Already Checked In)' : ' (' + (tray.status || 'Available') + ')';
+
+            return '<option value="' + (tray.id || tray.tray_id) + '" data-tray-name="' + (tray.tray_name || tray.name || tray.tray_id) + '" ' +
+                (isCheckedIn ? 'disabled' : '') + '>' +
+                (tray.tray_name || tray.name || tray.tray_id) + ' - ' + (tray.location || 'Unknown Location') + statusText +
+            '</option>';
+        }).join('');
+    }
+
+    addAdditionalTray() {
+        const select = document.getElementById('additionalTraySelect');
+        const traysList = document.getElementById('additionalTraysList');
+
+        if (!select.value) {
+            this.showWarningNotification('Please select a tray to add');
+            return;
+        }
+
+        const selectedOption = select.options[select.selectedIndex];
+        const trayId = select.value;
+        const trayName = selectedOption.getAttribute('data-tray-name');
+
+        // Check if tray is already added
+        const existingTray = traysList.querySelector(`[data-additional-tray-id="${trayId}"]`);
+        if (existingTray) {
+            this.showWarningNotification('This tray is already added to additional trays');
+            return;
+        }
+
+        // Create additional tray item
+        const additionalTrayHtml = `
+            <div class="additional-tray-item p-2 border rounded mb-2" data-additional-tray-id="${trayId}">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${trayName}</strong>
+                        <small class="text-muted d-block">Will be checked in and added to case requirements</small>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="window.app.dashboardManager.removeAdditionalTray('${trayId}')">
+                        <i class="fas fa-times"></i> Remove
+                    </button>
+                </div>
+            </div>
+        `;
+
+        traysList.insertAdjacentHTML('beforeend', additionalTrayHtml);
+
+        // Reset select
+        select.value = '';
+
+        this.showSuccessNotification(`Added ${trayName} to additional trays`);
+    }
+
+    removeAdditionalTray(trayId) {
+        const trayItem = document.querySelector(`[data-additional-tray-id="${trayId}"]`);
+        if (trayItem) {
+            trayItem.remove();
+        }
+    }
+
     // Notification methods
     showSuccessNotification(message) {
         if (window.app?.notificationManager) {
@@ -2596,9 +2736,7 @@ export class DashboardManager {
                 includeAllOption: true,
                 allOptionText: 'All Status'
             });
-            console.log('✅ Dashboard: Case status dropdown initialized');
         } else {
-            console.warn('⚠️ Dashboard: Case status dropdown element not found');
         }
     }
 }

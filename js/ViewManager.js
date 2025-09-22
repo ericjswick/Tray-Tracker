@@ -1,6 +1,6 @@
 // js/ViewManager.js - Updated for Tray Tracker
 import { routingDetector } from './utils/RoutingDetector.js';
-import { isInUseStatus, isCheckedInStatus, populateTrayStatusDropdown } from './constants/TrayStatus.js';
+import { isInUseStatus, isAvailableStatus, isCheckedInStatus, normalizeStatus, TRAY_STATUS, populateTrayStatusDropdown, getStatusDisplayText } from './constants/TrayStatus.js';
 import { populateFacilityTypeDropdown } from './constants/FacilityTypes.js';
 import { TRAY_LOCATIONS } from './constants/TrayLocations.js';
 
@@ -12,7 +12,6 @@ export class ViewManager {
     }
 
     showView(viewName, updateUrl = true) {
-        console.log('Switching to view:', viewName);
 
         // Update URL if requested (avoid infinite loops during initial load)
         if (updateUrl) {
@@ -32,7 +31,6 @@ export class ViewManager {
         if (targetView) {
             targetView.classList.remove('d-none');
             this.currentView = viewName;
-            console.log('View shown:', viewName);
         } else {
             console.error('View not found:', `${viewName}View`);
         }
@@ -101,6 +99,9 @@ export class ViewManager {
             case 'casetypes':
                 this.initializeCaseTypesView();
                 break;
+            case 'implanttypes':
+                this.initializeImplantTypesView();
+                break;
             case 'cases':
                 this.initializeCasesView();
                 break;
@@ -125,6 +126,23 @@ export class ViewManager {
                 }
             } else {
                 console.error('CaseTypeManager not found');
+            }
+        }, 100);
+    }
+
+    initializeImplantTypesView() {
+        console.log('Initializing implant types view');
+        setTimeout(() => {
+            if (window.app.implantTypeManager) {
+                try {
+                    window.app.implantTypeManager.initializeViewMode();
+                    window.app.implantTypeManager.loadImplantTypes();
+                    console.log('Implant types view initialized');
+                } catch (error) {
+                    console.error('Error initializing implant types view:', error);
+                }
+            } else {
+                console.error('ImplantTypeManager not found');
             }
         }, 100);
     }
@@ -288,9 +306,7 @@ export class ViewManager {
             }
 
             // Populate trays user filter (unless viewAllTrays flag is set)
-            console.log('🏁 initializeTraysView: window._trayViewShowingAllTrays =', window._trayViewShowingAllTrays);
             if (!window._trayViewShowingAllTrays) {
-                console.log('📞 Calling populateTraysUserFilter from initializeTraysView');
                 this.populateTraysUserFilter();
             } else {
                 console.log('⏭️ Skipping populateTraysUserFilter due to _trayViewShowingAllTrays flag');
@@ -409,7 +425,6 @@ export class ViewManager {
     }
 
     renderDashboardTrays(trays) {
-        console.log('🎯 renderDashboardTrays() called with', trays?.length || 0, 'trays');
 
         const container = document.getElementById('dashboardTraysContent');
         if (!container) {
@@ -487,7 +502,7 @@ export class ViewManager {
                     </div>
                     ${tray.tray_name}
                 </div>
-                <span class="tray-status-badge ${statusClass}">${tray.status}</span>
+                <span class="tray-status-badge ${statusClass}">${getStatusDisplayText(tray.status)}</span>
             </div>
             <div class="tray-card-content">
                 ${this.getTrayTypeText(tray) ? `
@@ -604,7 +619,6 @@ export class ViewManager {
     }
 
     populateTraysUserFilter(retryCount = 0, setToAllUsers = false) {
-        console.log('🔍 populateTraysUserFilter called:', { retryCount, setToAllUsers, globalFlag: window._trayViewShowingAllTrays });
         const traysUserFilter = document.getElementById('traysUserFilter');
         if (!traysUserFilter) return;
 
@@ -612,11 +626,6 @@ export class ViewManager {
         traysUserFilter.innerHTML = '<option value="">All Users</option>';
 
         // Get users from DataManager
-        console.log('🔍 Checking for users data:', {
-            dataManagerExists: !!window.app?.dataManager,
-            usersExists: !!window.app?.dataManager?.users,
-            usersSize: window.app?.dataManager?.users?.size || 0
-        });
         if (window.app?.dataManager?.users && window.app.dataManager.users.size > 0) {
             const users = Array.from(window.app.dataManager.users.values())
                 .filter(user => user.active !== false) // Only show active users
@@ -637,15 +646,12 @@ export class ViewManager {
             if (!setToAllUsers) {
                 const currentUser = window.app?.authManager?.currentUser;
                 if (currentUser) {
-                    console.log('👤 Setting filter to current user:', currentUser.uid);
                     traysUserFilter.value = currentUser.uid;
                 }
             } else {
-                console.log('👥 Setting filter to All Users');
                 traysUserFilter.value = ''; // Set to "All Users"
             }
 
-            console.log('📋 Final filter value:', traysUserFilter.value);
 
             // Trigger filter update
             if (window.app.trayManager && window.app.trayManager.currentTrays) {
@@ -1039,7 +1045,7 @@ export class ViewManager {
     getTrayActions(tray) {
         let actions = '';
 
-        if (tray.status === 'available') {
+        if (isAvailableStatus(tray.status) || normalizeStatus(tray.status) === TRAY_STATUS.PICKED_UP) {
             actions += `
                 <button class="btn-primary-custom btn-sm" onclick="app.modalManager.showCheckinModal('${tray.id}')">
                     <i class="fas fa-sign-in-alt"></i> Check-in
@@ -1047,13 +1053,21 @@ export class ViewManager {
             `;
         }
 
-        if (tray.status === 'in-use' || tray.status === 'in_use') {
+        if (isInUseStatus(tray.status)) {
             actions += `
                 <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
                     <i class="fas fa-hand-paper"></i> Pickup
                 </button>
                 <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showTurnoverModal('${tray.id}')">
                     <i class="fas fa-exchange-alt"></i> Turnover
+                </button>
+            `;
+        }
+
+        if (normalizeStatus(tray.status) === TRAY_STATUS.CHECKED_IN) {
+            actions += `
+                <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
+                    <i class="fas fa-hand-paper"></i> Pickup
                 </button>
             `;
         }
@@ -1338,7 +1352,7 @@ export class ViewManager {
 
     // Get view name from current URL
     getViewFromUrl() {
-        const validViews = ['dashboard', 'team', 'map', 'trays', 'users', 'facilityAdmin', 'surgeons', 'physicians', 'casetypes', 'cases', 'migrations', 'admin_data_migrations'];
+        const validViews = ['dashboard', 'team', 'map', 'trays', 'users', 'facilityAdmin', 'surgeons', 'physicians', 'casetypes', 'implanttypes', 'cases', 'migrations', 'admin_data_migrations'];
         
         if (this.routingStrategy === 'clean') {
             // Clean URLs: check pathname
@@ -1409,7 +1423,7 @@ export class ViewManager {
         });
 
         // Also update dropdown items without navigation IDs
-        const dropdownViews = ['users', 'facilityAdmin', 'surgeons', 'physicians', 'cases', 'casetypes', 'admin_data_migrations'];
+        const dropdownViews = ['users', 'facilityAdmin', 'surgeons', 'physicians', 'cases', 'casetypes', 'implanttypes', 'admin_data_migrations'];
         dropdownViews.forEach(view => {
             const elements = document.querySelectorAll(`a[href="#${view}"], a[href="/${view}"]`);
             elements.forEach(element => {
@@ -1454,9 +1468,6 @@ export class ViewManager {
     handleInitialLoad() {
         console.log('🚀 Handling initial page load...');
         console.log('Current URL:', window.location.href);
-        console.log('Current pathname:', window.location.pathname);
-        console.log('Current hash:', window.location.hash);
-        console.log('Routing strategy:', this.routingStrategy);
         
         let initialView = 'dashboard';
         
@@ -1466,13 +1477,10 @@ export class ViewManager {
         
         if (this.routingStrategy === 'clean') {
             // Clean URLs: /cases, /trays, etc.
-            console.log('Using clean URL detection...');
             if (currentPath !== '/' && currentPath !== '') {
                 const pathView = currentPath.substring(1); // Remove leading slash
-                console.log('Path view detected:', pathView);
                 if (this.isValidView(pathView)) {
                     initialView = pathView;
-                    console.log('✅ Valid path view accepted:', pathView);
                 } else {
                     console.log('❌ Invalid path view rejected:', pathView);
                 }
@@ -1492,20 +1500,18 @@ export class ViewManager {
             }
         }
         
-        console.log(`🎯 Final initial view determined: ${initialView} (from ${this.routingStrategy === 'clean' ? 'path' : 'hash'})`);
         
         // Navigate to the determined view without updating URL (to avoid double navigation)
         this.isInitialLoad = true;
         this.showView(initialView, false);
         this.isInitialLoad = false;
         
-        console.log('✅ Initial load completed');
     }
     
     isValidView(viewName) {
         const validViews = [
-            'dashboard', 'team', 'facilities', 'trays', 'users', 
-            'facilityAdmin', 'surgeons', 'physicians', 'map', 'casetypes', 'cases', 'migrations', 'admin_data_migrations'
+            'dashboard', 'team', 'facilities', 'trays', 'users',
+            'facilityAdmin', 'surgeons', 'physicians', 'map', 'casetypes', 'implanttypes', 'cases', 'migrations', 'admin_data_migrations'
         ];
         return validViews.includes(viewName);
     }
@@ -1559,7 +1565,6 @@ export class ViewManager {
             });
         }
         
-        console.log('History listeners set up for', this.routingStrategy, 'routing');
     }
 
     initializeAdminDataMigrationsView() {
@@ -1664,7 +1669,7 @@ export class ViewManager {
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="row mt-4">
                         <div class="col-md-6">
                             <div class="card">
@@ -1683,6 +1688,27 @@ export class ViewManager {
                                     </div>
                                     <div id="facilityNameToAccountNameStatus" class="alert alert-secondary d-none"></div>
                                     <div id="facilityNameToAccountNameResult" class="alert d-none"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="fas fa-user-md"></i> Physician Activation</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p>Activates all physicians by setting <code>active: true</code> for those with <code>active: false</code>.</p>
+                                    <div class="mb-3">
+                                        <button class="btn btn-info btn-sm" onclick="checkPhysicianActivationStatusFromUI()">
+                                            <i class="fas fa-search"></i> Check Status
+                                        </button>
+                                        <button class="btn btn-success" onclick="activateAllPhysiciansFromUI()">
+                                            <i class="fas fa-user-check"></i> Activate All
+                                        </button>
+                                    </div>
+                                    <div id="physicianActivationStatus" class="alert alert-secondary d-none"></div>
+                                    <div id="physicianActivationResult" class="alert d-none"></div>
                                 </div>
                             </div>
                         </div>

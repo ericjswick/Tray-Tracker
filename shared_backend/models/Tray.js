@@ -8,6 +8,7 @@ class TrayModel {
     this.name = data.name || '';
     this.type = data.type || ''; // Legacy: 'fusion', 'revision', 'mi', 'complete'
     this.case_type_compatibility = data.case_type_compatibility || []; // MyRepData: ['SI fusion', 'Spine fusion', etc.]
+    this.implant_type_id = data.implant_type_id || '';
     this.status = data.status || 'available'; // 'available', 'in_use', 'cleaning', 'maintenance'
     this.location = data.location || '';
     this.assignedTo = data.assignedTo || '';
@@ -46,6 +47,7 @@ class TrayModel {
       name: this.name,
       type: this.type,
       case_type_compatibility: this.case_type_compatibility,
+      implant_type_id: this.implant_type_id,
       status: this.status,
       location: this.location,
       facility: this.facility,

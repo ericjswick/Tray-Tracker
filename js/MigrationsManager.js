@@ -1137,6 +1137,218 @@ window.runFacilityGeocodingFromUI = async function() {
     }
 };
 
+// Physician Activation Migration Functions
+window.activateAllPhysicians = async function() {
+    try {
+        console.log('🔄 Starting physician activation migration...');
+
+        // Import Firestore functions
+        const { getFirestore, collection, getDocs, updateDoc } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
+        const db = getFirestore();
+
+        // Get all physicians
+        const physiciansRef = collection(db, 'physicians');
+        const snapshot = await getDocs(physiciansRef);
+
+        let processed = 0;
+        let activated = 0;
+        let alreadyActive = 0;
+        let errors = [];
+
+        for (const doc of snapshot.docs) {
+            processed++;
+            const data = doc.data();
+            const physicianName = data.full_name || data.name || 'Unknown';
+
+            try {
+                // Check if physician is inactive (has active: false)
+                if (data.active === false) {
+                    console.log(`Activating physician: ${physicianName} (${doc.id})`);
+
+                    // Set active to true
+                    await updateDoc(doc.ref, { active: true });
+                    console.log(`✅ Activated: ${physicianName}`);
+                    activated++;
+                } else {
+                    // Physician is already active (active: true or no active field)
+                    console.log(`⏭️  Already active: ${physicianName}`);
+                    alreadyActive++;
+                }
+            } catch (error) {
+                console.error(`❌ Error processing physician ${physicianName}:`, error);
+                errors.push({
+                    physicianId: doc.id,
+                    physicianName,
+                    error: error.message
+                });
+            }
+        }
+
+        const result = {
+            success: true,
+            message: `Physician activation completed`,
+            processed,
+            activated,
+            alreadyActive,
+            errors
+        };
+
+        console.log(`✅ Physician activation complete: ${processed} processed, ${activated} activated, ${alreadyActive} already active, ${errors.length} errors`);
+
+        if (errors.length > 0) {
+            console.error('Activation errors:', errors);
+        }
+
+        return result;
+
+    } catch (error) {
+        console.error('❌ Physician activation failed:', error);
+        throw error;
+    }
+};
+
+window.checkPhysicianActivationStatus = async function() {
+    try {
+        console.log('📊 Checking physician activation status...');
+
+        // Import Firestore functions
+        const { getFirestore, collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
+        const db = getFirestore();
+
+        // Get all physicians
+        const physiciansRef = collection(db, 'physicians');
+        const snapshot = await getDocs(physiciansRef);
+
+        let total = 0;
+        let active = 0;
+        let inactive = 0;
+        let noActiveField = 0;
+        const details = [];
+
+        snapshot.forEach(doc => {
+            total++;
+            const data = doc.data();
+            const physicianName = data.full_name || data.name || 'Unknown';
+
+            if (data.active === false) {
+                inactive++;
+                details.push({
+                    id: doc.id,
+                    name: physicianName,
+                    status: 'inactive'
+                });
+                console.log(`❌ Inactive: ${physicianName} (${doc.id})`);
+            } else if (data.active === true) {
+                active++;
+                details.push({
+                    id: doc.id,
+                    name: physicianName,
+                    status: 'active'
+                });
+            } else {
+                noActiveField++;
+                active++; // Physicians without active field are considered active by default
+                details.push({
+                    id: doc.id,
+                    name: physicianName,
+                    status: 'no_active_field'
+                });
+            }
+        });
+
+        console.log(`📊 Activation Status: ${total} total, ${active} active, ${inactive} inactive, ${noActiveField} no active field`);
+
+        return { total, active, inactive, noActiveField, details, needsActivation: inactive > 0 };
+
+    } catch (error) {
+        console.error('❌ Status check failed:', error);
+        throw error;
+    }
+};
+
+// UI Helper Functions for Physician Activation Migration
+window.checkPhysicianActivationStatusFromUI = async function() {
+    try {
+        const statusDiv = document.getElementById('physicianActivationStatus');
+        const resultDiv = document.getElementById('physicianActivationResult');
+
+        if (!statusDiv) {
+            console.error('Status div not found - make sure you have the UI elements');
+            return;
+        }
+
+        statusDiv.className = 'alert alert-info';
+        statusDiv.classList.remove('d-none');
+        statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking physician activation status...';
+        resultDiv?.classList.add('d-none');
+
+        const status = await window.checkPhysicianActivationStatus();
+
+        if (status.needsActivation) {
+            statusDiv.className = 'alert alert-warning';
+            statusDiv.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i> ${status.inactive} physicians need activation<br>
+                <small>Active: ${status.active} | Inactive: ${status.inactive} | Total: ${status.total}</small>
+            `;
+        } else {
+            statusDiv.className = 'alert alert-success';
+            statusDiv.innerHTML = `<i class="fas fa-check"></i> All physicians are active (${status.active}/${status.total})`;
+        }
+
+    } catch (error) {
+        const statusDiv = document.getElementById('physicianActivationStatus');
+        if (statusDiv) {
+            statusDiv.className = 'alert alert-danger';
+            statusDiv.classList.remove('d-none');
+            statusDiv.innerHTML = `<i class="fas fa-times"></i> Error: ${error.message}`;
+        }
+        console.error('Error checking physician activation status:', error);
+    }
+};
+
+window.activateAllPhysiciansFromUI = async function() {
+    try {
+        const resultDiv = document.getElementById('physicianActivationResult');
+
+        if (!resultDiv) {
+            console.error('Result div not found - make sure you have the UI elements');
+            return;
+        }
+
+        resultDiv.className = 'alert alert-info';
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Activating all physicians...';
+
+        const result = await window.activateAllPhysicians();
+
+        if (result.errors === 0) {
+            resultDiv.className = 'alert alert-success';
+            resultDiv.innerHTML = `
+                <i class="fas fa-check"></i> Activation completed successfully!<br>
+                <small>Activated: ${result.activated} physicians | Already active: ${result.alreadyActive} | Total: ${result.processed}</small>
+            `;
+        } else {
+            resultDiv.className = 'alert alert-warning';
+            resultDiv.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i> Activation completed with ${result.errors.length} errors<br>
+                <small>Activated: ${result.activated} | Already active: ${result.alreadyActive} | Errors: ${result.errors.length}</small>
+            `;
+        }
+
+        // Refresh status
+        setTimeout(() => window.checkPhysicianActivationStatusFromUI(), 1000);
+
+    } catch (error) {
+        const resultDiv = document.getElementById('physicianActivationResult');
+        if (resultDiv) {
+            resultDiv.className = 'alert alert-danger';
+            resultDiv.classList.remove('d-none');
+            resultDiv.innerHTML = `<i class="fas fa-times"></i> Activation failed: ${error.message}`;
+        }
+        console.error('Error activating physicians:', error);
+    }
+};
+
 // Facility Name to Account Name Migration Functions
 window.checkFacilityNameToAccountNameStatus = async function() {
     try {

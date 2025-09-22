@@ -73,9 +73,16 @@ export class ModalManager {
     async showAddTrayModal() {
         // Reset modal to add mode
         window.app.trayManager.resetTrayModal();
-        
+
+        // Ensure implant types are loading if not already started
+        if (window.app && window.app.implantTypeManager && window.app.implantTypeManager.currentImplantTypes.length === 0) {
+            console.log('🔧 Triggering implant types load from tray modal');
+            window.app.implantTypeManager.loadImplantTypes();
+        }
+
         await this.populateInitialLocationDropdown();
         await this.populateCaseTypeCompatibilityDropdown();
+        await this.populateImplantTypeDropdown();
         await this.populateTrayStatusDropdown();
         await window.app.trayManager.populateUserDropdown();
         const modal = new bootstrap.Modal(document.getElementById('addTrayModal'));
@@ -110,7 +117,6 @@ export class ModalManager {
                     trayTypeSelect.appendChild(option);
                 });
                 
-                console.log(`✅ Populated case type compatibility dropdown with ${activeCaseTypes.length} case types:`, activeCaseTypes.map(ct => ct.name));
             } else {
                 // Fallback to hardcoded case types if Firestore collection is empty
                 console.warn('No case types found in Firestore, using fallback options');
@@ -172,6 +178,101 @@ export class ModalManager {
             });
         } catch (error) {
             console.error('Error populating tray status dropdown:', error);
+        }
+    }
+
+    async populateImplantTypeDropdown() {
+        try {
+            console.log('🔧 [DEBUG] Starting populateImplantTypeDropdown for tray modal');
+
+            const implantTypeSelect = document.getElementById('trayImplantType');
+            if (!implantTypeSelect) {
+                console.error('❌ [DEBUG] Implant type select element not found - ID: trayImplantType');
+                console.log('🔍 [DEBUG] Available elements with similar IDs:');
+                document.querySelectorAll('[id*="implant"]').forEach(el => {
+                    console.log(`  - Found element: ${el.id} (${el.tagName})`);
+                });
+                return;
+            }
+
+            console.log('✅ [DEBUG] Found tray implant type select element:', implantTypeSelect.id);
+
+            // Clear existing options
+            implantTypeSelect.innerHTML = '<option value="">Select Implant Type (Optional)</option>';
+
+            // Get active implant types
+            let implantTypes = [];
+            console.log('🔍 [DEBUG] Checking ImplantTypeManager availability:');
+            console.log(`  - window.app exists: ${!!window.app}`);
+            console.log(`  - window.app.implantTypeManager exists: ${!!(window.app && window.app.implantTypeManager)}`);
+
+            if (window.app && window.app.implantTypeManager) {
+                console.log('🔧 [DEBUG] Using window.app.implantTypeManager');
+                implantTypes = window.app.implantTypeManager.getActiveImplantTypes();
+                console.log(`🔧 [DEBUG] Current implant types in manager: ${window.app.implantTypeManager.currentImplantTypes.length}`);
+                console.log(`🔧 [DEBUG] getActiveImplantTypes() returned: ${implantTypes ? implantTypes.length : 'null/undefined'} items`);
+
+                // If no data found, trigger loading
+                if ((!implantTypes || implantTypes.length === 0) && window.app.implantTypeManager.currentImplantTypes.length === 0) {
+                    console.log('🔧 [DEBUG] No data found, triggering loadImplantTypes()');
+                    window.app.implantTypeManager.loadImplantTypes();
+                }
+            } else {
+                console.error('❌ [DEBUG] No ImplantTypeManager found!');
+            }
+
+            console.log(`🔧 Initial implant types check for tray: ${implantTypes ? implantTypes.length : 'null/undefined'} implant types found`);
+
+            // If implant types aren't loaded yet, wait and retry
+            let retryCount = 0;
+            const maxRetries = 20;
+            const retryDelay = 300;
+
+            while ((!implantTypes || implantTypes.length === 0) && retryCount < maxRetries) {
+                console.log(`⏳ Waiting for implant types to load for tray... attempt ${retryCount + 1}/${maxRetries}`);
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+
+                if (window.app && window.app.implantTypeManager) {
+                    implantTypes = window.app.implantTypeManager.getActiveImplantTypes();
+                    console.log(`🔧 [DEBUG] Retry ${retryCount + 1}: getActiveImplantTypes() returned ${implantTypes ? implantTypes.length : 'null/undefined'} items`);
+                    console.log(`🔧 [DEBUG] Retry ${retryCount + 1}: currentImplantTypes has ${window.app.implantTypeManager.currentImplantTypes.length} items`);
+                }
+                retryCount++;
+            }
+
+            console.log(`🔧 Final implant types check for tray after ${retryCount} retries: ${implantTypes ? implantTypes.length : 'null/undefined'} implant types`);
+
+            if (implantTypes && implantTypes.length > 0) {
+                // Filter and sort implant types
+                console.log('🔍 First implant type structure:', implantTypes[0]);
+                console.log('🔍 Implant type fields:', Object.keys(implantTypes[0]));
+
+                const activeImplantTypes = implantTypes
+                    .filter(implantType => {
+                        const hasId = implantType && implantType.id;
+                        const hasName = implantType && implantType.name;
+                        console.log(`🔍 Tray modal - Filtering implant type ${implantType?.id}: hasId=${hasId}, hasName=${hasName}, name=${implantType?.name}, description=${implantType?.description}`);
+                        return hasId && hasName;
+                    })
+                    .sort((a, b) => a.name.localeCompare(b.name));
+
+                console.log(`✅ Valid implant types for tray dropdown: ${activeImplantTypes.length}`);
+
+                // Populate dropdown
+                activeImplantTypes.forEach(implantType => {
+                    const option = document.createElement('option');
+                    option.value = implantType.id;
+                    option.textContent = implantType.name;
+                    implantTypeSelect.appendChild(option);
+                });
+
+                console.log(`✅ Populated ${activeImplantTypes.length} implant types in tray dropdown`);
+            } else {
+                console.log('❌ No implant types available for tray dropdown after waiting');
+                implantTypeSelect.innerHTML = '<option value="">No Implant Types Available (loading...)</option>';
+            }
+        } catch (error) {
+            console.error('Error populating implant type dropdown:', error);
         }
     }
 
@@ -1148,7 +1249,6 @@ export class ModalManager {
                 // Ensure case status dropdown is populated (backup)
                 const caseStatusSelect = document.getElementById('caseStatus');
                 if (caseStatusSelect && caseStatusSelect.options.length === 0) {
-                    console.log('🔍 DEBUG: Case status dropdown empty, repopulating...');
                     populateCaseStatusDropdown(caseStatusSelect, {
                         includeAllOption: false,
                         includeEmptyOption: false,
@@ -1160,14 +1260,20 @@ export class ModalManager {
             // Then populate dropdowns - sometimes Firebase data takes time to load
             setTimeout(async () => {
                 console.log('🔍 DEBUG: About to populate dropdowns...');
-                
+
+                // Ensure implant types are loading if not already started
+                if (window.app && window.app.implantTypeManager && window.app.implantTypeManager.currentImplantTypes.length === 0) {
+                    console.log('🔧 Triggering implant types load from case modal');
+                    window.app.implantTypeManager.loadImplantTypes();
+                }
+
                 if (window.is_enable_api_logging && window.frontendLogger) {
                     window.frontendLogger.debug('Starting dropdown population', {
                         modalIsVisible: modalElement.style.display !== 'none' && window.getComputedStyle(modalElement).display !== 'none',
                         timeout: '100ms'
                     }, 'dropdown-populate-start');
                 }
-                
+
                 await this.populateCaseModalDropdowns();
                 await this.populateTrayRequirements();
             }, 100);
@@ -1258,7 +1364,6 @@ export class ModalManager {
                     retryCount++;
                 }
 
-                console.log('🏥 Loading facilities for dropdown:', facilities.length);
                 if (facilities && facilities.length > 0) {
                     const facilityOptions = '<option value="">Select Facility</option>' +
                         facilities.filter(facility => facility && facility.id && facility.account_name)
@@ -1277,11 +1382,6 @@ export class ModalManager {
             const editCaseTypeSelect = document.getElementById('editCaseType');
             if (caseTypeSelect) {
                 const caseTypes = this.dataManager.getCaseTypes();
-                console.log('🔍 DEBUG: Loading case types for dropdown');
-                console.log('🔍 DEBUG: Case types data:', caseTypes);
-                console.log('🔍 DEBUG: Case types length:', caseTypes.length);
-                console.log('🔍 DEBUG: Case types type:', typeof caseTypes);
-                console.log('🔍 DEBUG: Is array?', Array.isArray(caseTypes));
                 
                 // Log to API debug endpoint
                 if (window.is_enable_api_logging && window.frontendLogger) {
@@ -1463,37 +1563,84 @@ export class ModalManager {
             const caseStatusSelect = document.getElementById('caseStatus');
             const editCaseStatusSelect = document.getElementById('editCaseStatus');
             
-            console.log('🔍 DEBUG: Case status dropdown elements:', {
-                caseStatusSelect: !!caseStatusSelect,
-                editCaseStatusSelect: !!editCaseStatusSelect,
-                caseStatusId: caseStatusSelect?.id,
-                editCaseStatusId: editCaseStatusSelect?.id
-            });
             
             if (caseStatusSelect) {
-                console.log('🔍 DEBUG: Populating case status dropdown for add modal');
                 populateCaseStatusDropdown(caseStatusSelect, {
                     includeAllOption: false,
                     includeEmptyOption: false,
                     selectedValue: DEFAULT_CASE_STATUS
                 });
-                console.log('🔍 DEBUG: Case status dropdown populated, options count:', caseStatusSelect.options.length);
             } else {
                 console.warn('⚠️ Case status dropdown (caseStatus) not found for add modal');
             }
             
             if (editCaseStatusSelect) {
-                console.log('🔍 DEBUG: Populating case status dropdown for edit modal');
                 populateCaseStatusDropdown(editCaseStatusSelect, {
                     includeAllOption: false,
                     includeEmptyOption: false,
                     selectedValue: DEFAULT_CASE_STATUS
                 });
-                console.log('🔍 DEBUG: Edit case status dropdown populated, options count:', editCaseStatusSelect.options.length);
             } else {
                 console.warn('⚠️ Case status dropdown (editCaseStatus) not found for edit modal');
             }
-            
+
+            // Populate implant types with retry logic for timing issues
+            const implantTypeSelect = document.getElementById('addCaseImplantType');
+            const editImplantTypeSelect = document.getElementById('editCaseImplantType');
+            if (implantTypeSelect || editImplantTypeSelect) {
+                let implantTypes = [];
+                if (window.app && window.app.implantTypeManager) {
+                    implantTypes = window.app.implantTypeManager.getActiveImplantTypes();
+                }
+
+                console.log(`🔧 Initial implant types check for case: ${implantTypes ? implantTypes.length : 'null/undefined'} implant types found`);
+
+                // If implant types aren't loaded yet, wait and retry
+                let retryCount = 0;
+                const maxRetries = 20;
+                const retryDelay = 300;
+
+                while ((!implantTypes || implantTypes.length === 0) && retryCount < maxRetries) {
+                    console.log(`⏳ Waiting for implant types to load for case... attempt ${retryCount + 1}/${maxRetries}`);
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+
+                    if (window.app && window.app.implantTypeManager) {
+                        implantTypes = window.app.implantTypeManager.getActiveImplantTypes();
+                    }
+                    retryCount++;
+                }
+
+                console.log(`🔧 Final implant types check after ${retryCount} retries: ${implantTypes ? implantTypes.length : 'null/undefined'} implant types`);
+
+                if (implantTypes && implantTypes.length > 0) {
+                    console.log('🔍 Case modal - First implant type structure:', implantTypes[0]);
+                    console.log('🔍 Case modal - Implant type fields:', Object.keys(implantTypes[0]));
+
+                    const validImplantTypes = implantTypes.filter(implantType => {
+                        const hasId = implantType && implantType.id;
+                        const hasName = implantType && implantType.name;
+                        console.log(`🔍 Case modal - Filtering implant type ${implantType?.id}: hasId=${hasId}, hasName=${hasName}, name=${implantType?.name}, description=${implantType?.description}`);
+                        return hasId && hasName;
+                    });
+                    console.log(`✅ Valid implant types for case dropdown: ${validImplantTypes.length}`);
+
+                    const implantTypeOptions = '<option value="">Select Implant Type (Optional)</option>' +
+                        validImplantTypes.map(implantType => `<option value="${implantType.id}">${implantType.name}</option>`).join('');
+
+                    if (implantTypeSelect) {
+                        implantTypeSelect.innerHTML = implantTypeOptions;
+                    }
+                    if (editImplantTypeSelect) {
+                        editImplantTypeSelect.innerHTML = implantTypeOptions;
+                    }
+                } else {
+                    console.log('❌ No implant types available after waiting');
+                    const emptyOptions = '<option value="">No Implant Types Available (loading...)</option>';
+                    if (implantTypeSelect) implantTypeSelect.innerHTML = emptyOptions;
+                    if (editImplantTypeSelect) editImplantTypeSelect.innerHTML = emptyOptions;
+                }
+            }
+
         } catch (error) {
             console.error('Error populating case modal dropdowns:', error);
         }
@@ -2389,14 +2536,12 @@ export class ModalManager {
 
     // Method to refresh physician dropdowns if they failed to load initially
     async refreshPhysicianDropdowns() {
-        console.log('🔄 Refreshing physician dropdowns...');
         const surgeonSelect = document.getElementById('addCasePhysician');
         const editSurgeonSelect = document.getElementById('editCasePhysician');
 
         if (surgeonSelect || editSurgeonSelect) {
             // Ensure surgeons are loaded before trying to refresh
             const surgeons = await this.dataManager.ensureSurgeonsLoaded();
-            console.log(`🔄 Refreshing with ${surgeons ? surgeons.length : 0} surgeons`);
 
             if (surgeons && surgeons.length > 0) {
                 const validSurgeons = surgeons.filter(surgeon => surgeon && surgeon.id && surgeon.full_name);
@@ -2405,11 +2550,9 @@ export class ModalManager {
 
                 if (surgeonSelect) {
                     surgeonSelect.innerHTML = surgeonOptions;
-                    console.log('✅ Refreshed add case physician dropdown');
                 }
                 if (editSurgeonSelect) {
                     editSurgeonSelect.innerHTML = surgeonOptions;
-                    console.log('✅ Refreshed edit case physician dropdown');
 
                     // Check for pending value to set after refresh
                     const pendingValue = editSurgeonSelect.getAttribute('data-pending-value');
@@ -2709,6 +2852,62 @@ export class ModalManager {
             option.textContent = 'No case types available';
             option.disabled = true;
             dropdown.appendChild(option);
+        }
+    }
+
+    // Implant Type Modal Methods
+    showAddImplantTypeModal() {
+        // Clear form
+        const form = document.getElementById('addImplantTypeForm');
+        if (form) form.reset();
+
+        const modal = new bootstrap.Modal(document.getElementById('addImplantTypeModal'));
+        modal.show();
+    }
+
+    async showEditImplantTypeModal(implantTypeId) {
+        try {
+            const implantType = window.app.implantTypeManager?.getImplantTypeById(implantTypeId);
+
+            if (!implantType) {
+                this.showErrorNotification('Implant type not found');
+                return;
+            }
+
+            // Populate form fields
+            document.getElementById('editImplantTypeId').value = implantTypeId;
+            document.getElementById('editImplantTypeName').value = implantType.name || '';
+            document.getElementById('editImplantTypeDescription').value = implantType.description || '';
+            document.getElementById('editImplantTypeStatus').value = implantType.status || 'active';
+
+            const modal = new bootstrap.Modal(document.getElementById('editImplantTypeModal'));
+            modal.show();
+        } catch (error) {
+            console.error('Error showing edit implant type modal:', error);
+            this.showErrorNotification('Error loading implant type data: ' + error.message);
+        }
+    }
+
+    getImplantTypeFormData(isEdit = false) {
+        const prefix = isEdit ? 'editImplantType' : 'implantType';
+
+        return {
+            name: document.getElementById(`${prefix}Name`).value,
+            description: document.getElementById(`${prefix}Description`).value,
+            status: document.getElementById(`${prefix}Status`).value
+        };
+    }
+
+    async handleImplantTypeUpdate() {
+        try {
+            const implantTypeId = document.getElementById('editImplantTypeId').value;
+            const implantTypeData = this.getImplantTypeFormData(true);
+
+            console.log('Handling implant type update:', { implantTypeId, implantTypeData });
+
+            await window.app.implantTypeManager.updateImplantType(implantTypeId, implantTypeData);
+        } catch (error) {
+            console.error('Error in handleImplantTypeUpdate:', error);
         }
     }
 }
