@@ -1343,28 +1343,6 @@ export class CasesManager {
         }
     }
 
-    getFacilityName(facilityId) {
-        if (!facilityId) return null;
-        
-        // Try facilityManager first (current facilities)
-        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
-            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
-            if (facility) {
-                return facility.account_name || facility.name || facilityId;
-            }
-        }
-        
-        // Fallback to dataManager facilities
-        const facilities = this.dataManager.getFacilities();
-        if (facilities && facilities.length > 0) {
-            const facility = facilities.find(f => f.id === facilityId);
-            if (facility) {
-                return facility.account_name || facility.name || facilityId;
-            }
-        }
-        
-        return null;
-    }
 
     getFacilityDisplayName(facilityId, facilities) {
         if (!facilityId) return 'No Facility';
@@ -1413,16 +1391,14 @@ export class CasesManager {
             return surgeonId;
         }
 
-        // Try to find surgeon by ID
-        if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons) {
-            const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === surgeonId);
+        // Try to find surgeon by ID using DataManager
+        const surgeons = this.dataManager.getSurgeons();
+        if (surgeons && surgeons.length > 0) {
+            const surgeon = surgeons.find(s => s && s.id === surgeonId);
             return surgeon ? `${surgeon.title || 'Dr.'} ${surgeon.full_name}` : null;
         }
 
-        // Fallback to DataManager
-        const surgeons = this.dataManager.getSurgeons();
-        const surgeon = surgeons.find(s => s && s.id === surgeonId);
-        return surgeon ? `${surgeon.title || 'Dr.'} ${surgeon.full_name}` : null;
+        return null; // Return null if surgeon not found instead of ID
     }
 
     // Calendar modal functionality - same as DashboardManager
@@ -1623,9 +1599,21 @@ END:VCALENDAR`;
 
     // Helper method to get facility name
     getFacilityName(facilityId) {
+        if (!facilityId) return null;
+
+        // If it's already a name (not an ID), return it
+        if (facilityId.length > 20 && !facilityId.match(/^[a-zA-Z0-9]{20}$/)) {
+            return facilityId;
+        }
+
+        // Try to find facility by ID using DataManager
         const facilities = this.dataManager.getFacilities();
-        const facility = facilities.find(f => f && f.id === facilityId);
-        return facility ? facility.account_name : null;
+        if (facilities && facilities.length > 0) {
+            const facility = facilities.find(f => f && f.id === facilityId);
+            return facility ? (facility.account_name || facility.name) : null;
+        }
+
+        return null; // Return null if facility not found instead of ID
     }
 
     // Delegate to DashboardManager for check-in functionality

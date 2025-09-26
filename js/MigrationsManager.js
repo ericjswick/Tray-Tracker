@@ -1416,11 +1416,106 @@ window.runFacilityNameToAccountNameFromUI = async function() {
         
         // Refresh status
         setTimeout(() => window.checkFacilityNameToAccountNameStatus(), 1000);
-        
+
     } catch (error) {
         const resultDiv = document.getElementById('facilityNameToAccountNameResult');
         resultDiv.className = 'alert alert-danger';
         resultDiv.classList.remove('d-none');
         resultDiv.innerHTML = `<i class="fas fa-times"></i> Migration failed: ${error.message}`;
+    }
+};
+
+// UI Helper Functions for Physician Timestamp Migration
+window.checkPhysicianTimestampMigrationStatus = async function() {
+    try {
+        const statusDiv = document.getElementById('physicianTimestampMigrationStatus');
+        const resultDiv = document.getElementById('physicianTimestampMigrationResult');
+
+        if (!statusDiv) {
+            console.error('Status div not found - make sure you have the UI elements');
+            return;
+        }
+
+        statusDiv.className = 'alert alert-info';
+        statusDiv.classList.remove('d-none');
+        statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking physician timestamp migration status...';
+
+        // Clear previous results
+        if (resultDiv) {
+            resultDiv.classList.add('d-none');
+        }
+
+        // Import and use the migration class
+        const { PhysicianTimestampMigration } = await import('./utils/PhysicianTimestampMigration.js');
+        const migration = new PhysicianTimestampMigration(window.app.dataManager.db);
+        const status = await migration.checkMigrationStatus();
+
+        statusDiv.className = status.ready ? 'alert alert-warning' : 'alert alert-success';
+        statusDiv.innerHTML = `
+            <div><strong>Migration Status:</strong> ${status.ready ? 'Migration Required' : 'No Migration Needed'}</div>
+            <div class="mt-2">
+                <small>Total Physicians: ${status.total} | Need Migration: ${status.needsMigration} | Already Migrated: ${status.alreadyMigrated} | No Timestamp: ${status.noTimestamp}</small>
+                ${status.conflicting > 0 ? `<br><small class="text-warning">Conflicting Timestamps: ${status.conflicting}</small>` : ''}
+            </div>
+        `;
+
+    } catch (error) {
+        const statusDiv = document.getElementById('physicianTimestampMigrationStatus');
+        if (statusDiv) {
+            statusDiv.className = 'alert alert-danger';
+            statusDiv.classList.remove('d-none');
+            statusDiv.innerHTML = `<i class="fas fa-times"></i> Status check failed: ${error.message}`;
+        }
+        console.error('Error checking physician timestamp migration status:', error);
+    }
+};
+
+window.runPhysicianTimestampMigration = async function() {
+    if (!confirm('Are you sure you want to run the physician timestamp migration? This will move createdAt fields to created_at for all physicians.')) {
+        return;
+    }
+
+    try {
+        const resultDiv = document.getElementById('physicianTimestampMigrationResult');
+
+        if (!resultDiv) {
+            console.error('Result div not found - make sure you have the UI elements');
+            return;
+        }
+
+        resultDiv.className = 'alert alert-info';
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running physician timestamp migration...';
+
+        // Import and use the migration class
+        const { PhysicianTimestampMigration } = await import('./utils/PhysicianTimestampMigration.js');
+        const migration = new PhysicianTimestampMigration(window.app.dataManager.db);
+        const result = await migration.migratePhysicians();
+
+        if (result.errors === 0) {
+            resultDiv.className = 'alert alert-success';
+            resultDiv.innerHTML = `
+                <i class="fas fa-check"></i> Migration completed successfully!<br>
+                <small>Updated: ${result.updated} physicians | Skipped: ${result.skipped} | Total: ${result.total}</small>
+            `;
+        } else {
+            resultDiv.className = 'alert alert-warning';
+            resultDiv.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i> Migration completed with ${result.errors} errors<br>
+                <small>Updated: ${result.updated} | Skipped: ${result.skipped} | Errors: ${result.errors}</small>
+            `;
+        }
+
+        // Refresh status
+        setTimeout(() => window.checkPhysicianTimestampMigrationStatus(), 1000);
+
+    } catch (error) {
+        const resultDiv = document.getElementById('physicianTimestampMigrationResult');
+        if (resultDiv) {
+            resultDiv.className = 'alert alert-danger';
+            resultDiv.classList.remove('d-none');
+            resultDiv.innerHTML = `<i class="fas fa-times"></i> Migration failed: ${error.message}`;
+        }
+        console.error('Error running physician timestamp migration:', error);
     }
 };

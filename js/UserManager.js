@@ -3,6 +3,7 @@ import { createUserWithEmailAndPassword, getAuth } from "https://www.gstatic.com
 import { doc, setDoc, updateDoc, deleteDoc, getDoc, serverTimestamp, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+import { getRoleClass, getRoleStats, isValidRole, populateRoleSelect } from './constants/UserRoles.js';
 
 export class UserManager {
     constructor(auth, db, dataManager) {
@@ -53,6 +54,9 @@ export class UserManager {
     initializeViewMode() {
         this.setViewMode(this.viewMode);
         this.showLoadingState();
+
+        // Initialize role dropdowns
+        this.initializeRoleDropdowns();
 
         // Try to get users immediately if available
         if (window.app.dataManager && window.app.dataManager.users) {
@@ -169,6 +173,12 @@ export class UserManager {
             const password = document.getElementById('userPassword').value;
             const role = document.getElementById('userRole').value;
             const phone = document.getElementById('userPhone').value;
+
+            // Validate role
+            if (!isValidRole(role)) {
+                alert('Please select a valid user role.');
+                return;
+            }
             const region = document.getElementById('userRegion').value;
             let location_facility_id = document.getElementById('userLocationFacility').value;
             
@@ -300,6 +310,12 @@ export class UserManager {
             const name = document.getElementById('editUserName').value;
             const role = document.getElementById('editUserRole').value;
             const phone = document.getElementById('editUserPhone').value;
+
+            // Validate role
+            if (!isValidRole(role)) {
+                alert('Please select a valid user role.');
+                return;
+            }
             const region = document.getElementById('editUserRegion').value;
             let location_facility_id = document.getElementById('editUserLocationFacility').value;
 
@@ -649,14 +665,8 @@ export class UserManager {
     }
 
     getRoleClass(role) {
-        const roleClasses = {
-            'Territory Manager': 'role-manager',
-            'Sales Rep': 'role-rep',
-            'Clinical Specialist': 'role-specialist',
-            'Manager': 'role-manager',
-            'Admin': 'role-admin'
-        };
-        return roleClasses[role] || 'role-rep';
+        // Use centralized role system
+        return getRoleClass(role);
     }
 
     formatDate(timestamp) {
@@ -689,12 +699,8 @@ export class UserManager {
     }
 
     updateStats(users) {
-        const stats = {
-            total: users.length,
-            active: users.filter(u => u.active !== false).length,
-            managers: users.filter(u => u.role === 'Territory Manager' || u.role === 'Manager').length,
-            reps: users.filter(u => u.role === 'Sales Rep').length
-        };
+        // Use centralized role statistics
+        const stats = getRoleStats(users);
 
         const totalElement = document.getElementById('totalUsersCount');
         const activeElement = document.getElementById('activeUsersCount');
@@ -834,5 +840,22 @@ export class UserManager {
                 }, 300);
             }
         }, 5000);
+    }
+
+    /**
+     * Initialize role dropdowns with centralized role options
+     */
+    initializeRoleDropdowns() {
+        try {
+            // Populate add user role dropdown
+            populateRoleSelect('userRole', '', true);
+
+            // Populate edit user role dropdown
+            populateRoleSelect('editUserRole', '', true);
+
+            console.log('✅ Role dropdowns initialized with centralized role system');
+        } catch (error) {
+            console.error('❌ Error initializing role dropdowns:', error);
+        }
     }
 }

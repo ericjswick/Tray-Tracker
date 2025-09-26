@@ -2,6 +2,7 @@
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
 import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 import { signInWithPopup, GoogleAuthProvider, signInWithRedirect, getRedirectResult } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
+import { USER_ROLES } from './constants/UserRoles.js';
 
 export class AuthManager {
     constructor(auth, db) {
@@ -65,6 +66,7 @@ export class AuthManager {
                 
 
                 this.updateUserDisplay();
+                this.updateNavigationForRole();
                 this.showMainApp();
                 this.checkInitialData();
             } else {
@@ -525,7 +527,8 @@ export class AuthManager {
         
         // Force UI update
         this.updateUserDisplay();
-        
+        this.updateNavigationForRole();
+
         console.log('✅ User display refresh completed');
     }
 
@@ -916,6 +919,37 @@ export class AuthManager {
             } else {
                 this.showErrorNotification('Authentication failed: ' + this.getErrorMessage(error));
             }
+        }
+    }
+
+    /**
+     * Update navigation based on user role
+     */
+    updateNavigationForRole() {
+        try {
+            const isAdmin = this.currentUser && this.currentUser.role === USER_ROLES.ADMIN;
+
+            // Show/hide Data Migrations link based on admin role
+            const dataMigrationsLink = document.getElementById('adminDataMigrationsLink');
+            if (dataMigrationsLink) {
+                if (isAdmin) {
+                    dataMigrationsLink.style.display = '';
+                    console.log('✅ Data Migrations link shown for admin user');
+                } else {
+                    dataMigrationsLink.style.display = 'none';
+                    console.log('🔒 Data Migrations link hidden for non-admin user');
+                }
+            }
+
+            // Log role information for debugging
+            console.log('🔧 Navigation updated for role:', {
+                userRole: this.currentUser?.role,
+                isAdmin: isAdmin,
+                dataMigrationsVisible: isAdmin
+            });
+
+        } catch (error) {
+            console.error('❌ Error updating navigation for role:', error);
         }
     }
 

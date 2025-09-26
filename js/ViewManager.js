@@ -3,6 +3,7 @@ import { routingDetector } from './utils/RoutingDetector.js';
 import { isInUseStatus, isAvailableStatus, isCheckedInStatus, normalizeStatus, TRAY_STATUS, populateTrayStatusDropdown, getStatusDisplayText } from './constants/TrayStatus.js';
 import { populateFacilityTypeDropdown } from './constants/FacilityTypes.js';
 import { TRAY_LOCATIONS } from './constants/TrayLocations.js';
+import { USER_ROLES } from './constants/UserRoles.js';
 
 export class ViewManager {
     constructor() {
@@ -1093,11 +1094,11 @@ export class ViewManager {
     getRoleClass(role) {
         // Role classes for different badge colors
         const roleClasses = {
-            'Territory Manager': 'admin',
-            'Sales Rep': 'rep',
-            'Clinical Specialist': 'specialist',
-            'Manager': 'manager',
-            'Admin': 'admin'
+            [USER_ROLES.TERRITORY_MANAGER]: 'admin',
+            [USER_ROLES.SALES_REP]: 'rep',
+            [USER_ROLES.CLINICAL_SPECIALIST]: 'specialist',
+            [USER_ROLES.MANAGER]: 'manager',
+            [USER_ROLES.ADMIN]: 'admin'
         };
         return roleClasses[role] || 'rep';
     }
@@ -1567,13 +1568,59 @@ export class ViewManager {
         
     }
 
-    initializeAdminDataMigrationsView() {
+    async initializeAdminDataMigrationsView() {
         console.log('Initializing admin data migrations view');
-        
-        // Create the migrations interface
+
         const migrationsView = document.getElementById('admin_data_migrationsView');
-        if (migrationsView) {
+        if (!migrationsView) return;
+
+        // Show loading state while checking authentication
+        migrationsView.innerHTML = `
+            <div class="container-fluid">
+                <div class="row justify-content-center">
+                    <div class="col-md-6 text-center">
+                        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-3">Verifying access permissions...</p>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Wait for authentication to be ready
+        const currentUser = await this.waitForAuthentication();
+
+        // Check if user has admin role
+        if (!currentUser || currentUser.role !== USER_ROLES.ADMIN) {
+            console.warn('Access denied: Data migrations page requires admin role', {
+                hasUser: !!currentUser,
+                userRole: currentUser?.role,
+                requiredRole: USER_ROLES.ADMIN
+            });
+
             migrationsView.innerHTML = `
+                <div class="container-fluid">
+                    <div class="row justify-content-center">
+                        <div class="col-md-6">
+                            <div class="alert alert-danger text-center">
+                                <i class="fas fa-lock fa-2x mb-3"></i>
+                                <h4>Access Denied</h4>
+                                <p>This page requires Administrator privileges.</p>
+                                <p class="small text-muted">Current role: ${currentUser?.role || 'Not authenticated'}</p>
+                                <button class="btn btn-primary" onclick="window.app.viewManager.showView('dashboard')">
+                                    <i class="fas fa-arrow-left"></i> Go to Dashboard
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        // Create the migrations interface (migrationsView already declared at top)
+        migrationsView.innerHTML = `
                 <div class="container-fluid">
                     <div class="row mb-4">
                         <div class="col">
@@ -1714,6 +1761,32 @@ export class ViewManager {
                         </div>
                     </div>
 
+                    <div class="row mt-4">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="fas fa-clock"></i> Physician Timestamp Migration</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p>Migrates physician timestamps from <code>createdAt</code> to <code>created_at</code> for database consistency.</p>
+                                    <div class="mb-3">
+                                        <button class="btn btn-info btn-sm" onclick="checkPhysicianTimestampMigrationStatus()">
+                                            <i class="fas fa-search"></i> Check Status
+                                        </button>
+                                        <button class="btn btn-primary" onclick="runPhysicianTimestampMigration()">
+                                            <i class="fas fa-play"></i> Run Migration
+                                        </button>
+                                    </div>
+                                    <div id="physicianTimestampMigrationStatus" class="alert alert-secondary d-none"></div>
+                                    <div id="physicianTimestampMigrationResult" class="alert d-none"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <!-- Empty column for spacing -->
+                        </div>
+                    </div>
+
                     <!-- Duplicate Tray Detection & Cleanup -->
                     <div class="row mt-4">
                         <div class="col">
@@ -1827,6 +1900,44 @@ export class ViewManager {
                         </div>
                     </div>
 
+                    <!-- Demo Data Management -->
+                    <div class="row mt-4">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="fas fa-plus-circle"></i> Initialize Demo Data</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p>Creates sample data for testing and demonstration purposes including users, facilities, trays, and cases.</p>
+                                    <div class="mb-3">
+                                        <button class="btn btn-success" onclick="initializeDemoDataFromUI()">
+                                            <i class="fas fa-plus-circle"></i> Initialize Demo Data
+                                        </button>
+                                    </div>
+                                    <div id="initializeDemoResult" class="alert d-none"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5><i class="fas fa-trash"></i> Clear Demo Data</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p class="text-danger">
+                                        <strong>Warning:</strong> This will permanently delete all demo data including users, facilities, trays, and cases.
+                                    </p>
+                                    <div class="mb-3">
+                                        <button class="btn btn-danger" onclick="clearDemoDataFromUI()">
+                                            <i class="fas fa-trash"></i> Clear Demo Data
+                                        </button>
+                                    </div>
+                                    <div id="clearDemoResult" class="alert d-none"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="row mt-4">
                         <div class="col">
                             <div class="card">
@@ -1849,7 +1960,6 @@ export class ViewManager {
             
             // Override console.log temporarily to capture output
             this.setupMigrationConsoleCapture();
-        }
     }
     
     setupMigrationConsoleCapture() {
@@ -1987,4 +2097,123 @@ export class ViewManager {
 
         return `Compatible with: ${caseTypeNames.join(', ')}`;
     }
+
+    /**
+     * Wait for authentication to be ready and return current user
+     * @returns {Promise<Object|null>} Current user data or null
+     */
+    async waitForAuthentication() {
+        const maxAttempts = 50; // 5 seconds max
+        let attempts = 0;
+
+        return new Promise((resolve) => {
+            const checkAuth = () => {
+                attempts++;
+
+                // Check if auth manager exists and has current user
+                const authManager = window.app?.authManager;
+                const currentUser = authManager?.currentUser;
+
+                if (currentUser) {
+                    console.log('✅ Authentication ready:', {
+                        uid: currentUser.uid,
+                        email: currentUser.email,
+                        role: currentUser.role,
+                        attempts: attempts
+                    });
+                    resolve(currentUser);
+                    return;
+                }
+
+                // Check if we've exceeded max attempts
+                if (attempts >= maxAttempts) {
+                    console.warn('⚠️ Authentication timeout after', attempts, 'attempts');
+                    resolve(null);
+                    return;
+                }
+
+                // Wait and try again
+                setTimeout(checkAuth, 100);
+            };
+
+            checkAuth();
+        });
+    }
 }
+
+// Global functions for demo data UI interactions
+window.initializeDemoDataFromUI = async function() {
+    try {
+        const resultDiv = document.getElementById('initializeDemoResult');
+        if (!resultDiv) {
+            console.error('Result div not found');
+            return;
+        }
+
+        resultDiv.className = 'alert alert-info';
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Initializing demo data...';
+
+        // Call the demo manager
+        if (!window.app?.demoManager) {
+            throw new Error('Demo manager not available');
+        }
+
+        await window.app.demoManager.initializeDemoData();
+
+        resultDiv.className = 'alert alert-success';
+        resultDiv.innerHTML = `
+            <i class="fas fa-check"></i> Demo data initialized successfully!<br>
+            <small>Created sample users, facilities, trays, and cases for testing.</small>
+        `;
+
+    } catch (error) {
+        const resultDiv = document.getElementById('initializeDemoResult');
+        if (resultDiv) {
+            resultDiv.className = 'alert alert-danger';
+            resultDiv.classList.remove('d-none');
+            resultDiv.innerHTML = `<i class="fas fa-times"></i> Error initializing demo data: ${error.message}`;
+        }
+        console.error('Error initializing demo data:', error);
+    }
+};
+
+window.clearDemoDataFromUI = async function() {
+    if (!confirm('Are you sure you want to clear all demo data? This action cannot be undone.')) {
+        return;
+    }
+
+    try {
+        const resultDiv = document.getElementById('clearDemoResult');
+        if (!resultDiv) {
+            console.error('Result div not found');
+            return;
+        }
+
+        resultDiv.className = 'alert alert-info';
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Clearing demo data...';
+
+        // Call the demo manager
+        if (!window.app?.demoManager) {
+            throw new Error('Demo manager not available');
+        }
+
+        await window.app.demoManager.clearDemoData();
+
+        resultDiv.className = 'alert alert-success';
+        resultDiv.innerHTML = `
+            <i class="fas fa-check"></i> Demo data cleared successfully!<br>
+            <small>All demo users, facilities, trays, and cases have been removed.</small>
+        `;
+
+    } catch (error) {
+        const resultDiv = document.getElementById('clearDemoResult');
+        if (resultDiv) {
+            resultDiv.className = 'alert alert-danger';
+            resultDiv.classList.remove('d-none');
+            resultDiv.innerHTML = `<i class="fas fa-times"></i> Error clearing demo data: ${error.message}`;
+        }
+        console.error('Error clearing demo data:', error);
+    }
+};

@@ -2,6 +2,7 @@
 import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
 import { doc, setDoc, serverTimestamp, getDocs, collection, query, limit, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 import { TRAY_STATUS } from './constants/TrayStatus.js';
+import { USER_ROLES } from './constants/UserRoles.js';
 
 export class DemoManager {
     constructor(auth, dataManager, db) {
@@ -208,7 +209,7 @@ export class DemoManager {
                 id: 'demo-eric',
                 email: 'eric@sibone.com',
                 name: 'Eric Swick',
-                role: 'Territory Manager',
+                role: USER_ROLES.TERRITORY_MANAGER,
                 phone: '+1-555-0101',
                 password: 'Demo@123'
             },
@@ -216,7 +217,7 @@ export class DemoManager {
                 id: 'demo-dino',
                 email: 'dino@sibone.com',
                 name: 'Dino B',
-                role: 'Sales Rep',
+                role: USER_ROLES.SALES_REP,
                 phone: '+1-555-0102',
                 password: 'Demo@123'
             },
@@ -224,7 +225,7 @@ export class DemoManager {
                 id: 'demo-mitch',
                 email: 'mitch@sibone.com',
                 name: 'Mitch Brees',
-                role: 'Clinical Specialist',
+                role: USER_ROLES.CLINICAL_SPECIALIST,
                 phone: '+1-555-0103',
                 password: 'Demo@123'
             }

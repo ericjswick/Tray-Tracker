@@ -161,12 +161,11 @@ export class DashboardManager {
     }
 
     async renderCaseCard(caseItem) {
-        const facilities = this.dataManager.getFacilities();
         const caseTypes = this.dataManager.getCaseTypes();
 
-        // Use the same getSurgeonName method that works everywhere else
+        // Use helper methods for consistent name lookup
         const surgeonName = this.getSurgeonName(caseItem.physician_id);
-        const facility = facilities.find(f => f && f.id === caseItem.facility_id);
+        const facilityName = this.getFacilityName(caseItem.facility_id);
         const caseType = caseTypes.find(ct => ct && ct.id === caseItem.caseTypeId);
         
         const scheduledDateTime = new Date(caseItem.scheduledDate + 'T' + (caseItem.scheduledTime || '08:00'));
@@ -227,7 +226,7 @@ export class DashboardManager {
                     </div>
                     <div class="tray-detail">
                         <i class="fas fa-hospital"></i>
-                        <span class="tray-detail-value">${facility ? facility.account_name : (facilities.length === 0 ? 'Loading...' : 'Unknown Facility')}</span>
+                        <span class="tray-detail-value">${facilityName || 'Unknown Facility'}</span>
                     </div>
                     <div class="tray-detail">
                         <i class="fas fa-clock"></i>
@@ -1194,36 +1193,20 @@ export class DashboardManager {
     // Helper function to get facility name from ID
     getFacilityName(facilityId) {
         if (!facilityId) return null;
-        
+
         // If it's already a name (not an ID), return it
         if (facilityId.length > 20 && !facilityId.match(/^[a-zA-Z0-9]{20}$/)) {
             return facilityId;
         }
-        
-        // Try to find facility by ID
-        if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
-            const facilities = window.app.facilityManager.currentFacilities;
-            const facility = facilities.find(f => f.id === facilityId);
-            
-            if (facility) {
-                return facility.account_name || facility.name || facilityId;
-            } else {
-                // Try to find by partial match or name
-                const partialMatch = facilities.find(f => 
-                    f.account_name?.includes(facilityId) || 
-                    f.name?.includes(facilityId) ||
-                    facilityId.includes(f.id)
-                );
-                
-                if (partialMatch) {
-                    return `${partialMatch.account_name || partialMatch.name} (matched)`;
-                }
-                
-                return `Unknown Facility (${facilityId.substring(0, 8)}...)`; // Shortened ID for display
-            }
+
+        // Try to find facility by ID using DataManager
+        const facilities = this.dataManager.getFacilities();
+        if (facilities && facilities.length > 0) {
+            const facility = facilities.find(f => f && f.id === facilityId);
+            return facility ? (facility.account_name || facility.name) : null;
         }
-        
-        return facilityId; // Fallback to original value
+
+        return null; // Return null if facility not found instead of ID
     }
 
     /**
@@ -1254,19 +1237,20 @@ export class DashboardManager {
     // Helper function to get surgeon name from ID
     getSurgeonName(surgeonId) {
         if (!surgeonId) return null;
-        
+
         // If it's already a name (not an ID), return it
         if (surgeonId.length > 20 && !surgeonId.match(/^[a-zA-Z0-9]{20}$/)) {
             return surgeonId;
         }
-        
-        // Try to find surgeon by ID
-        if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons) {
-            const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === surgeonId);
-            return surgeon ? `${surgeon.title || 'Dr.'} ${surgeon.full_name}` : surgeonId; // Fallback to ID if not found
+
+        // Try to find surgeon by ID using DataManager
+        const surgeons = this.dataManager.getSurgeons();
+        if (surgeons && surgeons.length > 0) {
+            const surgeon = surgeons.find(s => s.id === surgeonId);
+            return surgeon ? `${surgeon.title || 'Dr.'} ${surgeon.full_name}` : null;
         }
-        
-        return surgeonId; // Fallback to original value
+
+        return null; // Return null if surgeon not found instead of ID
     }
 
     getCaseTypeName(caseTypeId) {

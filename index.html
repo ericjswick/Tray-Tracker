@@ -223,15 +223,8 @@
                                 <li><a class="dropdown-item" href="#implanttypes">
                                     <i class="fas fa-cogs"></i> Implant Types
                                 </a></li>
-                                <li><a class="dropdown-item" href="#admin_data_migrations">
+                                <li><a class="dropdown-item" href="#admin_data_migrations" id="adminDataMigrationsLink">
                                     <i class="fas fa-database"></i> Data Migrations
-                                </a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item" href="#" onclick="app.demoManager.initializeDemoData()">
-                                    <i class="fas fa-plus-circle"></i> Initialize Demo Data
-                                </a></li>
-                                <li><a class="dropdown-item text-danger" href="#" onclick="app.demoManager.clearDemoData()">
-                                    <i class="fas fa-trash"></i> Clear Demo Data
                                 </a></li>
                             </ul>
                         </li>
@@ -1593,12 +1586,7 @@
                     <div class="form-group">
                         <label for="userRole" class="form-label">Role *</label>
                         <select class="form-control" id="userRole" required>
-                            <option value="">Select Role...</option>
-                            <option value="Territory Manager">Territory Manager</option>
-                            <option value="Sales Rep">Sales Rep</option>
-                            <option value="Clinical Specialist">Clinical Specialist</option>
-                            <option value="Manager">Manager</option>
-                            <option value="Admin">Administrator</option>
+                            <!-- Options populated dynamically by UserManager -->
                         </select>
                     </div>
                     <div class="form-group">
@@ -1662,12 +1650,7 @@
                     <div class="form-group">
                         <label for="editUserRole" class="form-label">Role *</label>
                         <select class="form-control" id="editUserRole" required>
-                            <option value="">Select Role...</option>
-                            <option value="Territory Manager">Territory Manager</option>
-                            <option value="Sales Rep">Sales Rep</option>
-                            <option value="Clinical Specialist">Clinical Specialist</option>
-                            <option value="Manager">Manager</option>
-                            <option value="Admin">Administrator</option>
+                            <!-- Options populated dynamically by UserManager -->
                         </select>
                     </div>
                     <div class="form-group">

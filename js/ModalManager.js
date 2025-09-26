@@ -3,6 +3,7 @@ import { populateCaseStatusDropdown, DEFAULT_CASE_STATUS } from './constants/Cas
 import { populateFacilityTypeDropdown, DEFAULT_FACILITY_TYPE } from './constants/FacilityTypes.js';
 import { populateTrayStatusDropdown } from './constants/TrayStatus.js';
 import { populateTrayLocationDropdown, TRAY_LOCATIONS, getLocationDisplayText } from './constants/TrayLocations.js';
+import { populateRoleSelect } from './constants/UserRoles.js';
 import { googlePlacesAutocomplete } from './utils/GooglePlacesAutocomplete.js';
 
 export class ModalManager {
@@ -805,14 +806,14 @@ export class ModalManager {
                 return;
             }
 
-            // Populate facility dropdown first
+            // Populate dropdowns first
             this.populateFacilityDropdown('editUserLocationFacility');
-            
+            populateRoleSelect('editUserRole', user.role || '', true);
+
             // Populate form fields
             document.getElementById('editUserId').value = userId;
             document.getElementById('editUserName').value = user.name || '';
             document.getElementById('editUserEmail').value = user.email || '';
-            document.getElementById('editUserRole').value = user.role || '';
             document.getElementById('editUserPhone').value = user.phone || '';
             document.getElementById('editUserRegion').value = user.region || '';
             // Handle null, empty, or string "null" values
