@@ -494,7 +494,7 @@ export class CasesManager {
         `;
     }
 
-    renderCasesCards(cases) {
+    async renderCasesCards(cases) {
         const container = document.getElementById('casesCardView');
         if (!container) return;
 
@@ -509,87 +509,19 @@ export class CasesManager {
             return;
         }
 
-        const cardsHTML = cases.map(caseItem => this.renderCaseCard(caseItem)).join('');
-        container.innerHTML = `<div class="row g-3">${cardsHTML}</div>`;
+        // Use DashboardManager's renderCaseCard for consistency
+        if (window.app.dashboardManager) {
+            const cardsPromises = cases.map(caseItem => window.app.dashboardManager.renderCaseCard(caseItem));
+            const cardsHTML = await Promise.all(cardsPromises);
+            // Use the same grid class as dashboard
+            container.className = 'cases-cards-grid';
+            container.innerHTML = cardsHTML.join('');
+        } else {
+            console.error('DashboardManager not available');
+            container.innerHTML = '<div class="alert alert-warning">Unable to render case cards</div>';
+        }
     }
 
-
-    renderCaseCard(caseItem) {
-        const facilities = this.dataManager.getFacilities();
-        const caseTypes = this.dataManager.getCaseTypes();
-
-        // Use consistent physician name lookup
-        const surgeonName = this.getSurgeonName(caseItem.physician_id);
-        const facility = facilities.find(f => f && f.id === caseItem.facility_id);
-        const caseType = caseTypes.find(ct => ct && ct.id === caseItem.caseTypeId);
-        
-        // Display date/time assuming they're stored in CDT
-        const scheduledDateTime = new Date(caseItem.scheduledDate + 'T' + (caseItem.scheduledTime || '08:00'));
-        const dateStr = scheduledDateTime.toLocaleDateString();
-        const timeStr = scheduledDateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (CDT)';
-
-        return `
-            <div class="col-md-6 col-lg-4">
-                <div class="tray-card h-100">
-                    <div class="tray-card-header">
-                        <div class="tray-card-title">
-                            <div class="tray-type-icon">
-                                <i class="fas fa-calendar-check"></i>
-                            </div>
-                            ${caseItem.patientName || 'N/A'}
-                        </div>
-                        <span class="tray-status-badge ${this.getStatusClass(caseItem.status)}">
-                            ${this.capitalizeFirst(caseItem.status)}
-                        </span>
-                    </div>
-                    <div class="tray-card-content">
-                        <div class="tray-detail">
-                            <i class="fas fa-user-md"></i>
-                            <span class="tray-detail-value">${surgeonName || 'Unknown Physician'}</span>
-                        </div>
-                        <div class="tray-detail">
-                            <i class="fas fa-hospital"></i>
-                            <span class="tray-detail-value">${this.getFacilityDisplayName(caseItem.facility_id, facilities)}</span>
-                        </div>
-                        <div class="tray-detail">
-                            <i class="fas fa-calendar"></i>
-                            <span class="tray-detail-value">${dateStr} at ${timeStr}</span>
-                        </div>
-                        <div class="tray-detail">
-                            <i class="fas fa-stethoscope"></i>
-                            <span class="tray-detail-value">${caseType ? caseType.name : (caseTypes.length === 0 ? 'Loading...' : 'Unknown Type')}</span>
-                        </div>
-                        <div class="tray-detail">
-                            <i class="fas fa-cube"></i>
-                            <span class="tray-detail-value">${this.getTrayRequirements(caseItem).length} Trays Required</span>
-                        </div>
-                        ${caseItem.notes ? `
-                            <div class="tray-detail">
-                                <i class="fas fa-sticky-note"></i>
-                                <span class="tray-detail-value">${caseItem.notes}</span>
-                            </div>
-                        ` : ''}
-                    </div>
-                    <div class="tray-card-actions">
-                        <button class="btn btn-sm btn-outline-primary" onclick="window.app.casesManager.editCase('${caseItem.id}')" title="Edit Case">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="btn btn-sm btn-outline-info" onclick="window.app.casesManager.viewCaseDetails('${caseItem.id}')" title="View Details">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                        <button class="btn btn-sm btn-outline-success" onclick="window.app.casesManager.showCalendarModal('${caseItem.id}')" title="Add to Calendar">
-                            <i class="fas fa-calendar-plus"></i>
-                        </button>
-                        ${caseItem.status === CASE_STATUS.SCHEDULED ? `
-                            <button class="btn btn-sm btn-outline-primary" onclick="window.app.casesManager.showManualCheckInModal('${caseItem.id}')" title="Check In">
-                                <i class="fas fa-hand-pointer"></i> Check In
-                            </button>
-                        ` : ''}
-                    </div>
-                </div>
-            </div>
-        `;
-    }
 
     renderCasesCalendar(cases) {
         const container = document.getElementById('casesCalendarView');
@@ -733,6 +665,12 @@ export class CasesManager {
                 const modal = new bootstrap.Modal(document.getElementById('editCaseModal'));
                 modal.show();
 
+                // Store the case ID on the modal for potential refresh
+                const editModal = document.getElementById('editCaseModal');
+                if (editModal) {
+                    editModal.setAttribute('data-case-id', caseData.id);
+                }
+
                 // Re-populate form values after dropdowns are loaded to ensure physician selection works
                 setTimeout(async () => {
                     // Double-check that physician dropdown is populated before setting values
@@ -777,6 +715,9 @@ export class CasesManager {
         // Handle physician dropdown - check if it's populated first
         const physicianSelect = document.getElementById('editCasePhysician');
         if (physicianSelect) {
+            // Store the physician_id in a data attribute to preserve it
+            physicianSelect.setAttribute('data-original-physician', caseData.physician_id || '');
+
             // Check if dropdown has options (more than just the default option)
             if (physicianSelect.options.length > 1) {
                 physicianSelect.value = caseData.physician_id || '';
@@ -999,18 +940,42 @@ export class CasesManager {
     async updateCase() {
         try {
             const caseId = document.getElementById('editCaseId').value;
-            
+
             if (window.is_enable_api_logging && window.frontendLogger) {
-                window.frontendLogger.info('updateCase started', { 
-                    caseId: caseId 
+                window.frontendLogger.info('updateCase started', {
+                    caseId: caseId
                 }, 'case-save-flow');
             }
-            
+
             const trayRequirements = this.getEditSelectedTrayRequirements();
-            
+
+            // Get the physician dropdown and log its state
+            const physicianDropdown = document.getElementById('editCasePhysician');
+            const physicianValue = physicianDropdown ? physicianDropdown.value : '';
+            const originalPhysician = physicianDropdown ? physicianDropdown.getAttribute('data-original-physician') : '';
+
+
+            // Determine the final physician ID to use
+            let finalPhysicianId = physicianValue;
+
+            // If dropdown value is empty but we have the original physician stored, use that
+            if ((!finalPhysicianId || finalPhysicianId === '') && originalPhysician) {
+                console.log('⚠️ Physician dropdown value is empty, using stored original physician_id:', originalPhysician);
+                finalPhysicianId = originalPhysician;
+            }
+
+            // As a last resort, fetch from database if still empty
+            if (!finalPhysicianId || finalPhysicianId === '') {
+                const originalCase = await this.dataManager.getCase(caseId);
+                if (originalCase && originalCase.physician_id) {
+                    console.log('⚠️ Using physician_id from database:', originalCase.physician_id);
+                    finalPhysicianId = originalCase.physician_id;
+                }
+            }
+
             const updates = {
                 patientName: document.getElementById('editPatientName').value,
-                physician_id: document.getElementById('editCasePhysician').value,
+                physician_id: finalPhysicianId,
                 facility_id: document.getElementById('editCaseFacility').value,
                 caseTypeId: document.getElementById('editCaseType').value,
                 implant_type_id: document.getElementById('editCaseImplantType').value || '',
@@ -1023,16 +988,26 @@ export class CasesManager {
                 tray_requirements: trayRequirements
             };
 
+
             if (window.is_enable_api_logging && window.frontendLogger) {
-                window.frontendLogger.info('About to save case with tray requirements', { 
+                window.frontendLogger.info('About to save case with tray requirements', {
                     caseId: caseId,
                     trayRequirements: trayRequirements,
                     trayRequirementsLength: trayRequirements?.length,
-                    patientName: updates.patientName
+                    patientName: updates.patientName,
+                    physician_id: updates.physician_id
                 }, 'case-save-flow');
             }
 
             await this.dataManager.updateCase(caseId, updates);
+
+            // Verify what was actually saved
+            const savedCase = await this.dataManager.getCase(caseId);
+            console.log('✅ Case after save:', {
+                caseId: caseId,
+                physician_id: savedCase?.physician_id,
+                hasPhysician: !!savedCase?.physician_id
+            });
 
             // Update physician's last case type
             const physician_id = updates.physician_id;
@@ -1089,6 +1064,91 @@ export class CasesManager {
         }
     }
 
+    async cancelCase(caseId) {
+        if (!confirm('Are you sure you want to cancel this case? All assigned trays will be marked as Ready For Pickup.')) {
+            return;
+        }
+
+        try {
+            // Update case status to cancelled
+            await this.dataManager.updateCase(caseId, {
+                status: 'cancelled',
+                updated_at: new Date().toISOString()
+            });
+
+            // Get all trays assigned to this case and update their status
+            const trays = await this.dataManager.getAllTrays();
+            const assignedTrays = trays.filter(tray =>
+                tray.assignedCaseId === caseId ||
+                tray.case_id === caseId ||
+                (tray.assigned_cases && tray.assigned_cases.includes(caseId))
+            );
+
+            console.log(`Found ${assignedTrays.length} trays assigned to case ${caseId}`);
+
+            // Update each assigned tray to Ready For Pickup status
+            const updatePromises = assignedTrays.map(tray =>
+                this.dataManager.updateTray(tray.id, {
+                    status: TRAY_STATUS.READY_FOR_PICKUP,
+                    assignedCaseId: null,
+                    case_id: null,
+                    updated_at: new Date().toISOString()
+                })
+            );
+
+            await Promise.all(updatePromises);
+
+            this.showSuccessNotification(`Case cancelled. ${assignedTrays.length} tray(s) marked as Ready For Pickup.`);
+            this.loadCases();
+        } catch (error) {
+            console.error('Error cancelling case:', error);
+            this.showErrorNotification('Error cancelling case: ' + error.message);
+        }
+    }
+
+    async completeCase(caseId) {
+        if (!confirm('Are you sure you want to complete this case? All assigned trays will be marked as Ready For Pickup.')) {
+            return;
+        }
+
+        try {
+            // Update case status to completed
+            await this.dataManager.updateCase(caseId, {
+                status: 'completed',
+                completed_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            });
+
+            // Get all trays assigned to this case and update their status
+            const trays = await this.dataManager.getAllTrays();
+            const assignedTrays = trays.filter(tray =>
+                tray.assignedCaseId === caseId ||
+                tray.case_id === caseId ||
+                (tray.assigned_cases && tray.assigned_cases.includes(caseId))
+            );
+
+            console.log(`Found ${assignedTrays.length} trays assigned to case ${caseId}`);
+
+            // Update each assigned tray to Ready For Pickup status
+            const updatePromises = assignedTrays.map(tray =>
+                this.dataManager.updateTray(tray.id, {
+                    status: TRAY_STATUS.READY_FOR_PICKUP,
+                    assignedCaseId: null,
+                    case_id: null,
+                    updated_at: new Date().toISOString()
+                })
+            );
+
+            await Promise.all(updatePromises);
+
+            this.showSuccessNotification(`Case completed. ${assignedTrays.length} tray(s) marked as Ready For Pickup.`);
+            this.loadCases();
+        } catch (error) {
+            console.error('Error completing case:', error);
+            this.showErrorNotification('Error completing case: ' + error.message);
+        }
+    }
+
     async viewCaseDetails(caseId) {
         try {
             const caseData = await this.dataManager.getCase(caseId);
@@ -1101,6 +1161,47 @@ export class CasesManager {
         }
     }
 
+    async refreshCaseDetailsModal(caseId) {
+        try {
+            const caseData = await this.dataManager.getCase(caseId);
+            if (caseData) {
+                // Only refresh the modal body content, not the entire modal
+                const modalBody = document.getElementById('caseDetailsModalBody');
+                if (modalBody) {
+                    // Get fresh data from DataManager arrays
+                    const surgeon = this.dataManager.getSurgeons().find(s => s && s.id === caseData.physician_id);
+                    const facility = this.dataManager.getFacilities().find(f => f && f.id === caseData.facility_id);
+                    const caseType = this.dataManager.getCaseTypes().find(ct => ct && ct.id === caseData.caseTypeId);
+
+                    // Find the case-details div and update only the content that might have changed
+                    const caseDetailsDiv = modalBody.querySelector('.case-details');
+                    if (caseDetailsDiv) {
+                        // Update physician name
+                        const physicianElements = modalBody.querySelectorAll('[data-physician-name]');
+                        physicianElements.forEach(el => {
+                            el.textContent = surgeon ? surgeon.full_name : 'Unknown';
+                        });
+
+                        // If there's no data-physician-name attribute, look for the text pattern
+                        if (physicianElements.length === 0) {
+                            // Update the HTML directly for physician
+                            const htmlContent = modalBody.innerHTML;
+                            const updatedHtml = htmlContent.replace(
+                                /<strong>Surgeon:<\/strong>\s*[^<]*/,
+                                `<strong>Surgeon:</strong> ${surgeon ? surgeon.full_name : 'Unknown'}`
+                            );
+                            if (updatedHtml !== htmlContent) {
+                                modalBody.innerHTML = updatedHtml;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error refreshing case details modal:', error);
+        }
+    }
+
     showCaseDetailsModal(caseData) {
         const surgeon = this.dataManager.getSurgeons().find(s => s && s.id === caseData.physician_id);
         const facility = this.dataManager.getFacilities().find(f => f && f.id === caseData.facility_id);
@@ -1109,7 +1210,7 @@ export class CasesManager {
         const modalBody = document.getElementById('caseDetailsModalBody');
         if (modalBody) {
             modalBody.innerHTML = `
-                <div class="case-details">
+                <div class="case-details" data-case-id="${caseData.id}">
                     <div class="row">
                         <div class="col-md-6">
                             <strong>Patient:</strong> ${caseData.patientName || 'N/A'}<br>
@@ -1153,10 +1254,17 @@ export class CasesManager {
             const modalFooter = document.querySelector('#caseDetailsModal .modal-footer');
             if (modalFooter) {
                 modalFooter.innerHTML = `
-                    <button type="button" class="btn btn-danger me-auto" onclick="window.app.casesManager.deleteCase('${caseData.id}')" data-bs-dismiss="modal">
-                        <i class="fas fa-trash"></i> Delete Case
-                    </button>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <div class="d-flex justify-content-between w-100">
+                        <div>
+                            <button type="button" class="btn btn-warning me-2" onclick="window.app.casesManager.cancelCase('${caseData.id}')" data-bs-dismiss="modal">
+                                <i class="fas fa-times-circle"></i> Cancel Case
+                            </button>
+                            <button type="button" class="btn btn-success" onclick="window.app.casesManager.completeCase('${caseData.id}')" data-bs-dismiss="modal">
+                                <i class="fas fa-check-circle"></i> Complete Case
+                            </button>
+                        </div>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
                 `;
             }
 
@@ -1615,6 +1723,7 @@ END:VCALENDAR`;
 
         return null; // Return null if facility not found instead of ID
     }
+
 
     // Delegate to DashboardManager for check-in functionality
     async showManualCheckInModal(caseId) {

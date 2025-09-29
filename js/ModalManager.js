@@ -1326,14 +1326,25 @@ export class ModalManager {
 
                     // Populate edit modal dropdown if it exists
                     if (editSurgeonSelect) {
+                        // Preserve the current value before replacing options
+                        const currentValue = editSurgeonSelect.value;
+                        const originalValue = editSurgeonSelect.getAttribute('data-original-physician');
+                        const pendingValue = editSurgeonSelect.getAttribute('data-pending-value');
+
+                        // Replace options
                         editSurgeonSelect.innerHTML = surgeonOptions;
 
-                        // Check for pending value to set after population
-                        const pendingValue = editSurgeonSelect.getAttribute('data-pending-value');
-                        if (pendingValue) {
-                            editSurgeonSelect.value = pendingValue;
-                            editSurgeonSelect.removeAttribute('data-pending-value');
-                            console.log(`✅ Set pending physician value: ${pendingValue}`);
+                        // Determine which value to set (priority: pending > current > original)
+                        let valueToSet = pendingValue || currentValue || originalValue;
+
+                        if (valueToSet) {
+                            editSurgeonSelect.value = valueToSet;
+                            console.log(`✅ Set physician value after repopulation: ${valueToSet} (was: current=${currentValue}, pending=${pendingValue}, original=${originalValue})`);
+
+                            // Clear pending value attribute once set
+                            if (pendingValue) {
+                                editSurgeonSelect.removeAttribute('data-pending-value');
+                            }
 
                             // Trigger change event to handle case type auto-selection and facility reordering
                             const changeEvent = new Event('change', { bubbles: true });
@@ -1620,10 +1631,8 @@ export class ModalManager {
                     const validImplantTypes = implantTypes.filter(implantType => {
                         const hasId = implantType && implantType.id;
                         const hasName = implantType && implantType.name;
-                        console.log(`🔍 Case modal - Filtering implant type ${implantType?.id}: hasId=${hasId}, hasName=${hasName}, name=${implantType?.name}, description=${implantType?.description}`);
                         return hasId && hasName;
                     });
-                    console.log(`✅ Valid implant types for case dropdown: ${validImplantTypes.length}`);
 
                     const implantTypeOptions = '<option value="">Select Implant Type (Optional)</option>' +
                         validImplantTypes.map(implantType => `<option value="${implantType.id}">${implantType.name}</option>`).join('');
@@ -1822,7 +1831,7 @@ export class ModalManager {
                             <select class="form-select form-select-sm requirement-type" required>
                                 <option value="required">Required</option>
                                 <option value="preferred">Preferred</option>
-                                <option value="optional">Optional</option>
+                                <option value="optional">Backup</option>
                             </select>
                         </div>
                         <div class="col-md-2">

@@ -74,9 +74,7 @@ export class ImplantTypeManager {
 
                 console.log(`✅ Loaded ${this.currentImplantTypes.length} implant types`);
                 if (this.currentImplantTypes.length > 0) {
-                    console.log('🔍 Sample implant type:', this.currentImplantTypes[0]);
                     const activeTypes = this.getActiveImplantTypes();
-                    console.log(`🔍 Active implant types: ${activeTypes.length} out of ${this.currentImplantTypes.length}`);
                     if (activeTypes.length === 0 && this.currentImplantTypes.length > 0) {
                         console.log('🔍 First implant type status:', this.currentImplantTypes[0].status);
                     }

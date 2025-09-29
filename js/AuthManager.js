@@ -934,7 +934,6 @@ export class AuthManager {
             if (dataMigrationsLink) {
                 if (isAdmin) {
                     dataMigrationsLink.style.display = '';
-                    console.log('✅ Data Migrations link shown for admin user');
                 } else {
                     dataMigrationsLink.style.display = 'none';
                     console.log('🔒 Data Migrations link hidden for non-admin user');

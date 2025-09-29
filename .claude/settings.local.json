@@ -15,7 +15,8 @@
       "Bash(node:*)",
       "Bash(docker restart:*)",
       "Bash(docker exec:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

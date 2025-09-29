@@ -118,6 +118,11 @@ export class DataManager {
                 }
             });
 
+            // Check if this is an actual data change or just initial load
+            const previousSurgeonsCount = this.surgeons ? this.surgeons.length : 0;
+            const isInitialLoad = previousSurgeonsCount === 0 && surgeons.length > 0;
+            const hasDataChanged = !isInitialLoad && previousSurgeonsCount !== surgeons.length;
+
             this.surgeons = surgeons;
 
             // Refresh physician dropdowns in case modals if they exist and are empty
@@ -131,6 +136,59 @@ export class DataManager {
                         window.app.modalManager.refreshPhysicianDropdowns();
                     }
                 }, 100); // Small delay to ensure DOM is ready
+            }
+
+            // If physician data has changed (not initial load), refresh case displays
+            if (hasDataChanged && window.app?.casesManager) {
+                console.log('🔄 Physician data changed, refreshing case displays...');
+                // Don't reload from database, just re-render with current data
+                if (window.app.casesManager.currentCases) {
+                    window.app.casesManager.renderCases(window.app.casesManager.currentCases);
+                }
+
+                // Also refresh any open case details modal
+                const caseDetailsModal = document.getElementById('caseDetailsModal');
+                if (caseDetailsModal && caseDetailsModal.classList.contains('show')) {
+                    const caseIdElement = caseDetailsModal.querySelector('[data-case-id]');
+                    if (caseIdElement) {
+                        const caseId = caseIdElement.getAttribute('data-case-id');
+                        console.log('🔄 Refreshing open case details modal for case:', caseId);
+                        // Re-fetch and re-display the case details
+                        window.app.casesManager.refreshCaseDetailsModal(caseId);
+                    }
+                }
+
+                // Also refresh any open edit case modal
+                const editCaseModal = document.getElementById('editCaseModal');
+                if (editCaseModal && editCaseModal.classList.contains('show')) {
+                    const caseId = editCaseModal.getAttribute('data-case-id');
+                    if (caseId) {
+                        console.log('🔄 Refreshing physician dropdown in edit modal for case:', caseId);
+                        // Repopulate the dropdowns with fresh data
+                        window.app.modalManager.populateCaseModalDropdowns().then(() => {
+                            // Get current selected value and re-set it
+                            const physicianDropdown = document.getElementById('editCasePhysician');
+                            if (physicianDropdown) {
+                                const currentValue = physicianDropdown.value;
+                                const originalValue = physicianDropdown.getAttribute('data-original-physician');
+                                // Re-set the value after dropdown is repopulated
+                                if (currentValue || originalValue) {
+                                    physicianDropdown.value = currentValue || originalValue;
+                                    console.log('✅ Re-set physician value in edit modal:', currentValue || originalValue);
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+
+            // Also refresh dashboard if needed
+            if (hasDataChanged && window.app?.dashboardManager) {
+                console.log('🔄 Physician data changed, refreshing dashboard displays...');
+                // Trigger a refresh of dashboard cards without reloading data
+                if (window.app.dashboardManager.currentCases) {
+                    window.app.dashboardManager.renderDashboardCases(window.app.dashboardManager.currentCases);
+                }
             }
         }, (error) => {
             console.error('Error listening to surgeons:', error);

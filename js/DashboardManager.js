@@ -3,6 +3,7 @@
  */
 import { CASE_STATUS, CASE_STATUS_OPTIONS, getCaseStatusClass, populateCaseStatusDropdown } from './constants/CaseStatus.js';
 import { TRAY_STATUS, normalizeStatus, isInUseStatus, isAvailableStatus, isCheckedInStatus, getStatusDisplayText } from './constants/TrayStatus.js';
+import { TRAY_LOCATIONS, getLocationDisplayText as getLocationDisplay } from './constants/TrayLocations.js';
 
 export class DashboardManager {
     constructor(dataManager) {
@@ -2151,12 +2152,16 @@ export class DashboardManager {
 
             const trayOptions = sortedTrays.map(tray => {
                 const isCheckedIn = tray.status === TRAY_STATUS.IN_USE || tray.status === TRAY_STATUS.CHECKED_IN;
-                const statusText = isCheckedIn ? ' (Already Checked In)' : ' (' + (tray.status || 'Available') + ')';
+                const statusText = ' (' + getStatusDisplayText(tray.status) + ')';
                 const isRecommended = (tray.tray_id === req.tray_id || tray.id === req.tray_id);
 
+                // Get location display text
+                const locationText = this.getLocationDisplayText(tray.location);
+
+                // Allow selection regardless of status - remove disabled attribute
                 return '<option value="' + (tray.id || tray.tray_id) + '" data-tray-name="' + (tray.tray_name || tray.name || tray.tray_id) + '" ' +
-                    (isCheckedIn ? 'disabled' : '') + (isRecommended ? ' selected' : '') + '>' +
-                    (isRecommended ? '⭐ ' : '') + (tray.tray_name || tray.name || tray.tray_id) + ' - ' + (tray.location || 'Unknown Location') + statusText +
+                    (isRecommended ? ' selected' : '') + '>' +
+                    (isRecommended ? '⭐ ' : '') + (tray.tray_name || tray.name || tray.tray_id) + ' - ' + locationText + statusText +
                 '</option>';
             }).join('');
 
@@ -2167,9 +2172,9 @@ export class DashboardManager {
                     '<div class="col-md-6">' +
                         '<h6 class="text-primary">' + (req.tray_name || req.tray_id) + '</h6>' +
                         '<p class="text-muted mb-1">Required: ' + (req.requirement_type || 'Standard') + '</p>' +
-                        '<div class="custom-control custom-checkbox">' +
-                            '<input type="checkbox" class="custom-control-input tray-select-checkbox" id="selectTray_' + index + '" checked>' +
-                            '<label class="custom-control-label" for="selectTray_' + index + '">' +
+                        '<div class="form-check form-switch">' +
+                            '<input type="checkbox" class="form-check-input tray-select-checkbox" id="selectTray_' + index + '" checked role="switch">' +
+                            '<label class="form-check-label" for="selectTray_' + index + '">' +
                                 'Check In This Tray' +
                             '</label>' +
                         '</div>' +
@@ -2318,17 +2323,32 @@ export class DashboardManager {
                     const currentUser = window.app?.authManager?.getCurrentUser();
                     const currentUserId = currentUser?.uid || 'unknown';
 
-                    // Update tray status and assignment (focus only on tray data)
-                    await this.dataManager.updateTray(tray.trayId, {
+                    // Get facility data to get coordinates
+                    const facilities = this.dataManager.getFacilities();
+                    const caseFacility = facilities.find(f => f && f.id === caseData.facility_id);
+
+                    // Prepare update data
+                    const updateData = {
                         status: TRAY_STATUS.CHECKED_IN,
                         assignedCaseId: caseId,
                         facility: caseData.facility_id,
-                        surgeon: caseData.physician_id,
+                        location: caseData.facility_id,  // Set location to facility ID
+                        physician_id: caseData.physician_id,  // Set physician_id field
+                        surgeon: caseData.physician_id,  // Also keep surgeon field for backwards compatibility
                         caseDate: caseData.scheduledDate,
                         assignedTo: currentUserId,
                         checkedInAt: new Date().toISOString(),
                         checkedInBy: currentUserId
-                    });
+                    };
+
+                    // Add facility coordinates if available
+                    if (caseFacility && caseFacility.coordinates) {
+                        updateData.coordinates = caseFacility.coordinates;
+                        console.log(`📍 Setting tray coordinates to facility location: ${caseFacility.account_name}`);
+                    }
+
+                    // Update tray with all the case and facility information
+                    await this.dataManager.updateTray(tray.trayId, updateData);
 
                     // Create history message with case and user info
                     const facilityName = this.getFacilityName(caseData.facility_id) || caseData.facility_id || 'Unknown Facility';
@@ -2610,11 +2630,14 @@ export class DashboardManager {
 
         return sortedTrays.map(tray => {
             const isCheckedIn = tray.status === TRAY_STATUS.IN_USE || tray.status === TRAY_STATUS.CHECKED_IN;
-            const statusText = isCheckedIn ? ' (Already Checked In)' : ' (' + (tray.status || 'Available') + ')';
+            const statusText = ' (' + getStatusDisplayText(tray.status) + ')';
 
-            return '<option value="' + (tray.id || tray.tray_id) + '" data-tray-name="' + (tray.tray_name || tray.name || tray.tray_id) + '" ' +
-                (isCheckedIn ? 'disabled' : '') + '>' +
-                (tray.tray_name || tray.name || tray.tray_id) + ' - ' + (tray.location || 'Unknown Location') + statusText +
+            // Get location display text
+            const locationText = this.getLocationDisplayText(tray.location);
+
+            // Allow selection regardless of status - remove disabled attribute
+            return '<option value="' + (tray.id || tray.tray_id) + '" data-tray-name="' + (tray.tray_name || tray.name || tray.tray_id) + '">' +
+                (tray.tray_name || tray.name || tray.tray_id) + ' - ' + locationText + statusText +
             '</option>';
         }).join('');
     }
@@ -2914,5 +2937,25 @@ END:VCALENDAR`;
             console.error('Error downloading ICS file:', error);
             this.showErrorNotification('Error creating calendar file');
         }
+    }
+
+    // Helper method to get location display text
+    getLocationDisplayText(location) {
+        if (!location) return 'Unknown Location';
+
+        // First try the standard location display function
+        const standardLocation = getLocationDisplay(location);
+
+        // If it returns the same value (meaning it's not a standard location),
+        // it might be a facility ID
+        if (standardLocation === location && location.length > 15) {
+            // This looks like a facility ID, try to get the facility name
+            const facilityName = this.getFacilityName(location);
+            if (facilityName && facilityName !== location) {
+                return facilityName;
+            }
+        }
+
+        return standardLocation;
     }
 }

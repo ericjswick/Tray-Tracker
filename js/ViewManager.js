@@ -607,10 +607,13 @@ export class ViewManager {
                 dashboardUserFilter.appendChild(option);
             });
 
-            // Set default to current logged in user
+            // Set default based on user role
             const currentUser = window.app?.authManager?.currentUser;
             if (currentUser) {
-                dashboardUserFilter.value = currentUser.uid;
+                // If admin, default to "All Users", otherwise default to current user
+                const isAdmin = currentUser.role === USER_ROLES.ADMIN;
+                dashboardUserFilter.value = isAdmin ? '' : currentUser.uid;
+
                 // Trigger filter update
                 if (window.app.trayManager && window.app.trayManager.currentTrays) {
                     this.renderDashboardTrays(window.app.trayManager.currentTrays);
@@ -643,14 +646,14 @@ export class ViewManager {
                 traysUserFilter.appendChild(option);
             });
 
-            // Set default to current logged in user (unless explicitly showing all users)
-            if (!setToAllUsers) {
-                const currentUser = window.app?.authManager?.currentUser;
-                if (currentUser) {
-                    traysUserFilter.value = currentUser.uid;
-                }
-            } else {
+            // Set default based on user role and setToAllUsers flag
+            const currentUser = window.app?.authManager?.currentUser;
+            if (setToAllUsers) {
                 traysUserFilter.value = ''; // Set to "All Users"
+            } else if (currentUser) {
+                // If admin, default to "All Users", otherwise default to current user
+                const isAdmin = currentUser.role === USER_ROLES.ADMIN;
+                traysUserFilter.value = isAdmin ? '' : currentUser.uid;
             }
 
 

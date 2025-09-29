@@ -15,6 +15,7 @@ export const TRAY_STATUS = {
     
     // Additional statuses for workflow tracking
     CHECKED_IN: "checked_in",   // Checked in for a specific case
+    READY_FOR_PICKUP: "ready_for_pickup", // Ready to be picked up
     PICKED_UP: "picked_up"      // Picked up from storage
 };
 
@@ -28,9 +29,11 @@ export function normalizeStatus(status) {
     const statusMap = {
         'in-use': TRAY_STATUS.IN_USE,
         'checked-in': TRAY_STATUS.CHECKED_IN,
+        'ready-for-pickup': TRAY_STATUS.READY_FOR_PICKUP,
         'picked-up': TRAY_STATUS.PICKED_UP,
         'in_use': TRAY_STATUS.IN_USE,
         'checked_in': TRAY_STATUS.CHECKED_IN,
+        'ready_for_pickup': TRAY_STATUS.READY_FOR_PICKUP,
         'picked_up': TRAY_STATUS.PICKED_UP,
         'available': TRAY_STATUS.AVAILABLE,
         'cleaning': TRAY_STATUS.CLEANING,
@@ -72,6 +75,7 @@ export function getStatusDisplayText(status) {
         [TRAY_STATUS.MISSING]: 'Missing',
         [TRAY_STATUS.UNKNOWN]: 'Unknown',
         [TRAY_STATUS.CHECKED_IN]: 'Checked In',
+        [TRAY_STATUS.READY_FOR_PICKUP]: 'Ready For Pickup',
         [TRAY_STATUS.PICKED_UP]: 'Picked Up'
     };
     
@@ -90,6 +94,7 @@ export function getStatusColor(status) {
         [TRAY_STATUS.MISSING]: 'danger',         // Red
         [TRAY_STATUS.UNKNOWN]: 'dark',           // Dark gray
         [TRAY_STATUS.CHECKED_IN]: 'primary',     // Primary blue
+        [TRAY_STATUS.READY_FOR_PICKUP]: 'info', // Light blue
         [TRAY_STATUS.PICKED_UP]: 'primary'       // Primary blue
     };
     
@@ -104,6 +109,7 @@ export const TRAY_STATUS_OPTIONS = [
     { value: TRAY_STATUS.AVAILABLE, label: 'Available', description: 'Ready for use' },
     { value: TRAY_STATUS.IN_USE, label: 'In Use', description: 'Currently in surgery' },
     { value: TRAY_STATUS.CHECKED_IN, label: 'Checked In', description: 'Checked in for a specific case' },
+    { value: TRAY_STATUS.READY_FOR_PICKUP, label: 'Ready For Pickup', description: 'Ready to be picked up' },
     { value: TRAY_STATUS.PICKED_UP, label: 'Picked Up', description: 'Picked up from storage' },
     { value: TRAY_STATUS.CLEANING, label: 'Cleaning', description: 'Being processed/cleaned' },
     { value: TRAY_STATUS.MAINTENANCE, label: 'Maintenance', description: 'Under repair' },
