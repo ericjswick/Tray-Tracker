@@ -317,12 +317,22 @@ export class MapManager {
                 this.updateCombinedFilters();
             });
         }
+        const trayCustodyFilter = document.getElementById('trayCustodyFilter');
+        if (trayCustodyFilter) {
+            trayCustodyFilter.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    this.switchToTrayMode();
+                }
+                this.updateCombinedFilters();
+            });
+        }
         if (mapDisplayFilter) {
             mapDisplayFilter.addEventListener('change', () => this.updateCombinedFilters());
         }
-        
+
         // Populate user dropdown
         this.populateUserFilter();
+        this.populateCustodyFilter();
     }
 
     // Switch to tray-focused mode
@@ -355,10 +365,12 @@ export class MapManager {
         const trayStatusFilter = document.getElementById('trayStatusFilter');
         const trayLocationFilter = document.getElementById('trayLocationFilter');
         const trayUserFilter = document.getElementById('trayUserFilter');
+        const trayCustodyFilter = document.getElementById('trayCustodyFilter');
 
         if (trayStatusFilter) trayStatusFilter.value = '';
         if (trayLocationFilter) trayLocationFilter.value = '';
         if (trayUserFilter) trayUserFilter.value = '';
+        if (trayCustodyFilter) trayCustodyFilter.value = '';
     }
 
     // Populate user filter dropdown
@@ -389,6 +401,38 @@ export class MapManager {
             // Data not loaded yet, retry after delay (max 5 retries)
             setTimeout(() => {
                 this.populateUserFilter(retryCount + 1);
+            }, 1000);
+        }
+    }
+
+    // Populate custody filter dropdown
+    populateCustodyFilter(retryCount = 0) {
+        const trayCustodyFilter = document.getElementById('trayCustodyFilter');
+        if (!trayCustodyFilter) return;
+
+        // Clear existing options except "All Custody"
+        trayCustodyFilter.innerHTML = '<option value="">All Custody</option>';
+
+        // Get users from DataManager
+        if (window.app?.dataManager?.users && window.app.dataManager.users.size > 0) {
+            const users = Array.from(window.app.dataManager.users.values())
+                .filter(user => user.active !== false) // Only show active users
+                .sort((a, b) => {
+                    const nameA = a.name || a.email || '';
+                    const nameB = b.name || b.email || '';
+                    return nameA.localeCompare(nameB);
+                });
+
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.uid || user.id; // Use uid first, fallback to id
+                option.textContent = user.name || user.email || 'Unknown User';
+                trayCustodyFilter.appendChild(option);
+            });
+        } else if (retryCount < 5) {
+            // Data not loaded yet, retry after delay (max 5 retries)
+            setTimeout(() => {
+                this.populateCustodyFilter(retryCount + 1);
             }, 1000);
         }
     }
@@ -459,17 +503,18 @@ export class MapManager {
         // Get tray filters - if any tray filter is used, don't show facilities
         const trayStatusFilter = document.getElementById('trayStatusFilter')?.value || '';
         const trayUserFilter = document.getElementById('trayUserFilter')?.value || '';
+        const trayCustodyFilter = document.getElementById('trayCustodyFilter')?.value || '';
         const trayLocationFilter = document.getElementById('trayLocationFilter')?.value || '';
-        
+
         // Get facility filters - if any facility filter is used, don't show trays
         const locationTypeFilter = document.getElementById('locationTypeFilter')?.value || '';
         const locationStatusFilter = document.getElementById('locationStatusFilter')?.value || '';
         const locationRegionFilter = document.getElementById('locationRegionFilter')?.value || '';
         const locationSearch = document.getElementById('locationSearch')?.value || '';
-        
+
         // Show facilities only if requested and no tray filters are applied
-        if ((displayFilter === 'both' || displayFilter === 'facilities') && 
-            !trayStatusFilter && !trayUserFilter && !trayLocationFilter) {
+        if ((displayFilter === 'both' || displayFilter === 'facilities') &&
+            !trayStatusFilter && !trayUserFilter && !trayCustodyFilter && !trayLocationFilter) {
             this.addFilteredFacilityMarkers();
         }
         
@@ -537,6 +582,7 @@ export class MapManager {
         const trayStatusFilter = document.getElementById('trayStatusFilter')?.value || '';
         const trayLocationFilter = document.getElementById('trayLocationFilter')?.value || '';
         const trayUserFilter = document.getElementById('trayUserFilter')?.value || '';
+        const trayCustodyFilter = document.getElementById('trayCustodyFilter')?.value || '';
 
         // Get trays from TrayManager
         const trays = window.app.trayManager?.currentTrays || [];
@@ -578,7 +624,13 @@ export class MapManager {
                 console.log(`🔍 User filter: Filtering out tray ${tray.tray_name} - assignedTo: "${tray.assignedTo}" !== filter: "${trayUserFilter}"`);
                 return false;
             }
-            
+
+            // Tray custody filter (filter by custody)
+            if (trayCustodyFilter && tray.custody_id !== trayCustodyFilter) {
+                console.log(`🔍 Custody filter: Filtering out tray ${tray.tray_name} - custody_id: "${tray.custody_id}" !== filter: "${trayCustodyFilter}"`);
+                return false;
+            }
+
             return true;
         });
 
@@ -674,6 +726,20 @@ export class MapManager {
                         </button>
                         <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showTurnoverModal('${tray.id}')">
                             <i class="fas fa-exchange-alt"></i> Turnover
+                        </button>
+                    `;
+                }
+                if (normalizeStatus(tray.status) === TRAY_STATUS.CHECKED_IN) {
+                    actions += `
+                        <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
+                            <i class="fas fa-hand-paper"></i> Pickup
+                        </button>
+                    `;
+                }
+                if (normalizeStatus(tray.status) === TRAY_STATUS.READY_FOR_PICKUP) {
+                    actions += `
+                        <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
+                            <i class="fas fa-hand-paper"></i> Pickup
                         </button>
                     `;
                 }

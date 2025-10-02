@@ -364,6 +364,9 @@ export class CasesManager {
             const caseDate = caseItem.scheduledDate; // Already in YYYY-MM-DD format
 
             switch (dateFilter) {
+                case 'all':
+                    // Show all cases regardless of date
+                    return true;
                 case 'today':
                     return caseDate === today;
                 case 'tomorrow':

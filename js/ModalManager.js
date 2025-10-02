@@ -86,6 +86,7 @@ export class ModalManager {
         await this.populateImplantTypeDropdown();
         await this.populateTrayStatusDropdown();
         await window.app.trayManager.populateUserDropdown();
+        await window.app.trayManager.populateCustodyDropdown();
         const modal = new bootstrap.Modal(document.getElementById('addTrayModal'));
         modal.show();
     }

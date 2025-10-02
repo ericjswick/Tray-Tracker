@@ -70,7 +70,10 @@ export class TrayManager {
             
             // Get assigned user from dropdown
             const assignedTo = document.getElementById('trayAssignedTo').value || '';
-            
+
+            // Get custody from dropdown
+            const custodyId = document.getElementById('trayCustody').value || '';
+
             const trayData = {
                 tray_name: document.getElementById('trayName').value,
                 type: '', // Keep empty for legacy compatibility if no types selected
@@ -82,6 +85,7 @@ export class TrayManager {
                 caseDate: '',
                 surgeon: '',
                 assignedTo: assignedTo,
+                custody_id: custodyId,
                 notes: ''
             };
 
@@ -146,7 +150,7 @@ export class TrayManager {
         await window.app.modalManager.populateImplantTypeDropdown();
         await window.app.modalManager.populateTrayStatusDropdown();
         await this.populateUserDropdown();
-
+        await this.populateCustodyDropdown();
 
         // Populate form with existing tray data
         document.getElementById('trayName').value = tray.tray_name || '';
@@ -176,7 +180,10 @@ export class TrayManager {
 
         // Set assigned user
         document.getElementById('trayAssignedTo').value = tray.assignedTo || '';
-        
+
+        // Set custody
+        document.getElementById('trayCustody').value = tray.custody_id || '';
+
         // Set GPS coordinates if available
         document.getElementById('trayLatitude').value = tray.latitude || '';
         document.getElementById('trayLongitude').value = tray.longitude || '';
@@ -212,7 +219,10 @@ export class TrayManager {
             
             // Get assigned user from dropdown
             const assignedTo = document.getElementById('trayAssignedTo').value || '';
-            
+
+            // Get custody from dropdown
+            const custodyId = document.getElementById('trayCustody').value || '';
+
             const updateData = {
                 tray_name: document.getElementById('trayName').value,
                 case_type_compatibility: selectedCaseTypes,
@@ -220,6 +230,7 @@ export class TrayManager {
                 status: document.getElementById('trayStatus').value,
                 location: locationValue,
                 assignedTo: assignedTo,
+                custody_id: custodyId,
                 lastModified: new Date(),
                 modifiedBy: window.app.authManager.getCurrentUser()?.uid || ''
             };
@@ -344,18 +355,22 @@ export class TrayManager {
             const currentUser = window.app.authManager.getCurrentUser();
             const currentUserId = currentUser?.uid;
 
+            // Get current tray data to check for custody changes
+            const currentTray = this.currentTrays.find(t => t.id === trayId);
+            const oldCustody = currentTray?.custody_id || '';
+
             const updates = {
                 status: TRAY_STATUS.CHECKED_IN, // Use CHECKED_IN for case-based check-ins
                 location: facility, // Keep legacy location field for backward compatibility
                 facility_id: facility, // Store facility ID for proper matching
                 caseDate: caseDate, // Case date from selected case or current date
                 next_case_id: selectedCaseId, // Store reference to selected case if applicable
-                surgeon: surgeon, // Keep legacy surgeon field for backward compatibility  
+                surgeon: surgeon, // Keep legacy surgeon field for backward compatibility
                 physician_id: surgeon, // Store physician ID for proper matching
                 notes: notes,
                 checkinPhotoUrl: photoUrl,
-                // Automatically assign tray to current user on check-in
-                assignedTo: currentUserId,
+                // Set custody to current user on check-in
+                custody_id: currentUserId,
                 // Add facility coordinates if available
                 ...(facilityCoordinates && {
                     latitude: facilityCoordinates.latitude,
@@ -379,9 +394,19 @@ export class TrayManager {
 
             }
 
-            // Create history entry message with assignment info
+            // Create history entry message with custody info
             const userName = currentUser?.name || currentUser?.email || 'Unknown User';
-            let historyMessage = `Checked in to ${this.getFacilityName(facility)}${caseDate ? ` for case on ${caseDate}` : ''}${surgeon ? ` with ${this.getSurgeonName(surgeon)}` : ''}. Automatically assigned to ${userName}.`;
+            let historyMessage = `Checked in to ${this.getFacilityName(facility)}${caseDate ? ` for case on ${caseDate}` : ''}${surgeon ? ` with ${this.getSurgeonName(surgeon)}` : ''}.`;
+
+            // Add custody change info if custody changed
+            if (oldCustody !== currentUserId) {
+                if (oldCustody) {
+                    const oldCustodyName = this.getUserName(oldCustody);
+                    historyMessage += ` Custody changed from ${oldCustodyName} to ${userName}.`;
+                } else {
+                    historyMessage += ` Custody assigned to ${userName}.`;
+                }
+            }
 
             // Add notes if provided
             if (notes && notes.trim()) {
@@ -427,6 +452,7 @@ export class TrayManager {
             const currentTray = await this.dataManager.getTray(trayId);
             const facilityId = this.getTrayFacility(currentTray);
             const facilityName = facilityId ? this.getFacilityName(facilityId) : 'facility';
+            const oldCustody = currentTray?.custody_id || '';
 
             // Upload photo if captured
             let photoUrl = null;
@@ -436,8 +462,8 @@ export class TrayManager {
 
             // Get trunk coordinates from central function
             const trunkCoords = getLocationCoordinates(TRAY_LOCATIONS.TRUNK);
-            
-            // Get current user ID for automatic assignment
+
+            // Get current user ID for custody
             const currentUser = window.app.authManager.getCurrentUser();
             const currentUserId = currentUser?.uid;
 
@@ -449,8 +475,8 @@ export class TrayManager {
                 surgeon: '',
                 notes: notes,
                 pickupPhotoUrl: photoUrl,
-                // Automatically assign tray to current user on pickup
-                assignedTo: currentUserId,
+                // Set custody to current user on pickup
+                custody_id: currentUserId,
                 // Set coordinates to trunk location
                 latitude: trunkCoords?.latitude,
                 longitude: trunkCoords?.longitude,
@@ -459,9 +485,20 @@ export class TrayManager {
             };
 
             await this.dataManager.updateTray(trayId, updates);
-            // Create history entry message with assignment info
+
+            // Create history entry message with custody info
             const userName = currentUser?.name || currentUser?.email || 'Unknown User';
-            const historyMessage = `Picked up from ${facilityName}. Notes: ${notes || 'None'}. Automatically assigned to ${userName}.`;
+            let historyMessage = `Picked up from ${facilityName}. Notes: ${notes || 'None'}.`;
+
+            // Add custody change info if custody changed
+            if (oldCustody !== currentUserId) {
+                if (oldCustody) {
+                    const oldCustodyName = this.getUserName(oldCustody);
+                    historyMessage += ` Custody changed from ${oldCustodyName} to ${userName}.`;
+                } else {
+                    historyMessage += ` Custody assigned to ${userName}.`;
+                }
+            }
             
             await this.dataManager.addHistoryEntry(
                 trayId,
@@ -548,7 +585,11 @@ export class TrayManager {
                     turnoverPhotoUrl = await window.app.photoManager.uploadPhoto('turnover', 'turnover-photos');
                 }
 
-                // Get current user ID for automatic assignment on turnover checkin
+                // Get current tray data to check for custody changes
+                const currentTray = await this.dataManager.getTray(trayId);
+                const oldCustody = currentTray?.custody_id || '';
+
+                // Get current user ID for custody on turnover checkin
                 const currentUser = window.app.authManager.getCurrentUser();
                 const currentUserId = currentUser?.uid;
 
@@ -558,14 +599,25 @@ export class TrayManager {
                     location: TRAY_LOCATIONS.FACILITY,
                     turnoverCheckinPhotoUrl: checkinPhotoUrl,
                     turnoverPhotoUrl: turnoverPhotoUrl,
-                    // Automatically assign tray to current user on turnover checkin
-                    assignedTo: currentUserId
+                    // Set custody to current user on turnover checkin
+                    custody_id: currentUserId
                 };
 
                 await this.dataManager.updateTray(trayId, updates);
-                // Create turnover history entry with assignment info
+
+                // Create turnover history entry with custody info
                 const userName = currentUser?.name || currentUser?.email || 'Unknown User';
-                const turnoverHistoryMessage = `Turnover processed for new case on ${newCaseDate}. Checkin notes: ${checkinNotes || 'None'}. Turnover notes: ${turnoverNotes || 'None'}. Automatically assigned to ${userName}.`;
+                let turnoverHistoryMessage = `Turnover processed for new case on ${newCaseDate}. Checkin notes: ${checkinNotes || 'None'}. Turnover notes: ${turnoverNotes || 'None'}.`;
+
+                // Add custody change info if custody changed
+                if (oldCustody !== currentUserId) {
+                    if (oldCustody) {
+                        const oldCustodyName = this.getUserName(oldCustody);
+                        turnoverHistoryMessage += ` Custody changed from ${oldCustodyName} to ${userName}.`;
+                    } else {
+                        turnoverHistoryMessage += ` Custody assigned to ${userName}.`;
+                    }
+                }
                 
                 await this.dataManager.addHistoryEntry(
                     trayId,
@@ -888,6 +940,12 @@ export class TrayManager {
                         <span class="tray-detail-value">Assigned to: ${this.getUserName(tray.assignedTo)}</span>
                     </div>
                 ` : ''}
+                ${tray.custody_id ? `
+                    <div class="tray-detail">
+                        <i class="fas fa-hand-holding"></i>
+                        <span class="tray-detail-value">Custody: ${this.getUserName(tray.custody_id)}</span>
+                    </div>
+                ` : ''}
                 ${this.getCaseTypeCompatibilityText(tray) ? `
                     <div class="tray-detail">
                         <i class="fas fa-tags"></i>
@@ -949,8 +1007,12 @@ export class TrayManager {
                     <label>Assigned To</label>
                     <span class="${!tray.assignedTo ? 'empty-value' : ''}">${tray.assignedTo ? this.getUserName(tray.assignedTo) : 'Not assigned'}</span>
                 </div>
+                <div class="tray-horizontal-field">
+                    <label>Custody</label>
+                    <span class="${!tray.custody_id ? 'empty-value' : ''}">${tray.custody_id ? this.getUserName(tray.custody_id) : 'Not assigned'}</span>
+                </div>
             </div>
-            
+
             <div class="tray-horizontal-actions">
                 ${this.getTrayActions(tray)}
             </div>
@@ -1164,6 +1226,40 @@ export class TrayManager {
         }
     }
 
+    async populateCustodyDropdown() {
+        const custodySelect = document.getElementById('trayCustody');
+        if (!custodySelect) return;
+
+        // Clear existing options except the first "No Custody" option
+        custodySelect.innerHTML = '<option value="">No Custody</option>';
+
+        try {
+            // Get users from the data manager
+            if (window.app?.dataManager?.users && window.app.dataManager.users.size > 0) {
+                const users = Array.from(window.app.dataManager.users.values());
+
+                // Sort users by name
+                users.sort((a, b) => {
+                    const nameA = a.name || a.email || 'Unknown';
+                    const nameB = b.name || b.email || 'Unknown';
+                    return nameA.localeCompare(nameB);
+                });
+
+                // Add user options
+                users.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user.uid || user.id;
+                    option.textContent = `${user.name || user.email || 'Unknown User'}${user.role ? ` (${user.role})` : ''}`;
+                    custodySelect.appendChild(option);
+                });
+            } else {
+                console.log('No users available for custody dropdown');
+            }
+        } catch (error) {
+            console.error('Error populating custody dropdown:', error);
+        }
+    }
+
     getSurgeonName(surgeonId) {
         // If it's already a name (legacy data), return as is
         if (!surgeonId || typeof surgeonId !== 'string') return 'Unknown Physician';
@@ -1371,6 +1467,14 @@ export class TrayManager {
         }
 
         if (normalizeStatus(tray.status) === TRAY_STATUS.CHECKED_IN) {
+            actions += `
+                <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
+                    <i class="fas fa-hand-paper"></i> Pickup
+                </button>
+            `;
+        }
+
+        if (normalizeStatus(tray.status) === TRAY_STATUS.READY_FOR_PICKUP) {
             actions += `
                 <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
                     <i class="fas fa-hand-paper"></i> Pickup

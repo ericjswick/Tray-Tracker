@@ -41,8 +41,9 @@ export class DashboardManager {
         if (!titleElement) return;
 
         const titleMap = {
+            'all': 'All Cases',
             'today': 'Today\'s Cases',
-            'tomorrow': 'Tomorrow\'s Cases', 
+            'tomorrow': 'Tomorrow\'s Cases',
             'week': 'This Week\'s Cases',
             'upcoming': 'Upcoming Cases',
             'month': 'This Month\'s Cases',
@@ -85,6 +86,10 @@ export class DashboardManager {
             const caseDate = caseItem.scheduledDate; // Already in YYYY-MM-DD format
 
             switch (filterType) {
+                case 'all':
+                    // Show all cases regardless of date
+                    return true;
+
                 case 'today':
                     return caseDate === today;
 
@@ -102,7 +107,7 @@ export class DashboardManager {
 
                 case 'upcoming':
                     return caseDate >= today;
-                
+
                 case 'month':
                     const monthEndDate = new Date();
                     monthEndDate.setMonth(monthEndDate.getMonth() + 1);
@@ -119,7 +124,7 @@ export class DashboardManager {
                 case 'past':
                     // All past cases
                     return caseDate < today;
-                
+
                 default:
                     return true;
             }
@@ -1739,10 +1744,11 @@ export class DashboardManager {
                         conflictWarnings.push(`${trayName}: ${warnings.join(', ')}`);
                     }
                     
-                    // Get current user for automatic assignment
+                    // Get current user for custody
                     const currentUser = window.app.authManager.getCurrentUser();
                     const currentUserId = currentUser?.uid || 'unknown';
-                    
+                    const oldCustody = tray.custody_id || '';
+
                     // Update tray with case details
                     await this.dataManager.updateTray(tray.id, {
                         status: TRAY_STATUS.CHECKED_IN,
@@ -1752,8 +1758,8 @@ export class DashboardManager {
                         caseDate: caseData.scheduledDate,
                         checkedInAt: new Date().toISOString(),
                         checkedInBy: currentUserId,
-                        // Automatically assign tray to current user on dashboard checkin
-                        assignedTo: currentUserId,
+                        // Set custody to current user on dashboard checkin
+                        custody_id: currentUserId,
                         // Add facility coordinates if available
                         ...(facilityCoordinates && {
                             latitude: facilityCoordinates.latitude,
@@ -1762,12 +1768,22 @@ export class DashboardManager {
                             locationTimestamp: new Date().toISOString()
                         })
                     });
-                    
-                    // Add activity history entry for mass check-in with assignment info
+
+                    // Add activity history entry for mass check-in with custody info
                     const facilityName = this.getFacilityName(caseFacility) || caseFacility || 'Unknown Facility';
                     const physicianName = this.getSurgeonName(caseSurgeon) || caseSurgeon || 'Unknown Physician';
                     const userName = currentUser?.name || currentUser?.email || 'Unknown User';
-                    const dashboardHistoryMessage = `Mass checked in to ${facilityName} for case on ${caseData.scheduledDate} with ${physicianName}. Automatically assigned to ${userName}.`;
+                    let dashboardHistoryMessage = `Mass checked in to ${facilityName} for case on ${caseData.scheduledDate} with ${physicianName}.`;
+
+                    // Add custody change info if custody changed
+                    if (oldCustody !== currentUserId) {
+                        if (oldCustody) {
+                            const oldCustodyName = window.app.trayManager.getUserName(oldCustody);
+                            dashboardHistoryMessage += ` Custody changed from ${oldCustodyName} to ${userName}.`;
+                        } else {
+                            dashboardHistoryMessage += ` Custody assigned to ${userName}.`;
+                        }
+                    }
                     
                     await this.dataManager.addHistoryEntry(
                         tray.id,
@@ -2319,9 +2335,13 @@ export class DashboardManager {
             for (const tray of selectedTrays) {
                 try {
 
-                    // Get current user for assignment
+                    // Get current user for custody
                     const currentUser = window.app?.authManager?.getCurrentUser();
                     const currentUserId = currentUser?.uid || 'unknown';
+
+                    // Get current tray to check custody changes
+                    const currentTrayData = await this.dataManager.getTray(tray.trayId);
+                    const oldCustody = currentTrayData?.custody_id || '';
 
                     // Get facility data to get coordinates
                     const facilities = this.dataManager.getFacilities();
@@ -2336,7 +2356,7 @@ export class DashboardManager {
                         physician_id: caseData.physician_id,  // Set physician_id field
                         surgeon: caseData.physician_id,  // Also keep surgeon field for backwards compatibility
                         caseDate: caseData.scheduledDate,
-                        assignedTo: currentUserId,
+                        custody_id: currentUserId,
                         checkedInAt: new Date().toISOString(),
                         checkedInBy: currentUserId
                     };
@@ -2350,11 +2370,21 @@ export class DashboardManager {
                     // Update tray with all the case and facility information
                     await this.dataManager.updateTray(tray.trayId, updateData);
 
-                    // Create history message with case and user info
+                    // Create history message with case and custody info
                     const facilityName = this.getFacilityName(caseData.facility_id) || caseData.facility_id || 'Unknown Facility';
                     const physicianName = this.getSurgeonName(caseData.physician_id) || caseData.physician_id || 'Unknown Physician';
                     const userName = currentUser?.name || currentUser?.email || 'Unknown User';
-                    const historyMessage = `Check-in to ${facilityName} for case on ${caseData.scheduledDate} with ${physicianName}. Assigned to ${userName}.`;
+                    let historyMessage = `Check-in to ${facilityName} for case on ${caseData.scheduledDate} with ${physicianName}.`;
+
+                    // Add custody change info if custody changed
+                    if (oldCustody !== currentUserId) {
+                        if (oldCustody) {
+                            const oldCustodyName = window.app.trayManager.getUserName(oldCustody);
+                            historyMessage += ` Custody changed from ${oldCustodyName} to ${userName}.`;
+                        } else {
+                            historyMessage += ` Custody assigned to ${userName}.`;
+                        }
+                    }
 
                     // Add history entries with all global photos and notes
                     if (globalPhotos.length > 0) {

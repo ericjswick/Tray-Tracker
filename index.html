@@ -337,6 +337,7 @@
                             <div class="d-flex gap-2 align-items-center">
                                 <span class="filter-label"><i class="fas fa-filter"></i> Filter by:</span>
                                 <select class="filter-select" id="dashboardCasesDateFilter">
+                                    <option value="all">View All Cases</option>
                                     <option value="today">Today</option>
                                     <option value="tomorrow">Tomorrow</option>
                                     <option value="week">This Week</option>
@@ -466,6 +467,12 @@
                         <select class="filter-select" id="trayUserFilter">
                             <option value="">All Users</option>
                             <!-- User options will be populated dynamically -->
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <select class="filter-select" id="trayCustodyFilter">
+                            <option value="">All Custody</option>
+                            <!-- Custody options will be populated dynamically -->
                         </select>
                     </div>
                     
@@ -862,6 +869,7 @@
                             <!-- Case status options populated dynamically -->
                         </select>
                         <select class="filter-select" id="casesDateFilter">
+                            <option value="all">View All Cases</option>
                             <option value="today">Today</option>
                             <option value="tomorrow">Tomorrow</option>
                             <option value="week">This Week</option>
@@ -1261,7 +1269,15 @@
                         </select>
                         <small class="form-text text-muted">Select a user to assign this tray to, or leave unassigned</small>
                     </div>
-                    
+                    <div class="form-group">
+                        <label for="trayCustody" class="form-label">Custody</label>
+                        <select class="form-control" id="trayCustody">
+                            <option value="">No Custody</option>
+                            <!-- Users will be populated dynamically from Firestore users collection -->
+                        </select>
+                        <small class="form-text text-muted">Select the user who has custody of this tray</small>
+                    </div>
+
                     <!-- Location Coordinates Section -->
                     <div class="form-group">
                         <label class="form-label">GPS Coordinates</label>
@@ -2771,8 +2787,20 @@
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="app.casesManager.updateCase()">Update Case</button>
+                <div class="d-flex justify-content-between w-100">
+                    <div>
+                        <button type="button" class="btn btn-warning me-2" onclick="app.casesManager.cancelCase(document.getElementById('editCaseId').value)" data-bs-dismiss="modal">
+                            <i class="fas fa-times-circle"></i> Cancel Case
+                        </button>
+                        <button type="button" class="btn btn-success" onclick="app.casesManager.completeCase(document.getElementById('editCaseId').value)" data-bs-dismiss="modal">
+                            <i class="fas fa-check-circle"></i> Complete Case
+                        </button>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-primary" onclick="app.casesManager.updateCase()">Update Case</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

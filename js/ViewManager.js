@@ -545,6 +545,12 @@ export class ViewManager {
                         <span class="tray-detail-value">Assigned: ${this.getUserName(tray.assignedTo)}</span>
                     </div>
                 ` : ''}
+                ${tray.custody_id ? `
+                    <div class="tray-detail">
+                        <i class="fas fa-hand-holding"></i>
+                        <span class="tray-detail-value">Custody: ${this.getUserName(tray.custody_id)}</span>
+                    </div>
+                ` : ''}
                 ${tray.surgeon ? `
                     <div class="tray-detail">
                         <i class="fas fa-user-md"></i>
@@ -1069,6 +1075,14 @@ export class ViewManager {
         }
 
         if (normalizeStatus(tray.status) === TRAY_STATUS.CHECKED_IN) {
+            actions += `
+                <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
+                    <i class="fas fa-hand-paper"></i> Pickup
+                </button>
+            `;
+        }
+
+        if (normalizeStatus(tray.status) === TRAY_STATUS.READY_FOR_PICKUP) {
             actions += `
                 <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
                     <i class="fas fa-hand-paper"></i> Pickup
