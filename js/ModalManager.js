@@ -1,5 +1,5 @@
 // js/ModalManager.js - Updated for Tray Tracker
-import { populateCaseStatusDropdown, DEFAULT_CASE_STATUS } from './constants/CaseStatus.js';
+import { populateCaseStatusDropdown, DEFAULT_CASE_STATUS, getCaseStatusLabel } from './constants/CaseStatus.js';
 import { populateFacilityTypeDropdown, DEFAULT_FACILITY_TYPE } from './constants/FacilityTypes.js';
 import { populateTrayStatusDropdown } from './constants/TrayStatus.js';
 import { populateTrayLocationDropdown, TRAY_LOCATIONS, getLocationDisplayText } from './constants/TrayLocations.js';
@@ -9,7 +9,14 @@ import { googlePlacesAutocomplete } from './utils/GooglePlacesAutocomplete.js';
 export class ModalManager {
     constructor(dataManager) {
         this.dataManager = dataManager;
+        this.physiciansUpdateUnsubscribe = null;
+        this.casesUpdateUnsubscribe = null;
+        this.checkinPhysiciansUnsubscribe = null;
+        this.checkinCasesUnsubscribe = null;
         this.initializeModalEvents();
+
+        // Setup modal show/hide listeners for EventBus subscription management
+        this.setupModalEventListeners();
     }
 
     async logToAPI(message, data = null, context = 'modal-debug') {
@@ -418,7 +425,8 @@ export class ModalManager {
                     const dateStr = caseItem.scheduledDate;
 
                     const timeStr = caseItem.scheduledTime ? ` ${caseItem.scheduledTime}` : '';
-                    option.textContent = `${dateStr}${timeStr} - ${caseTypeName} - ${physicianName} - ${facilityName}`;
+                    const statusLabel = getCaseStatusLabel(caseItem.status);
+                    option.textContent = `${dateStr}${timeStr} - ${caseTypeName} - ${physicianName} - ${facilityName} - ${statusLabel}`;
                     casesSelect.appendChild(option);
                 });
                 
@@ -822,6 +830,9 @@ export class ModalManager {
             document.getElementById('editUserLocationFacility').value = locationFacilityValue;
             document.getElementById('editUserActive').checked = user.active !== false;
 
+            // Load physician notification preferences
+            window.app.userManager.loadPhysicianNotificationPreferences(user.physician_notification_preferences || {});
+
             const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
             modal.show();
         } catch (error) {
@@ -976,9 +987,58 @@ export class ModalManager {
         }
     }
 
-    showAddSurgeonModal() {
-        // Show add physician modal
-        const modal = new bootstrap.Modal(document.getElementById('addPhysicianModal'));
+    async showAddSurgeonModal() {
+        // Clear the form and set to add mode
+        document.getElementById('editPhysicianModalTitle').textContent = 'Add New Physician';
+        document.getElementById('editPhysicianModalButton').textContent = 'Add Physician';
+        document.getElementById('editPhysicianModalButton').onclick = () => app.surgeonManager.addSurgeon();
+
+        // Reset the entire form first
+        document.getElementById('editPhysicianForm').reset();
+
+        // Clear the hidden ID field
+        document.getElementById('editPhysicianId').value = '';
+
+        // Set default values
+        document.getElementById('editPhysicianTitle').value = 'Dr.';
+        document.getElementById('editPhysicianActive').checked = true;
+
+        // Populate dropdowns with no selections
+        this.populatePreferredFacilitiesDropdown([]);
+
+        // Wait for case types to load if needed
+        if (!window.app?.dataManager?.caseTypes || window.app.dataManager.caseTypes.length === 0) {
+            await window.app.dataManager.loadCaseTypes();
+        }
+        this.populatePhysicianCaseTypesDropdown('');
+
+        // Clear tray preferences accordion
+        const trayPreferencesAccordion = document.getElementById('physicianTrayPreferencesAccordion');
+        if (trayPreferencesAccordion) {
+            trayPreferencesAccordion.innerHTML = '';
+        }
+
+        // Clear temporary tray preferences
+        if (window.app?.surgeonManager) {
+            window.app.surgeonManager.tempTrayPreferences = [];
+        }
+
+        // Populate the case type dropdown in tray preferences section
+        if (window.app?.surgeonManager?.populateCaseTypeDropdown) {
+            await window.app.surgeonManager.populateCaseTypeDropdown();
+        }
+
+        // Update modal footer to remove delete button (for add mode)
+        const modalFooter = document.querySelector('#editPhysicianModal .modal-footer');
+        if (modalFooter) {
+            modalFooter.innerHTML = `
+                <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn-primary-custom" id="editPhysicianModalButton" onclick="app.surgeonManager.addSurgeon()">Add Physician</button>
+            `;
+        }
+
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('editPhysicianModal'));
         modal.show();
     }
 
@@ -1034,6 +1094,11 @@ export class ModalManager {
             // Populate case types dropdown for last case type
             this.populatePhysicianCaseTypesDropdown(surgeon.last_case_type_id);
 
+            // Set modal to edit mode
+            document.getElementById('editPhysicianModalTitle').textContent = 'Edit Physician';
+            document.getElementById('editPhysicianModalButton').textContent = 'Update Physician';
+            document.getElementById('editPhysicianModalButton').onclick = () => app.surgeonManager.updateSurgeon();
+
             // Update modal footer to include delete button on the left
             const modalFooter = document.querySelector('#editPhysicianModal .modal-footer');
             if (modalFooter) {
@@ -1042,7 +1107,7 @@ export class ModalManager {
                         <i class="fas fa-trash"></i> Delete Physician
                     </button>
                     <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn-primary-custom" onclick="app.surgeonManager.updateSurgeon()">Update Physician</button>
+                    <button type="button" class="btn-primary-custom" id="editPhysicianModalButton" onclick="app.surgeonManager.updateSurgeon()">Update Physician</button>
                 `;
             }
 
@@ -2601,6 +2666,189 @@ export class ModalManager {
             const newEditPhysicianSelect = editPhysicianSelect.cloneNode(true);
             editPhysicianSelect.parentNode.replaceChild(newEditPhysicianSelect, editPhysicianSelect);
             newEditPhysicianSelect.addEventListener('change', (e) => this.handlePhysicianChange(e, 'edit'));
+        }
+    }
+
+    setupModalEventListeners() {
+        // Listen for Add/Edit Case modals show/hide events
+        const addCaseModal = document.getElementById('addCaseModal');
+        const editCaseModal = document.getElementById('editCaseModal');
+
+        if (addCaseModal) {
+            addCaseModal.addEventListener('shown.bs.modal', () => {
+                console.log('📡 Add Case modal opened - subscribing to physicians-updated');
+                this.setupPhysicianDropdownListeners();
+            });
+
+            addCaseModal.addEventListener('hidden.bs.modal', () => {
+                console.log('🔕 Add Case modal closed - unsubscribing from physicians-updated');
+                if (this.physiciansUpdateUnsubscribe) {
+                    this.physiciansUpdateUnsubscribe();
+                    this.physiciansUpdateUnsubscribe = null;
+                }
+            });
+        }
+
+        if (editCaseModal) {
+            editCaseModal.addEventListener('shown.bs.modal', () => {
+                console.log('📡 Edit Case modal opened - subscribing to physicians-updated');
+                this.setupPhysicianDropdownListeners();
+            });
+
+            editCaseModal.addEventListener('hidden.bs.modal', () => {
+                console.log('🔕 Edit Case modal closed - unsubscribing from physicians-updated');
+                if (this.physiciansUpdateUnsubscribe) {
+                    this.physiciansUpdateUnsubscribe();
+                    this.physiciansUpdateUnsubscribe = null;
+                }
+            });
+        }
+
+        // Listen for Check-in modal show/hide events
+        const checkinModal = document.getElementById('checkinModal');
+
+        if (checkinModal) {
+            checkinModal.addEventListener('shown.bs.modal', () => {
+                console.log('📡 Check-in modal opened - subscribing to physicians-updated and cases-updated');
+                this.setupCheckinCaseDropdownListeners();
+            });
+
+            checkinModal.addEventListener('hidden.bs.modal', () => {
+                console.log('🔕 Check-in modal closed - unsubscribing from events');
+                if (this.checkinPhysiciansUnsubscribe) {
+                    this.checkinPhysiciansUnsubscribe();
+                    this.checkinPhysiciansUnsubscribe = null;
+                }
+                if (this.checkinCasesUnsubscribe) {
+                    this.checkinCasesUnsubscribe();
+                    this.checkinCasesUnsubscribe = null;
+                }
+            });
+        }
+    }
+
+    setupPhysicianDropdownListeners() {
+        // Subscribe to physicians-updated events to automatically refresh dropdowns
+        if (window.eventBus) {
+            console.log('📡 ModalManager subscribing to physicians-updated event');
+
+            // Unsubscribe from previous subscription if exists
+            if (this.physiciansUpdateUnsubscribe) {
+                this.physiciansUpdateUnsubscribe();
+            }
+
+            this.physiciansUpdateUnsubscribe = window.eventBus.subscribe('physicians-updated', (data) => {
+                console.log('🔔 ModalManager received physicians-updated event', data);
+
+                const addPhysicianSelect = document.getElementById('addCasePhysician');
+                const editPhysicianSelect = document.getElementById('editCasePhysician');
+
+                // Only refresh if dropdowns exist and are visible
+                if (addPhysicianSelect || editPhysicianSelect) {
+                    console.log('🔄 Refreshing physician dropdowns due to data update');
+
+                    const surgeons = data.surgeons || [];
+                    const validSurgeons = surgeons.filter(s => s && s.id && s.full_name);
+                    const surgeonOptions = '<option value="">Select Physician</option>' +
+                        validSurgeons.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('');
+
+                    if (addPhysicianSelect) {
+                        const currentValue = addPhysicianSelect.value;
+                        addPhysicianSelect.innerHTML = surgeonOptions;
+                        if (currentValue) addPhysicianSelect.value = currentValue;
+                    }
+
+                    if (editPhysicianSelect) {
+                        const currentValue = editPhysicianSelect.value;
+                        editPhysicianSelect.innerHTML = surgeonOptions;
+                        if (currentValue) editPhysicianSelect.value = currentValue;
+                    }
+
+                    console.log('✅ Physician dropdowns refreshed with fresh data');
+                }
+            });
+        }
+    }
+
+    setupCheckinCaseDropdownListeners() {
+        // Subscribe to physicians-updated and cases-updated events to refresh check-in dropdown
+        if (window.eventBus) {
+            console.log('📡 ModalManager subscribing to physicians-updated and cases-updated events for check-in dropdown');
+
+            // Unsubscribe from previous subscriptions if they exist
+            if (this.checkinPhysiciansUnsubscribe) {
+                this.checkinPhysiciansUnsubscribe();
+            }
+            if (this.checkinCasesUnsubscribe) {
+                this.checkinCasesUnsubscribe();
+            }
+
+            // Listen to both physicians and cases updates
+            const refreshCheckinDropdown = async () => {
+                const checkinCaseSelect = document.getElementById('checkinCaseSelect');
+
+                // Only refresh if dropdown exists and is visible (modal is open)
+                if (checkinCaseSelect) {
+                    console.log('🔄 Refreshing check-in case dropdown due to data update');
+
+                    const currentValue = checkinCaseSelect.value;
+                    checkinCaseSelect.innerHTML = '<option value="">Choose a scheduled case...</option>';
+
+                    try {
+                        let cases = await window.app.dataManager.getAllCases();
+
+                        if (cases && cases.length > 0) {
+                            const today = new Date().toISOString().split('T')[0];
+
+                            // Deduplicate cases
+                            const uniqueCases = [];
+                            const seenIds = new Set();
+                            cases.forEach(caseItem => {
+                                if (caseItem.id && !seenIds.has(caseItem.id)) {
+                                    seenIds.add(caseItem.id);
+                                    uniqueCases.push(caseItem);
+                                }
+                            });
+
+                            const upcomingCases = uniqueCases
+                                .filter(caseItem => caseItem.scheduledDate >= today)
+                                .sort((a, b) => {
+                                    const dateA = new Date(a.scheduledDate + 'T' + (a.scheduledTime || '08:00'));
+                                    const dateB = new Date(b.scheduledDate + 'T' + (b.scheduledTime || '08:00'));
+                                    return dateA - dateB;
+                                });
+
+                            upcomingCases.forEach(caseItem => {
+                                const option = document.createElement('option');
+                                option.value = caseItem.id;
+
+                                const facilityName = this.getFacilityName(caseItem.facility_id);
+                                const physicianName = this.getSurgeonName(caseItem.physician_id);
+                                const caseTypeName = this.getCaseTypeName(caseItem.caseTypeId);
+                                const statusLabel = getCaseStatusLabel(caseItem.status);
+                                const dateStr = caseItem.scheduledDate;
+                                const timeStr = caseItem.scheduledTime ? ` ${caseItem.scheduledTime}` : '';
+
+                                option.textContent = `${dateStr}${timeStr} - ${caseTypeName} - ${physicianName} - ${facilityName} - ${statusLabel}`;
+                                checkinCaseSelect.appendChild(option);
+                            });
+
+                            // Restore selection if it still exists
+                            if (currentValue) checkinCaseSelect.value = currentValue;
+
+                            console.log(`✅ Check-in dropdown refreshed with ${upcomingCases.length} cases`);
+                        }
+                    } catch (error) {
+                        console.error('❌ Error refreshing check-in dropdown:', error);
+                    }
+                }
+            };
+
+            // Subscribe to physicians-updated
+            this.checkinPhysiciansUnsubscribe = window.eventBus.subscribe('physicians-updated', refreshCheckinDropdown);
+
+            // Subscribe to cases-updated
+            this.checkinCasesUnsubscribe = window.eventBus.subscribe('cases-updated', refreshCheckinDropdown);
         }
     }
 

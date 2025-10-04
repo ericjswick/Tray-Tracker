@@ -67,7 +67,11 @@ export class TrayManager {
             // Get selected case type compatibility (multiple values)
             const trayTypeSelect = document.getElementById('trayType');
             const selectedCaseTypes = Array.from(trayTypeSelect.selectedOptions).map(option => option.value);
-            
+
+            // Get selected implant types (multiple values)
+            const implantTypeSelect = document.getElementById('trayImplantType');
+            const selectedImplantTypes = Array.from(implantTypeSelect.selectedOptions).map(option => option.value);
+
             // Get assigned user from dropdown
             const assignedTo = document.getElementById('trayAssignedTo').value || '';
 
@@ -78,7 +82,8 @@ export class TrayManager {
                 tray_name: document.getElementById('trayName').value,
                 type: '', // Keep empty for legacy compatibility if no types selected
                 case_type_compatibility: selectedCaseTypes, // MyRepData format
-                implant_type_id: document.getElementById('trayImplantType').value || '',
+                implant_type_ids: selectedImplantTypes, // Store as array
+                implant_type_id: selectedImplantTypes.length > 0 ? selectedImplantTypes[0] : '', // Keep first for legacy compatibility
                 status: document.getElementById('trayStatus').value || TRAY_STATUS.AVAILABLE, // Use selected status or default to available
                 location: locationValue,
                 facility: '',
@@ -175,8 +180,18 @@ export class TrayManager {
         // Set status
         document.getElementById('trayStatus').value = tray.status || 'available';
 
-        // Set implant type
-        document.getElementById('trayImplantType').value = tray.implant_type_id || '';
+        // Set implant types (handle both array and single value)
+        const implantTypeSelect = document.getElementById('trayImplantType');
+        const implantTypeIds = tray.implant_type_ids || (tray.implant_type_id ? [tray.implant_type_id] : []);
+
+        // Clear all selections first
+        Array.from(implantTypeSelect.options).forEach(option => option.selected = false);
+
+        // Select all matching implant types
+        implantTypeIds.forEach(id => {
+            const option = Array.from(implantTypeSelect.options).find(opt => opt.value === id);
+            if (option) option.selected = true;
+        });
 
         // Set assigned user
         document.getElementById('trayAssignedTo').value = tray.assignedTo || '';
@@ -216,7 +231,11 @@ export class TrayManager {
             // Get selected case type compatibility (multiple values)
             const trayTypeSelect = document.getElementById('trayType');
             const selectedCaseTypes = Array.from(trayTypeSelect.selectedOptions).map(option => option.value);
-            
+
+            // Get selected implant types (multiple values)
+            const implantTypeSelect = document.getElementById('trayImplantType');
+            const selectedImplantTypes = Array.from(implantTypeSelect.selectedOptions).map(option => option.value);
+
             // Get assigned user from dropdown
             const assignedTo = document.getElementById('trayAssignedTo').value || '';
 
@@ -226,7 +245,8 @@ export class TrayManager {
             const updateData = {
                 tray_name: document.getElementById('trayName').value,
                 case_type_compatibility: selectedCaseTypes,
-                implant_type_id: document.getElementById('trayImplantType').value || '',
+                implant_type_ids: selectedImplantTypes, // Store as array
+                implant_type_id: selectedImplantTypes.length > 0 ? selectedImplantTypes[0] : '', // Keep first for legacy compatibility
                 status: document.getElementById('trayStatus').value,
                 location: locationValue,
                 assignedTo: assignedTo,
@@ -258,13 +278,24 @@ export class TrayManager {
                 }
             }
 
-            // Check if assignment changed for history logging
-            const tray = this.currentTrays.find(t => t.id === trayId);
-            const oldAssignedTo = tray?.assignedTo || '';
+            // Get current tray data from database for accurate comparison
+            const currentTrayData = await this.dataManager.getTray(trayId);
+            const oldAssignedTo = currentTrayData?.assignedTo || '';
             const assignmentChanged = oldAssignedTo !== assignedTo;
 
+            // Check if custody changed for history logging
+            const oldCustodyId = currentTrayData?.custody_id || '';
+            const custodyChanged = oldCustodyId !== custodyId;
+
+            console.log('🔍 Custody change check:', {
+                oldCustodyId,
+                newCustodyId: custodyId,
+                custodyChanged,
+                currentTrayData: currentTrayData
+            });
+
             await this.dataManager.updateTray(trayId, updateData);
-            
+
             let historyMessage = 'Tray information updated';
             if (assignmentChanged) {
                 if (assignedTo && oldAssignedTo) {
@@ -282,7 +313,24 @@ export class TrayManager {
                     historyMessage += ` - unassigned from ${oldUserName}`;
                 }
             }
-            
+
+            if (custodyChanged) {
+                if (custodyId && oldCustodyId) {
+                    // Custody changed from one user to another
+                    const oldCustodyName = this.getUserName(oldCustodyId);
+                    const newCustodyName = this.getUserName(custodyId);
+                    historyMessage += ` - custody changed from ${oldCustodyName} to ${newCustodyName}`;
+                } else if (custodyId && !oldCustodyId) {
+                    // Custody was assigned to someone
+                    const newCustodyName = this.getUserName(custodyId);
+                    historyMessage += ` - custody assigned to ${newCustodyName}`;
+                } else if (!custodyId && oldCustodyId) {
+                    // Custody was removed
+                    const oldCustodyName = this.getUserName(oldCustodyId);
+                    historyMessage += ` - custody removed from ${oldCustodyName}`;
+                }
+            }
+
             await this.dataManager.addHistoryEntry(trayId, 'updated', historyMessage);
 
             bootstrap.Modal.getInstance(document.getElementById('addTrayModal')).hide();
@@ -1261,32 +1309,34 @@ export class TrayManager {
     }
 
     getSurgeonName(surgeonId) {
-        // If it's already a name (legacy data), return as is
-        if (!surgeonId || typeof surgeonId !== 'string') return 'Unknown Physician';
+        if (!surgeonId) return 'Unknown Physician';
 
-        // Check if it looks like an ID (Firebase IDs are longer)
-        if (surgeonId.length < 15) {
+        // If it's already a name (not an ID), return it
+        if (typeof surgeonId === 'string' && surgeonId.length > 20 && !surgeonId.match(/^[a-zA-Z0-9]{20}$/)) {
+            return surgeonId;
+        }
+
+        // Check if it looks like a short legacy name
+        if (typeof surgeonId === 'string' && surgeonId.length < 15) {
             // Probably a legacy name, return as is
             return surgeonId;
         }
 
-        // Try to find surgeon by ID in physicians collection first (newer approach)
-        if (window.app.dataManager && window.app.dataManager.physicians) {
-            const physician = window.app.dataManager.physicians.find(p => p.id === surgeonId);
-            if (physician) {
-                return `${physician.title || 'Dr.'} ${physician.full_name}`;
-            }
-        }
-
-        // Fallback to surgeonManager for backward compatibility
-        if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons) {
-            const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === surgeonId);
+        // Try to find surgeon by ID using DataManager (same as DashboardManager)
+        const surgeons = this.dataManager.getSurgeons();
+        if (surgeons && surgeons.length > 0) {
+            const surgeon = surgeons.find(s => s.id === surgeonId);
             if (surgeon) {
-                return `${surgeon.title || 'Dr.'} ${surgeon.full_name}`;
+                // Handle both full_name and first_name/last_name formats
+                const name = surgeon.full_name ||
+                            (surgeon.first_name && surgeon.last_name ?
+                             `${surgeon.first_name} ${surgeon.last_name}` :
+                             surgeon.first_name || surgeon.last_name || 'Unknown');
+                return `${surgeon.title || 'Dr.'} ${name}`;
             }
         }
 
-        // Final fallback: if surgeon not found, return the ID (shouldn't happen in normal use)
+        // Fallback: return the ID if surgeon not found
         return surgeonId;
     }
 

@@ -1245,7 +1245,12 @@ export class DashboardManager {
         if (!surgeonId) return null;
 
         // If it's already a name (not an ID), return it
-        if (surgeonId.length > 20 && !surgeonId.match(/^[a-zA-Z0-9]{20}$/)) {
+        if (typeof surgeonId === 'string' && surgeonId.length > 20 && !surgeonId.match(/^[a-zA-Z0-9]{20}$/)) {
+            return surgeonId;
+        }
+
+        // Check if it looks like a short legacy name
+        if (typeof surgeonId === 'string' && surgeonId.length < 15) {
             return surgeonId;
         }
 
@@ -1253,7 +1258,14 @@ export class DashboardManager {
         const surgeons = this.dataManager.getSurgeons();
         if (surgeons && surgeons.length > 0) {
             const surgeon = surgeons.find(s => s.id === surgeonId);
-            return surgeon ? `${surgeon.title || 'Dr.'} ${surgeon.full_name}` : null;
+            if (surgeon) {
+                // Handle both full_name and first_name/last_name formats
+                const name = surgeon.full_name ||
+                            (surgeon.first_name && surgeon.last_name ?
+                             `${surgeon.first_name} ${surgeon.last_name}` :
+                             surgeon.first_name || surgeon.last_name || 'Unknown');
+                return `${surgeon.title || 'Dr.'} ${name}`;
+            }
         }
 
         return null; // Return null if surgeon not found instead of ID
@@ -1390,8 +1402,13 @@ export class DashboardManager {
                 // Use status color for tray name to match icon and status text
                 const trayNameColor = statusColor;
 
+                // Make "Checked In And Ready" trays clickable to pick up
+                const isReadyForPickup = status === 'Checked In And Ready' && matchingTray;
+                const cursorStyle = isReadyForPickup ? 'cursor: pointer;' : '';
+                const onclickAttr = isReadyForPickup ? `onclick="window.app.modalManager.showPickupModal('${trayId}')" title="Click to pick up this tray"` : '';
+
                 trayDisplays.push(`
-                    <div style="font-size: 1.4em; font-weight: 500; margin-bottom: 8px; display: flex; align-items: center;">
+                    <div style="font-size: 1.4em; font-weight: 500; margin-bottom: 8px; display: flex; align-items: center; ${cursorStyle}" ${onclickAttr}>
                         <i class="${statusIcon}" style="color: ${statusColor}; margin-right: 10px; font-size: 1em;"></i>
                         <span style="color: ${trayNameColor};">${trayName}</span>
                         <span style="margin-left: 10px; font-size: 1em; color: ${statusColor}; font-weight: 400;">(${status})</span>
@@ -1890,7 +1907,6 @@ export class DashboardManager {
         }
     }
 
-    // Show manual check-in modal for selecting trays and taking photos
     async showManualCheckInModal(caseId) {
         try {
             // Find the case data
@@ -1944,7 +1960,7 @@ export class DashboardManager {
                                     '<p><strong>Time:</strong> ' + (caseData.scheduledTime || 'N/A') + '</p>' +
                                 '</div>' +
                                 '<div class="col-md-4">' +
-                                    '<p><strong>Physician:</strong> ' + this.getSurgeonName(caseData.physician_id) + '</p>' +
+                                    '<p><strong>Physician:</strong> ' + (this.getSurgeonName(caseData.physician_id) || caseData.physician_id || 'N/A') + '</p>' +
                                     '<p><strong>Facility:</strong> ' + this.getFacilityName(caseData.facility_id) + '</p>' +
                                 '</div>' +
                                 '<div class="col-md-4">' +

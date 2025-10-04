@@ -2,6 +2,8 @@
 import { CASE_STATUS, CASE_STATUS_OPTIONS, DEFAULT_CASE_STATUS, getCaseStatusClass, isValidCaseStatus, populateCaseStatusDropdown } from './constants/CaseStatus.js';
 import { TRAY_LOCATIONS } from './constants/TrayLocations.js';
 import { TRAY_STATUS, isCheckedInStatus } from './constants/TrayStatus.js';
+import { emailNotifications } from './utils/EmailNotifications.js';
+import { smsNotifications } from './utils/SmsNotifications.js';
 
 export class CasesManager {
     constructor(dataManager) {
@@ -653,15 +655,24 @@ export class CasesManager {
                 // Ensure dropdowns are populated before showing modal
                 await window.app.modalManager.populateCaseModalDropdowns();
 
-                // Update modal footer to include delete button on the left
+                // Update modal footer to include Cancel Case and Complete Case buttons
                 const modalFooter = document.querySelector('#editCaseModal .modal-footer');
                 if (modalFooter) {
                     modalFooter.innerHTML = `
-                        <button type="button" class="btn btn-danger me-auto" onclick="window.app.casesManager.deleteCase('${caseData.id}')" data-bs-dismiss="modal">
-                            <i class="fas fa-trash"></i> Delete Case
-                        </button>
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-primary" onclick="app.casesManager.updateCase()">Update Case</button>
+                        <div class="d-flex justify-content-between w-100">
+                            <div>
+                                <button type="button" class="btn btn-warning me-2" onclick="app.casesManager.cancelCase('${caseData.id}')" data-bs-dismiss="modal">
+                                    <i class="fas fa-times-circle"></i> Cancel Case
+                                </button>
+                                <button type="button" class="btn btn-success" onclick="app.casesManager.completeCase('${caseData.id}')" data-bs-dismiss="modal">
+                                    <i class="fas fa-check-circle"></i> Complete Case
+                                </button>
+                            </div>
+                            <div>
+                                <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Close</button>
+                                <button type="button" class="btn btn-primary" onclick="app.casesManager.updateCase()">Update Case</button>
+                            </div>
+                        </div>
                     `;
                 }
 
@@ -1033,11 +1044,14 @@ export class CasesManager {
             }
             
             if (window.is_enable_api_logging && window.frontendLogger) {
-                window.frontendLogger.info('Case saved successfully', { 
-                    caseId: caseId 
+                window.frontendLogger.info('Case saved successfully', {
+                    caseId: caseId
                 }, 'case-save-flow');
             }
-            
+
+            // Send notifications to users based on their physician notification preferences
+            await this.sendCaseUpdateNotifications(caseId, updates.physician_id, savedCase);
+
             bootstrap.Modal.getInstance(document.getElementById('editCaseModal')).hide();
             this.showSuccessNotification('Case updated successfully!');
             this.loadCases();
@@ -1420,6 +1434,124 @@ export class CasesManager {
                 }, 'case-tray-update');
             }
             this.showErrorNotification('Error moving trays to trunk: ' + error.message);
+        }
+    }
+
+    async sendCaseUpdateNotifications(caseId, physicianId, caseData) {
+        try {
+            if (!physicianId) {
+                console.log('⚠️ No physician_id for case, skipping notifications');
+                return;
+            }
+
+            console.log('📢 Sending case update notifications for physician:', physicianId);
+
+            // Get all users
+            const users = this.dataManager.getUsers();
+            if (!users || users.size === 0) {
+                console.log('⚠️ No users found, skipping notifications');
+                return;
+            }
+
+            // Get physician and facility info for the notification message
+            const physician = this.dataManager.getPhysicians().get(physicianId);
+            const physicianName = physician ? physician.name : 'Unknown Physician';
+            const facility = caseData.facility_id ? this.dataManager.getFacilities().get(caseData.facility_id) : null;
+            const facilityName = facility ? facility.name : 'Unknown Facility';
+
+            // Prepare notification message
+            const caseInfo = {
+                patientName: caseData.patientName || 'Unknown Patient',
+                physicianName: physicianName,
+                facilityName: facilityName,
+                scheduledDate: caseData.scheduledDate || 'Not scheduled',
+                status: caseData.status || 'Unknown'
+            };
+
+            const emailSubject = `Case Updated: ${caseInfo.patientName} - ${physicianName}`;
+            const emailText = `A case has been updated:\n\nPatient: ${caseInfo.patientName}\nPhysician: ${physicianName}\nFacility: ${facilityName}\nScheduled Date: ${caseInfo.scheduledDate}\nStatus: ${caseInfo.status}`;
+            const emailHtml = `
+                <h3>Case Update Notification</h3>
+                <p>A case has been updated with the following details:</p>
+                <ul>
+                    <li><strong>Patient:</strong> ${caseInfo.patientName}</li>
+                    <li><strong>Physician:</strong> ${physicianName}</li>
+                    <li><strong>Facility:</strong> ${facilityName}</li>
+                    <li><strong>Scheduled Date:</strong> ${caseInfo.scheduledDate}</li>
+                    <li><strong>Status:</strong> ${caseInfo.status}</li>
+                </ul>
+            `;
+
+            const smsMessage = `Case Updated: ${caseInfo.patientName} with Dr. ${physicianName} at ${facilityName} on ${caseInfo.scheduledDate}. Status: ${caseInfo.status}`;
+
+            // Iterate through all users and check their notification preferences
+            for (const [userId, user] of users) {
+                try {
+                    let sendEmail = false;
+                    let sendSMS = false;
+
+                    // Check if user has physician_notification_preferences
+                    if (user.physician_notification_preferences &&
+                        typeof user.physician_notification_preferences === 'object') {
+
+                        // Check if this physician is in their preferences
+                        const physicianPref = user.physician_notification_preferences[physicianId];
+
+                        if (physicianPref) {
+                            // User has specific preferences for this physician
+                            sendEmail = physicianPref.enableEmail === true;
+                            sendSMS = physicianPref.enableSMS === true;
+                            console.log(`📋 User ${user.name} has preferences for physician ${physicianId}: Email=${sendEmail}, SMS=${sendSMS}`);
+                        } else {
+                            // User has preferences configured but not for this physician - don't send
+                            console.log(`📋 User ${user.name} has preferences but not for physician ${physicianId}, skipping`);
+                            continue;
+                        }
+                    } else {
+                        // No preferences set - send both email and SMS
+                        sendEmail = true;
+                        sendSMS = true;
+                        console.log(`📋 User ${user.name} has no preferences set, sending both Email and SMS`);
+                    }
+
+                    // Send email notification if enabled
+                    if (sendEmail && user.email) {
+                        try {
+                            await emailNotifications.sendEmail({
+                                to: user.email,
+                                subject: emailSubject,
+                                text: emailText,
+                                html: emailHtml
+                            });
+                            console.log(`✅ Email sent to ${user.name} (${user.email})`);
+                        } catch (emailError) {
+                            console.error(`❌ Failed to send email to ${user.name}:`, emailError);
+                        }
+                    }
+
+                    // Send SMS notification if enabled
+                    if (sendSMS && user.phone) {
+                        try {
+                            await smsNotifications.sendSMS({
+                                to: user.phone,
+                                message: smsMessage
+                            });
+                            console.log(`✅ SMS sent to ${user.name} (${user.phone})`);
+                        } catch (smsError) {
+                            console.error(`❌ Failed to send SMS to ${user.name}:`, smsError);
+                        }
+                    }
+
+                } catch (userError) {
+                    console.error(`❌ Error processing notifications for user ${user.name}:`, userError);
+                }
+            }
+
+            console.log('✅ Case update notifications sent');
+
+        } catch (error) {
+            console.error('❌ Error sending case update notifications:', error);
+            // Don't throw error - we don't want to block case update if notifications fail
         }
     }
 

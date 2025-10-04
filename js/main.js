@@ -45,6 +45,7 @@ import { FacilityIdNullRemovalMigration } from './utils/FacilityIdNullRemovalMig
 import { FacilityGeocodingMigration } from './utils/FacilityGeocodingMigration.js';
 import { FacilityNameToAccountNameMigration } from './utils/FacilityNameToAccountNameMigration.js';
 import { timezoneConverter } from './utils/TimezoneConverter.js';
+import { EventBus } from './utils/EventBus.js';
 
 
 // Initialize Firebase
@@ -64,16 +65,21 @@ try {
 // Main Application Class
 class SIBoneApp {
     constructor() {
+        // Initialize EventBus first for decoupled communication
+        this.eventBus = new EventBus({ debug: true, name: 'TrayTracker' });
+        window.eventBus = this.eventBus;
+        console.log('✅ EventBus initialized globally');
+
         // Initialize frontend logger first with correct API base URL
         this.logger = new FrontendLogger('https://traytracker-dev.serverdatahost.com/api');
         window.frontendLogger = this.logger;
-        
+
         // Log app initialization
         this.logger.info('Tray Tracker frontend starting', {
             userAgent: navigator.userAgent,
             url: window.location.href
         }, 'app-init');
-        
+
         // Initialize all managers with their dependencies
         this.authManager = new AuthManager(auth, db);
         this.dataManager = new DataManager(db);

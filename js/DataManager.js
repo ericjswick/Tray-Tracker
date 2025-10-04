@@ -110,6 +110,9 @@ export class DataManager {
         // Listen to surgeons collection
         const surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('full_name', 'asc'));
         this.surgeonsUnsubscribe = onSnapshot(surgeonsQuery, (snapshot) => {
+            console.log('🔄 DataManager physicians listener triggered');
+            console.log('  - Snapshot size:', snapshot.size);
+
             const surgeons = [];
             snapshot.forEach((doc) => {
                 const surgeonData = doc.data();
@@ -118,12 +121,25 @@ export class DataManager {
                 }
             });
 
+            console.log('  - Active surgeons count:', surgeons.length);
+            console.log('  - Previous this.surgeons count:', this.surgeons?.length || 0);
+
             // Check if this is an actual data change or just initial load
             const previousSurgeonsCount = this.surgeons ? this.surgeons.length : 0;
             const isInitialLoad = previousSurgeonsCount === 0 && surgeons.length > 0;
             const hasDataChanged = !isInitialLoad && previousSurgeonsCount !== surgeons.length;
 
+            console.log('  - isInitialLoad:', isInitialLoad);
+            console.log('  - hasDataChanged:', hasDataChanged);
+
             this.surgeons = surgeons;
+            console.log('  - Updated this.surgeons count:', this.surgeons.length);
+
+            // Emit event to notify all listeners that physicians data has updated
+            if (window.eventBus) {
+                console.log('  - Emitting physicians-updated event via EventBus');
+                window.eventBus.emit('physicians-updated', { surgeons: this.surgeons });
+            }
 
             // Refresh physician dropdowns in case modals if they exist and are empty
             if (window.app?.modalManager && surgeons.length > 0) {
@@ -191,7 +207,40 @@ export class DataManager {
                 }
             }
         }, (error) => {
-            console.error('Error listening to surgeons:', error);
+            console.error('❌ Error listening to surgeons:', error);
+            console.error('  - Error code:', error.code);
+            console.error('  - Error message:', error.message);
+
+            // If orderBy fails due to missing index or field, try without ordering
+            if (error.code === 'failed-precondition' || error.message.includes('index') || error.message.includes('full_name')) {
+                console.warn('⚠️ Retrying physicians query without ordering...');
+                const fallbackQuery = collection(this.db, 'physicians');
+                this.surgeonsUnsubscribe = onSnapshot(fallbackQuery, (snapshot) => {
+                    console.log('🔄 DataManager physicians fallback listener triggered');
+                    console.log('  - Snapshot size (unordered):', snapshot.size);
+
+                    const surgeons = [];
+                    snapshot.forEach((doc) => {
+                        const surgeonData = doc.data();
+                        if (surgeonData.active !== false) {
+                            surgeons.push({ id: doc.id, ...surgeonData });
+                        }
+                    });
+
+                    console.log('  - Active surgeons count (unordered):', surgeons.length);
+                    this.surgeons = surgeons;
+                    console.log('  - Updated this.surgeons count (unordered):', this.surgeons.length);
+
+                    // Refresh dropdowns if needed
+                    if (window.app?.modalManager && surgeons.length > 0) {
+                        setTimeout(() => {
+                            window.app.modalManager.refreshPhysicianDropdowns();
+                        }, 100);
+                    }
+                }, (fallbackError) => {
+                    console.error('❌ Fallback physicians query also failed:', fallbackError);
+                });
+            }
         });
 
         console.log('Setting up case types listener...');
@@ -251,11 +300,17 @@ export class DataManager {
 
             this.cases = cases;
 
+            // Emit event to notify all listeners that cases data has updated
+            if (window.eventBus) {
+                console.log('📢 DataManager emitting cases-updated event via EventBus');
+                window.eventBus.emit('cases-updated', { cases: this.cases });
+            }
+
             // Notify components that need case data
             if (window.app && window.app.dashboardManager && window.app.dashboardManager.handleCasesUpdate) {
                 window.app.dashboardManager.handleCasesUpdate(cases);
             }
-            
+
             if (window.app && window.app.casesManager && window.app.casesManager.handleCasesUpdate) {
                 window.app.casesManager.handleCasesUpdate(cases);
             }
@@ -825,7 +880,12 @@ export class DataManager {
 
     getSurgeons() {
         // Return surgeons from Firebase instead of hardcoded array
-        return this.surgeons || [];
+        const surgeons = this.surgeons || [];
+        console.log(`📋 DataManager.getSurgeons() called - returning ${surgeons.length} surgeons`);
+        if (surgeons.length > 0) {
+            console.log(`  - Sample surgeon:`, surgeons[0]);
+        }
+        return surgeons;
     }
 
     // Force refresh surgeon data when needed (for SPA navigation issues)

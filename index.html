@@ -233,7 +233,7 @@
 
                     <!-- User Profile -->
                     <div class="user-profile">
-                        <div class="user-info">
+                        <div class="user-info" style="cursor: pointer;" onclick="app.userManager.showCurrentUserProfile()">
                             <div class="user-avatar" id="userAvatar">ES</div>
                             <span id="currentUserName">Eric Swick</span>
                         </div>
@@ -1241,11 +1241,10 @@
                     </div>
                     <div class="form-group">
                         <label for="trayImplantType" class="form-label">Implant Type</label>
-                        <select class="form-control" id="trayImplantType">
-                            <option value="">Select Implant Type (Optional)</option>
+                        <select class="form-control" id="trayImplantType" multiple size="4">
                             <!-- Options will be populated dynamically -->
                         </select>
-                        <small class="form-text text-muted">Optional: Select the specific implant type this tray is designed for</small>
+                        <small class="form-text text-muted">Hold Ctrl (Windows) or Cmd (Mac) to select multiple implant types</small>
                     </div>
                     <div class="form-group">
                         <label for="initialLocation" class="form-label">Initial Location *</label>
@@ -1697,6 +1696,22 @@
                             Active User
                         </label>
                     </div>
+
+                    <!-- Physician Notification Preferences -->
+                    <div class="form-group mt-4">
+                        <label class="form-label">
+                            <i class="fas fa-bell"></i> Physician Notification Preferences
+                        </label>
+                        <small class="form-text text-muted d-block mb-3">
+                            Configure SMS and email notifications for specific physicians
+                        </small>
+                        <div id="physicianNotificationPreferences">
+                            <!-- Physician notification preferences will be populated here -->
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="app.userManager.addPhysicianNotificationPreference()">
+                            <i class="fas fa-plus"></i> Add Physician Notification
+                        </button>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -2123,84 +2138,12 @@
 </div>
 
 
-<!-- Add Physician Modal -->
-<div class="modal fade" id="addPhysicianModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Add New Physician</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="addPhysicianForm">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label for="addPhysicianTitle" class="form-label">Title</label>
-                                <select class="form-control" id="addPhysicianTitle">
-                                    <option value="Dr.">Dr.</option>
-                                    <option value="Prof.">Prof.</option>
-                                    <option value="Prof. Dr.">Prof. Dr.</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="addPhysicianName" class="form-label">Full Name *</label>
-                                <input type="text" class="form-control" id="addPhysicianName" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="addPhysicianSpecialty" class="form-label">Specialty</label>
-                                <select class="form-control" id="addPhysicianSpecialty">
-                                    <option value="">Select Specialty...</option>
-                                    <option value="Orthopedic">Orthopedic Surgery</option>
-                                    <option value="Spine">Spine Surgery</option>
-                                    <option value="Neurosurgery">Neurosurgery</option>
-                                    <option value="Sports Medicine">Sports Medicine</option>
-                                    <option value="Minimally Invasive">Minimally Invasive Surgery</option>
-                                    <option value="General">General Surgery</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="addPhysicianHospital" class="form-label">Primary Hospital</label>
-                                <input type="text" class="form-control" id="addPhysicianHospital">
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label for="addPhysicianEmail" class="form-label">Email</label>
-                                <input type="email" class="form-control" id="addPhysicianEmail">
-                            </div>
-                            <div class="form-group">
-                                <label for="addPhysicianPhone" class="form-label">Phone Number</label>
-                                <input type="tel" class="form-control" id="addPhysicianPhone">
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="addPhysicianActive" checked>
-                                <label class="form-check-label" for="addPhysicianActive">
-                                    Active Physician
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="addPhysicianNotes" class="form-label">Notes</label>
-                        <textarea class="form-control" id="addPhysicianNotes" rows="2"></textarea>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn-primary-custom" onclick="app.surgeonManager.addSurgeon()">Add Physician</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Edit Physician Modal -->
+<!-- Add/Edit Physician Modal -->
 <div class="modal fade" id="editPhysicianModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Edit Physician</h5>
+                <h5 class="modal-title" id="editPhysicianModalTitle">Edit Physician</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -2303,7 +2246,7 @@
                                     <select class="form-control" id="physicianPrefRequirementType">
                                         <option value="preferred">Preferred</option>
                                         <option value="required">Required</option>
-                                        <option value="optional">Optional</option>
+                                        <option value="backup">Backup</option>
                                     </select>
                                 </div>
                                 <div class="col-md-2">
@@ -2326,7 +2269,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn-primary-custom" onclick="app.surgeonManager.updateSurgeon()">Update Physician</button>
+                <button type="button" class="btn-primary-custom" id="editPhysicianModalButton" onclick="app.surgeonManager.updateSurgeon()">Update Physician</button>
             </div>
         </div>
     </div>

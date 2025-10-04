@@ -107,50 +107,167 @@ export class SurgeonManager {
     setupRealtimeListeners() {
         if (!this.db) return;
 
-        const surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('created_at', 'desc'));
+        // Try to query with orderBy first, but fallback to unordered if it fails (e.g., missing index)
+        let surgeonsQuery;
+        try {
+            surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('created_at', 'desc'));
+        } catch (error) {
+            console.warn('Could not create ordered query, using unordered:', error);
+            surgeonsQuery = collection(this.db, 'physicians');
+        }
+
         this.surgeonsUnsubscribe = onSnapshot(surgeonsQuery, (snapshot) => {
             const surgeons = [];
             snapshot.forEach((doc) => {
                 surgeons.push({ id: doc.id, ...doc.data() });
             });
 
+            console.log(`📋 Loaded ${surgeons.length} physicians from Firestore`);
             this.handleSurgeonsUpdate(surgeons);
         }, (error) => {
             console.error('Error listening to surgeons:', error);
+            // If orderBy fails due to missing index, try without ordering
+            if (error.code === 'failed-precondition' || error.message.includes('index')) {
+                console.warn('Retrying physicians query without ordering...');
+                const fallbackQuery = collection(this.db, 'physicians');
+                this.surgeonsUnsubscribe = onSnapshot(fallbackQuery, (snapshot) => {
+                    const surgeons = [];
+                    snapshot.forEach((doc) => {
+                        surgeons.push({ id: doc.id, ...doc.data() });
+                    });
+                    console.log(`📋 Loaded ${surgeons.length} physicians (unordered)`);
+                    this.handleSurgeonsUpdate(surgeons);
+                });
+            }
         });
     }
 
     async addSurgeon() {
         try {
+            console.log('🩺 addSurgeon called');
+
+            // Validate required fields
+            const physicianName = document.getElementById('editPhysicianName').value;
+            if (!physicianName || physicianName.trim() === '') {
+                this.showErrorNotification('Physician name is required');
+                return;
+            }
 
             // Preferred cases functionality removed - set to empty string
             const preferredCasesString = '';
 
+            // Get preferred facilities from the multi-select
+            const facilitiesSelect = document.getElementById('editPhysicianPreferredFacilities');
+            const preferred_facilities = facilitiesSelect ?
+                Array.from(facilitiesSelect.selectedOptions).map(option => option.value) : [];
+
+            // Get last case type
+            const last_case_type_id = document.getElementById('editPhysicianLastCaseType')?.value || '';
+
             const surgeon = {
-                full_name: document.getElementById('addPhysicianName').value,
-                title: document.getElementById('addPhysicianTitle').value,
-                specialty: document.getElementById('addPhysicianSpecialty').value,
-                hospital: document.getElementById('addPhysicianHospital').value,
-                email: document.getElementById('addPhysicianEmail').value,
-                phone: document.getElementById('addPhysicianPhone').value,
+                full_name: physicianName,
+                title: document.getElementById('editPhysicianTitle').value,
+                specialty: document.getElementById('editPhysicianSpecialty').value,
+                hospital: document.getElementById('editPhysicianHospital').value,
+                email: document.getElementById('editPhysicianEmail').value,
+                phone: document.getElementById('editPhysicianPhone').value,
                 preferredCases: preferredCasesString,
-                notes: document.getElementById('addPhysicianNotes').value,
-                active: document.getElementById('addPhysicianActive').checked,
-                createdAt: serverTimestamp(),
+                notes: document.getElementById('editPhysicianNotes').value,
+                active: document.getElementById('editPhysicianActive').checked,
+                preferred_facilities: preferred_facilities,
+                last_case_type_id: last_case_type_id,
+                created_at: serverTimestamp(),
                 createdBy: window.app.authManager.getCurrentUser()?.uid,
                 isDemoSurgeon: false
             };
 
-            await addDoc(collection(this.db, 'physicians'), surgeon);
+            console.log('📝 Creating physician with data:', surgeon);
 
-            bootstrap.Modal.getInstance(document.getElementById('addPhysicianModal')).hide();
-            document.getElementById('addPhysicianForm').reset();
+            const docRef = await addDoc(collection(this.db, 'physicians'), surgeon);
+            const newPhysicianId = docRef.id;
+
+            console.log('✅ Physician created with ID:', newPhysicianId);
+
+            // Save temporary tray preferences if any exist
+            if (this.tempTrayPreferences && this.tempTrayPreferences.length > 0) {
+                console.log('Saving temporary tray preferences:', this.tempTrayPreferences);
+                for (const pref of this.tempTrayPreferences) {
+                    await this.addTrayPreferenceDirectly(
+                        newPhysicianId,
+                        pref.case_type,
+                        pref.tray_id,
+                        pref.requirement_type,
+                        pref.quantity,
+                        pref.notes || ''
+                    );
+                }
+                // Clear temporary preferences
+                this.tempTrayPreferences = [];
+            }
+
+            bootstrap.Modal.getInstance(document.getElementById('editPhysicianModal')).hide();
+            document.getElementById('editPhysicianForm').reset();
 
             this.showSuccessNotification('Physician added successfully!');
+
+            // The realtime listener will automatically update the UI
+
         } catch (error) {
             console.error('Error adding surgeon:', error);
             this.showErrorNotification('Error adding surgeon: ' + error.message);
         }
+    }
+
+    displayTempTrayPreference(caseType, trayId, requirementType, quantity, notes) {
+        const accordion = document.getElementById('physicianTrayPreferencesAccordion');
+        if (!accordion) return;
+
+        // Find or create accordion item for this case type
+        let accordionItem = accordion.querySelector(`[data-case-type="${caseType}"]`);
+
+        if (!accordionItem) {
+            const itemId = `temp-${caseType.replace(/\s+/g, '-')}`;
+            accordionItem = document.createElement('div');
+            accordionItem.className = 'accordion-item';
+            accordionItem.setAttribute('data-case-type', caseType);
+            accordionItem.innerHTML = `
+                <h2 class="accordion-header" id="heading-${itemId}">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${itemId}">
+                        ${caseType}
+                    </button>
+                </h2>
+                <div id="collapse-${itemId}" class="accordion-collapse collapse" data-bs-parent="#physicianTrayPreferencesAccordion">
+                    <div class="accordion-body">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Tray ID</th>
+                                    <th>Type</th>
+                                    <th>Qty</th>
+                                    <th>Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody class="preferences-list"></tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            accordion.appendChild(accordionItem);
+        }
+
+        // Add the preference to the list
+        const tbody = accordionItem.querySelector('.preferences-list');
+        const row = document.createElement('tr');
+        const badgeColor = requirementType === 'required' ? 'danger' :
+                          requirementType === 'preferred' ? 'primary' :
+                          requirementType === 'backup' ? 'warning' : 'secondary';
+        row.innerHTML = `
+            <td>${trayId}</td>
+            <td><span class="badge bg-${badgeColor}">${requirementType}</span></td>
+            <td>${quantity}</td>
+            <td>${notes || '-'}</td>
+        `;
+        tbody.appendChild(row);
     }
 
     async updateSurgeon() {
@@ -206,17 +323,28 @@ export class SurgeonManager {
     }
 
     handleSurgeonsUpdate(surgeons) {
-        console.log('SurgeonManager received surgeons update:', surgeons.length);
+        console.log('🔄 SurgeonManager.handleSurgeonsUpdate called');
+        console.log('  - Received surgeons count:', surgeons.length);
+        console.log('  - Previous currentSurgeons count:', this.currentSurgeons?.length || 0);
+        console.log('  - Sample surgeon data:', surgeons.length > 0 ? surgeons[0] : 'none');
+
         this.currentSurgeons = surgeons;
         this.renderSurgeons(surgeons);
         this.updateStats(surgeons);
 
         // Update DataManager with surgeon names for dropdowns
         if (window.app.dataManager) {
+            console.log('  - Updating DataManager.surgeons');
+            console.log('  - Previous DataManager.surgeons count:', window.app.dataManager.surgeons?.length || 0);
+
             const surgeonNames = surgeons
                 .filter(surgeon => surgeon.active)
-                .map(surgeon => surgeon.full_name);
+                .map(surgeon => surgeon.full_name || 'Physician with no full name');
+
             window.app.dataManager.surgeons = surgeonNames;
+            console.log('  - New DataManager.surgeons count:', window.app.dataManager.surgeons?.length || 0);
+        } else {
+            console.warn('⚠️ window.app.dataManager not available!');
         }
 
         // If case types are not loaded yet, schedule a re-render when they are
@@ -1167,16 +1295,47 @@ export class SurgeonManager {
                 }
             }
 
-            if (!caseType || !trayId || !surgeonId) {
-                alert('Please fill in all required fields (Case Type and Tray ID are required)');
+            if (!caseType || !trayId) {
+                alert('Please select both Case Type and Tray ID');
                 return;
             }
 
+            // If no surgeon ID (add mode), store preferences temporarily
+            if (!surgeonId) {
+                // Initialize temporary preferences array if it doesn't exist
+                if (!this.tempTrayPreferences) {
+                    this.tempTrayPreferences = [];
+                }
+
+                // Add to temporary preferences
+                this.tempTrayPreferences.push({
+                    case_type: caseType,
+                    tray_id: trayId,
+                    requirement_type: requirementType,
+                    quantity: quantity,
+                    notes: notes
+                });
+
+                // Display the preference in the UI
+                this.displayTempTrayPreference(caseType, trayId, requirementType, quantity, notes);
+
+                // Clear form
+                document.getElementById('physicianPrefCaseType').value = '';
+                document.getElementById('physicianPreferenceTrayIdDropdown').innerHTML = '<option value="">Select Tray ID...</option>';
+                document.getElementById('physicianPrefRequirementType').value = 'preferred';
+                document.getElementById('physicianPrefQuantity').value = '1';
+                document.getElementById('physicianPrefNotes').value = '';
+
+                this.showSuccessNotification('Tray preference added (will be saved when physician is created)');
+                return;
+            }
+
+            // If surgeon ID exists (edit mode), save directly to database
             // Check if we're in editing mode
             if (this.editingPreferenceId) {
                 console.log('Updating existing preference:', this.editingPreferenceId);
                 await this.updateTrayPreferenceDirectly(this.editingPreferenceId, surgeonId, caseType, trayId, requirementType, quantity, notes);
-                
+
                 // Reset editing mode
                 this.editingPreferenceId = null;
                 const addButton = document.getElementById('addTrayPreferenceBtn');

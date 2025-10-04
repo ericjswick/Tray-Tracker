@@ -326,6 +326,9 @@ export class UserManager {
             }
             const active = document.getElementById('editUserActive').checked;
 
+            // Get physician notification preferences
+            const physician_notification_preferences = this.getPhysicianNotificationPreferences();
+
             // Get the current user data to check if location has changed
             const userDocRef = doc(this.db, 'users', userId);
             const userDoc = await getDoc(userDocRef);
@@ -340,6 +343,7 @@ export class UserManager {
                 region,
                 location_facility_id,
                 active,
+                physician_notification_preferences,
                 lastModified: serverTimestamp(),
                 modifiedBy: window.app.authManager.getCurrentUser()?.uid
             });
@@ -856,6 +860,163 @@ export class UserManager {
             console.log('✅ Role dropdowns initialized with centralized role system');
         } catch (error) {
             console.error('❌ Error initializing role dropdowns:', error);
+        }
+    }
+
+    // Physician Notification Preferences Functions
+    addPhysicianNotificationPreference() {
+        const container = document.getElementById('physicianNotificationPreferences');
+        if (!container) return;
+
+        const preferenceId = `pref_${Date.now()}`;
+        const preferenceHtml = `
+            <div class="card mb-2" id="${preferenceId}" data-preference-id="${preferenceId}">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-5">
+                            <label class="form-label">Physician</label>
+                            <select class="form-control physician-select" data-pref-id="${preferenceId}">
+                                <option value="">Select Physician...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input sms-checkbox" type="checkbox" role="switch" id="${preferenceId}_sms" data-pref-id="${preferenceId}" style="width: 3rem;">
+                                <label class="form-check-label" for="${preferenceId}_sms">
+                                    SMS
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input email-checkbox" type="checkbox" role="switch" id="${preferenceId}_email" data-pref-id="${preferenceId}">
+                                <label class="form-check-label" for="${preferenceId}_email">
+                                    Email
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="app.userManager.removePhysicianNotificationPreference('${preferenceId}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        container.insertAdjacentHTML('beforeend', preferenceHtml);
+
+        // Populate the physician dropdown for this new preference
+        this.populatePhysicianDropdownForPreference(preferenceId);
+    }
+
+    removePhysicianNotificationPreference(preferenceId) {
+        const element = document.getElementById(preferenceId);
+        if (element) {
+            element.remove();
+        }
+    }
+
+    populatePhysicianDropdownForPreference(preferenceId) {
+        const select = document.querySelector(`select.physician-select[data-pref-id="${preferenceId}"]`);
+        if (!select) return;
+
+        // Get physicians from data manager
+        const physicians = this.dataManager.getSurgeons();
+        if (!physicians || physicians.length === 0) {
+            console.log('No physicians available for notification preferences');
+            return;
+        }
+
+        // Sort physicians by name
+        const sortedPhysicians = [...physicians].sort((a, b) => {
+            const nameA = a.full_name || a.name || '';
+            const nameB = b.full_name || b.name || '';
+            return nameA.localeCompare(nameB);
+        });
+
+        // Add options
+        sortedPhysicians.forEach(physician => {
+            if (physician && physician.id) {
+                const option = document.createElement('option');
+                option.value = physician.id;
+                option.textContent = physician.full_name || physician.name || 'Unknown';
+                select.appendChild(option);
+            }
+        });
+    }
+
+    loadPhysicianNotificationPreferences(physicianNotificationPreferences) {
+        const container = document.getElementById('physicianNotificationPreferences');
+        if (!container) return;
+
+        // Clear existing preferences
+        container.innerHTML = '';
+
+        if (!physicianNotificationPreferences || typeof physicianNotificationPreferences !== 'object') {
+            return;
+        }
+
+        // Load each physician's preferences
+        Object.entries(physicianNotificationPreferences).forEach(([physicianId, prefs]) => {
+            this.addPhysicianNotificationPreference();
+
+            // Get the most recently added preference card
+            const cards = container.querySelectorAll('.card');
+            const latestCard = cards[cards.length - 1];
+            if (!latestCard) return;
+
+            const preferenceId = latestCard.getAttribute('data-preference-id');
+
+            // Set the physician
+            const select = latestCard.querySelector('select.physician-select');
+            if (select) {
+                select.value = physicianId;
+            }
+
+            // Set SMS checkbox
+            const smsCheckbox = latestCard.querySelector('.sms-checkbox');
+            if (smsCheckbox) {
+                smsCheckbox.checked = prefs.enableSMS || false;
+            }
+
+            // Set email checkbox
+            const emailCheckbox = latestCard.querySelector('.email-checkbox');
+            if (emailCheckbox) {
+                emailCheckbox.checked = prefs.enableEmail || false;
+            }
+        });
+    }
+
+    getPhysicianNotificationPreferences() {
+        const container = document.getElementById('physicianNotificationPreferences');
+        if (!container) return {};
+
+        const preferences = {};
+        const cards = container.querySelectorAll('.card');
+
+        cards.forEach(card => {
+            const physicianSelect = card.querySelector('select.physician-select');
+            const smsCheckbox = card.querySelector('.sms-checkbox');
+            const emailCheckbox = card.querySelector('.email-checkbox');
+
+            if (physicianSelect && physicianSelect.value) {
+                const physicianId = physicianSelect.value;
+                preferences[physicianId] = {
+                    enableSMS: smsCheckbox ? smsCheckbox.checked : false,
+                    enableEmail: emailCheckbox ? emailCheckbox.checked : false
+                };
+            }
+        });
+
+        return preferences;
+    }
+
+    showCurrentUserProfile() {
+        const currentUser = window.app.authManager.getCurrentUser();
+        if (currentUser && currentUser.uid) {
+            window.app.modalManager.showEditUserModal(currentUser.uid);
         }
     }
 }

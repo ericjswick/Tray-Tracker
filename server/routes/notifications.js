@@ -113,6 +113,106 @@ router.get('/', (req, res) => {
   });
 });
 
+// POST /api/notifications/sms - Send a single SMS message
+router.post('/sms', async (req, res) => {
+  try {
+    const IS_DO_LIVE_SMS_SENDING = process.env.IS_DO_LIVE_SMS_SENDING === 'true' || false;
+
+    console.log('📱 SMS notification request received');
+    console.log('🔧 Live SMS sending enabled:', IS_DO_LIVE_SMS_SENDING);
+
+    const { to, message } = req.body;
+
+    // Validate required fields
+    if (!to || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: to and message are required',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Validate phone number
+    if (!isValidPhoneNumber(to)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid phone number format',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const formattedPhone = formatPhoneNumber(to);
+
+    if (!formattedPhone) {
+      return res.status(400).json({
+        success: false,
+        error: 'Failed to format phone number',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    if (IS_DO_LIVE_SMS_SENDING && twilioClient) {
+      // Live SMS sending enabled - actually send SMS
+      console.log(`📱 Sending SMS to ${formattedPhone} (LIVE MODE)`);
+
+      try {
+        const twilioMessage = await twilioClient.messages.create({
+          body: message,
+          from: process.env.TWILIO_PHONE_NUMBER,
+          to: formattedPhone
+        });
+
+        console.log(`✅ SMS sent: ${twilioMessage.sid}`);
+
+        res.json({
+          success: true,
+          message: 'SMS sent successfully',
+          details: {
+            to: formattedPhone,
+            messageSid: twilioMessage.sid,
+            status: twilioMessage.status,
+            isLiveSending: true
+          },
+          timestamp: new Date().toISOString()
+        });
+
+      } catch (error) {
+        console.error(`❌ Failed to send SMS:`, error.message);
+        res.status(500).json({
+          success: false,
+          error: error.message,
+          twilioCode: error.code,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+    } else {
+      // Live SMS sending disabled - simulate
+      console.log(`📱 Simulating SMS to ${formattedPhone} (TEST MODE)`);
+
+      res.json({
+        success: true,
+        message: 'SMS simulated successfully',
+        details: {
+          to: formattedPhone,
+          simulated: true,
+          message: 'SMS would be sent in live mode',
+          isLiveSending: false
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+  } catch (error) {
+    console.error('SMS notification error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // POST /api/notifications/tray-status - Send SMS to all users about tray status change
 router.post('/tray-status', async (req, res) => {
   try {
