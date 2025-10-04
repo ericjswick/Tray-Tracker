@@ -1,13 +1,6 @@
 # tray-tracker
 
-A comprehensive tray tracking system for medical facilities.
-
-For docker setup use if you want it unique:
-```bash
+for docker setup use if you want it unique
 docker-compose -p traytracker up -d
-```
-
-To view running containers:
-```bash
+to view
 docker-compose -p traytracker ps
-```

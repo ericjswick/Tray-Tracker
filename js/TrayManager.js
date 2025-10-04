@@ -1309,20 +1309,8 @@ export class TrayManager {
     }
 
     getSurgeonName(surgeonId) {
-        if (!surgeonId) return 'Unknown Physician';
+        if (!surgeonId) return null;
 
-        // If it's already a name (not an ID), return it
-        if (typeof surgeonId === 'string' && surgeonId.length > 20 && !surgeonId.match(/^[a-zA-Z0-9]{20}$/)) {
-            return surgeonId;
-        }
-
-        // Check if it looks like a short legacy name
-        if (typeof surgeonId === 'string' && surgeonId.length < 15) {
-            // Probably a legacy name, return as is
-            return surgeonId;
-        }
-
-        // Try to find surgeon by ID using DataManager (same as DashboardManager)
         const surgeons = this.dataManager.getSurgeons();
         if (surgeons && surgeons.length > 0) {
             const surgeon = surgeons.find(s => s.id === surgeonId);
@@ -1335,9 +1323,7 @@ export class TrayManager {
                 return `${surgeon.title || 'Dr.'} ${name}`;
             }
         }
-
-        // Fallback: return the ID if surgeon not found
-        return surgeonId;
+        return null;
     }
 
     getTrayDate(tray) {
