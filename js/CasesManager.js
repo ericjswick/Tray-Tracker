@@ -5,6 +5,7 @@ import { TRAY_STATUS, isCheckedInStatus } from './constants/TrayStatus.js';
 import { emailNotifications } from './utils/EmailNotifications.js';
 import { smsNotifications } from './utils/SmsNotifications.js';
 import { getPhysicianName } from './utils/PhysicianHelper.js';
+import { doc, setDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 
 export class CasesManager {
     constructor(dataManager) {
@@ -665,7 +666,7 @@ export class CasesManager {
                                 <button type="button" class="btn btn-warning me-2" onclick="app.casesManager.cancelCase('${caseData.id}')" data-bs-dismiss="modal">
                                     <i class="fas fa-times-circle"></i> Cancel Case
                                 </button>
-                                <button type="button" class="btn btn-success" onclick="app.casesManager.completeCase('${caseData.id}')" data-bs-dismiss="modal">
+                                <button type="button" class="btn btn-success" onclick="app.casesManager.showCompleteCaseModal('${caseData.id}')">
                                     <i class="fas fa-check-circle"></i> Complete Case
                                 </button>
                             </div>
@@ -1124,11 +1125,1009 @@ export class CasesManager {
         }
     }
 
-    async completeCase(caseId) {
-        if (!confirm('Are you sure you want to complete this case? All assigned trays will be marked as Ready For Pickup.')) {
+    async showCompleteCaseModal(caseId) {
+        // Store the case ID for later use
+        this.completeCaseId = caseId;
+
+        // Get case data to determine facility and case type
+        const caseData = await this.getCaseById(caseId);
+        if (!caseData) {
+            this.showErrorNotification('Case not found');
             return;
         }
 
+        this.currentCaseFacility = caseData.facility_id || caseData.facility;
+        this.currentCaseType = caseData.case_type || caseData.type;
+
+        // Show the modal with higher z-index to appear above case details modal
+        const modalElement = document.getElementById('completeCaseModal');
+        const modal = new bootstrap.Modal(modalElement);
+
+        // Listen for modal shown event to adjust z-index
+        modalElement.addEventListener('shown.bs.modal', () => {
+            // Bootstrap default modal z-index is 1055, backdrop is 1050
+            // Case details modal uses default, so we need to be higher
+            const backdrop = document.querySelector('.modal-backdrop:last-of-type');
+            if (backdrop) {
+                backdrop.style.zIndex = '1056';
+            }
+            modalElement.style.zIndex = '1057';
+        }, { once: true });
+
+        modal.show();
+
+        // Set up consumables calculation
+        this.setupConsumablesCalculation();
+
+        // Load saved line items for this facility and case type
+        await this.loadSavedLineItems(this.currentCaseFacility, this.currentCaseType);
+
+        // Set up sticker photo handlers
+        this.setupStickerPhotoHandlers();
+
+        // Set up the confirm button click handler
+        const confirmBtn = document.getElementById('confirmCompleteCaseBtn');
+        confirmBtn.onclick = async () => {
+            await this.saveLineItems(this.currentCaseFacility, this.currentCaseType);
+            modal.hide();
+            // Close parent modal (case details modal) if it exists
+            const caseDetailsModal = bootstrap.Modal.getInstance(document.getElementById('caseDetailsModal'));
+            if (caseDetailsModal) {
+                caseDetailsModal.hide();
+            }
+            this.completeCase(caseId);
+        };
+
+        // Set up PDF preview button click handler
+        const previewPdfBtn = document.getElementById('previewPdfBtn');
+        previewPdfBtn.onclick = async () => {
+            await this.saveLineItems(this.currentCaseFacility, this.currentCaseType);
+            this.generatePdfPreview();
+        };
+    }
+
+    setupStickerPhotoHandlers() {
+        // Left Side Stickers
+        const captureLeftBtn = document.getElementById('captureLeftSideStickers');
+        const leftSideInput = document.getElementById('leftSideStickersInput');
+        const leftSidePreview = document.getElementById('leftSideStickersPreview');
+        const clearLeftSide = document.getElementById('clearLeftSideStickers');
+
+        captureLeftBtn.addEventListener('click', () => {
+            leftSideInput.click();
+        });
+
+        leftSideInput.addEventListener('change', (e) => {
+            this.handlePhotoUpload(e, leftSidePreview, 'leftSideStickers', clearLeftSide);
+        });
+
+        clearLeftSide.addEventListener('click', () => {
+            leftSideInput.value = '';
+            leftSidePreview.innerHTML = '';
+            clearLeftSide.style.display = 'none';
+            this.stickerPhotos.leftSideStickers = null;
+        });
+
+        // Right Side Stickers
+        const captureRightBtn = document.getElementById('captureRightSideStickers');
+        const rightSideInput = document.getElementById('rightSideStickersInput');
+        const rightSidePreview = document.getElementById('rightSideStickersPreview');
+        const clearRightSide = document.getElementById('clearRightSideStickers');
+
+        captureRightBtn.addEventListener('click', () => {
+            rightSideInput.click();
+        });
+
+        rightSideInput.addEventListener('change', (e) => {
+            this.handlePhotoUpload(e, rightSidePreview, 'rightSideStickers', clearRightSide);
+        });
+
+        clearRightSide.addEventListener('click', () => {
+            rightSideInput.value = '';
+            rightSidePreview.innerHTML = '';
+            clearRightSide.style.display = 'none';
+            this.stickerPhotos.rightSideStickers = null;
+        });
+
+        // Patient Stickers
+        const capturePatientBtn = document.getElementById('capturePatientStickers');
+        const patientInput = document.getElementById('patientStickersInput');
+        const patientPreview = document.getElementById('patientStickersPreview');
+        const clearPatient = document.getElementById('clearPatientStickers');
+
+        capturePatientBtn.addEventListener('click', () => {
+            patientInput.click();
+        });
+
+        patientInput.addEventListener('change', (e) => {
+            this.handlePhotoUpload(e, patientPreview, 'patientStickers', clearPatient);
+        });
+
+        clearPatient.addEventListener('click', () => {
+            patientInput.value = '';
+            patientPreview.innerHTML = '';
+            clearPatient.style.display = 'none';
+            this.stickerPhotos.patientStickers = null;
+        });
+
+        // Initialize sticker photos object
+        this.stickerPhotos = {
+            leftSideStickers: null,
+            rightSideStickers: null,
+            patientStickers: null
+        };
+    }
+
+    handlePhotoUpload(event, previewContainer, photoType, clearButton) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            // Store the photo data
+            this.stickerPhotos[photoType] = e.target.result;
+
+            // Show preview
+            previewContainer.innerHTML = `
+                <img src="${e.target.result}" class="img-thumbnail" style="max-width: 200px; max-height: 200px;">
+            `;
+
+            // Show clear button
+            clearButton.style.display = 'inline-block';
+        };
+        reader.readAsDataURL(file);
+    }
+
+    async saveLineItems(facilityId, caseType) {
+        try {
+            if (!facilityId || !caseType) {
+                console.warn('Missing facility or case type for saving line items');
+                return;
+            }
+
+            // Collect all line item data
+            const lineItems = {};
+            document.querySelectorAll('.consumable-qty').forEach((qtyInput) => {
+                const rowIndex = qtyInput.dataset.row;
+                const priceInput = document.querySelector(`.consumable-price[data-row="${rowIndex}"]`);
+                const itemName = qtyInput.closest('tr').querySelector('td:first-child').textContent.trim();
+
+                lineItems[rowIndex] = {
+                    itemName: itemName,
+                    qty: parseFloat(qtyInput.value) || 0,
+                    price: parseFloat(priceInput.value) || 0
+                };
+            });
+
+            // Create composite key for facility + case type
+            const docId = `${facilityId}_${caseType}`;
+
+            // Save to Firestore using modular SDK
+            const currentUser = window.app?.authManager?.getCurrentUser();
+
+            await setDoc(doc(this.dataManager.db, 'disposable_saved_line_items', docId), {
+                facility_id: facilityId,
+                case_type: caseType,
+                line_items: lineItems,
+                updated_at: serverTimestamp(),
+                updated_by: currentUser?.uid || null
+            }, { merge: true });
+
+            console.log(`✅ Saved line items for facility ${facilityId}, case type ${caseType}`);
+        } catch (error) {
+            console.error('Error saving line items:', error);
+            // Don't show error to user - this is a background operation
+        }
+    }
+
+    async loadSavedLineItems(facilityId, caseType) {
+        try {
+            if (!facilityId || !caseType) {
+                console.warn('Missing facility or case type for loading line items');
+                return;
+            }
+
+            // Create composite key for facility + case type
+            const docId = `${facilityId}_${caseType}`;
+
+            // Load from Firestore using modular SDK
+            const docRef = doc(this.dataManager.db, 'disposable_saved_line_items', docId);
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                const lineItems = data.line_items;
+
+                // Populate the form with saved values
+                Object.keys(lineItems).forEach((rowIndex) => {
+                    const item = lineItems[rowIndex];
+                    const qtyInput = document.querySelector(`.consumable-qty[data-row="${rowIndex}"]`);
+                    const priceInput = document.querySelector(`.consumable-price[data-row="${rowIndex}"]`);
+
+                    if (qtyInput && priceInput) {
+                        qtyInput.value = item.qty || 0;
+                        priceInput.value = item.price || 0;
+
+                        // Trigger calculation for this row
+                        const event = new Event('input', { bubbles: true });
+                        qtyInput.dispatchEvent(event);
+                    }
+                });
+
+                console.log(`✅ Loaded saved line items for facility ${facilityId}, case type ${caseType}`);
+            } else {
+                console.log(`No saved line items found for facility ${facilityId}, case type ${caseType}`);
+            }
+        } catch (error) {
+            console.error('Error loading line items:', error);
+            // Don't show error to user - form will just have default values
+        }
+    }
+
+    setupConsumablesCalculation() {
+        // Function to calculate row total
+        const calculateRowTotal = (rowIndex) => {
+            const qtyInput = document.querySelector(`.consumable-qty[data-row="${rowIndex}"]`);
+            const priceInput = document.querySelector(`.consumable-price[data-row="${rowIndex}"]`);
+            const totalSpan = document.querySelector(`.consumable-total[data-row="${rowIndex}"]`);
+
+            if (qtyInput && priceInput && totalSpan) {
+                const qty = parseFloat(qtyInput.value) || 0;
+                const price = parseFloat(priceInput.value) || 0;
+                const total = qty * price;
+                totalSpan.textContent = `$${total.toFixed(2)}`;
+            }
+        };
+
+        // Function to calculate grand total
+        const calculateGrandTotal = () => {
+            let grandTotal = 0;
+            document.querySelectorAll('.consumable-total').forEach(span => {
+                const value = span.textContent.replace('$', '');
+                grandTotal += parseFloat(value) || 0;
+            });
+            document.getElementById('consumablesGrandTotal').textContent = `$${grandTotal.toFixed(2)}`;
+        };
+
+        // Add event listeners to all qty and price inputs
+        document.querySelectorAll('.consumable-qty, .consumable-price').forEach(input => {
+            input.addEventListener('input', (e) => {
+                const rowIndex = e.target.dataset.row;
+                calculateRowTotal(rowIndex);
+                calculateGrandTotal();
+            });
+
+            // Select all text when clicking on the input
+            input.addEventListener('focus', (e) => {
+                e.target.select();
+            });
+        });
+    }
+
+    async generatePdfPreview() {
+        try {
+            // Show loader
+            this.showLoader('Generating PDF preview...');
+
+            // Collect consumable data
+            const consumablesData = this.getConsumablesData();
+
+            // Get case data
+            const caseData = await this.getCaseData(this.completeCaseId);
+
+            // Get sticker photos
+            const stickerPhotos = this.stickerPhotos || {};
+
+            // Generate the PDF
+            const pdfBytes = await this.createPurchaseOrderPdf(consumablesData, caseData, stickerPhotos);
+
+            // Store the PDF for download
+            this.currentPdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+
+            // Show preview modal and render PDF
+            await this.showPdfPreview(pdfBytes);
+
+            // Hide loader after PDF is rendered
+            this.hideLoader();
+
+        } catch (error) {
+            console.error('Error generating PDF preview:', error);
+            this.hideLoader();
+            this.showErrorNotification('Error generating PDF preview: ' + error.message);
+        }
+    }
+
+    async getCaseData(caseId) {
+        try {
+            // Get the case
+            const caseObj = await this.dataManager.getCase(caseId);
+            if (!caseObj) {
+                throw new Error('Case not found');
+            }
+
+            console.log('Case object:', caseObj);
+            console.log('All case fields:', Object.keys(caseObj));
+
+            // Get physician name using central function
+            let physicianName = '';
+            const physicianId = caseObj.physician_id || caseObj.physicianId || caseObj.surgeon_id;
+            console.log('Physician ID from case:', physicianId);
+
+            if (physicianId) {
+                const physicians = this.dataManager.getSurgeons();
+                console.log('Physicians array length:', physicians?.length);
+                console.log('First physician sample:', physicians?.[0]);
+
+                physicianName = getPhysicianName(physicianId, physicians);
+                console.log('getPhysicianName returned:', physicianName);
+            }
+
+            if (!physicianName) {
+                physicianName = caseObj.physician_name || caseObj.physician || caseObj.doctor_name || caseObj.surgeonName || 'Unknown Physician';
+            }
+            console.log('Final physician name result:', physicianName);
+
+            // Get facility data
+            let facilityData = {
+                name: '',
+                address: '',
+                city: '',
+                state: '',
+                zip: ''
+            };
+
+            if (caseObj.facility_id) {
+                const facilities = this.dataManager.getFacilities();
+                const facility = facilities.find(f => f.id === caseObj.facility_id);
+                console.log('Facility found:', facility);
+
+                if (facility) {
+                    console.log('Facility fields:', Object.keys(facility));
+
+                    // Handle address object structure
+                    let addressStr = '';
+                    let city = '';
+                    let state = '';
+                    let zip = '';
+
+                    if (facility.address && typeof facility.address === 'object') {
+                        // Address is an object with street, city, state, zip
+                        addressStr = facility.address.street || '';
+                        city = facility.address.city || '';
+                        state = facility.address.state || '';
+                        zip = facility.address.zip || '';
+                    } else {
+                        // Fallback to individual fields
+                        addressStr = facility.billing_street || facility.street || facility.address || facility.shipping_street || '';
+                        city = facility.billing_city || facility.city || facility.shipping_city || '';
+                        state = facility.billing_state || facility.state || facility.shipping_state || '';
+                        zip = facility.billing_postal_code || facility.zip || facility.postal_code || facility.shipping_postal_code || '';
+                    }
+
+                    facilityData = {
+                        name: facility.account_name || facility.name || facility.facility_name || '',
+                        address: addressStr,
+                        city: city,
+                        state: state,
+                        zip: zip
+                    };
+                    console.log('Facility data extracted:', facilityData);
+                }
+            }
+
+            // Get sales rep name from current user
+            let salesRepName = '';
+            const currentUser = window.app?.authManager?.getCurrentUser();
+            if (currentUser) {
+                const users = this.dataManager.getUsers();
+                const user = users.get(currentUser.uid);
+                console.log('Sales rep (current user):', user);
+                if (user) {
+                    salesRepName = user.display_name || user.name || user.email || '';
+                }
+            }
+
+            // Get case date from scheduledDate and format as mm/dd/yyyy
+            let caseDate = '';
+            const rawDate = caseObj.scheduledDate || caseObj.scheduled_date || caseObj.case_date || caseObj.surgery_date || caseObj.date;
+
+            if (rawDate) {
+                try {
+                    const dateObj = new Date(rawDate);
+                    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                    const day = String(dateObj.getDate()).padStart(2, '0');
+                    const year = dateObj.getFullYear();
+                    caseDate = `${month}/${day}/${year}`;
+                } catch (e) {
+                    console.error('Error formatting date:', e);
+                    caseDate = rawDate;
+                }
+            }
+
+            console.log('Final case data:', { physicianName, facilityData, salesRepName, caseDate, rawDate });
+
+            return {
+                physicianName,
+                facilityData,
+                salesRepName,
+                caseType: caseObj.case_type || '',
+                caseDate: caseDate
+            };
+
+        } catch (error) {
+            console.error('Error getting case data:', error);
+            return {
+                physicianName: '',
+                facilityData: { name: '', address: '', city: '', state: '', zip: '' },
+                salesRepName: '',
+                caseType: '',
+                caseDate: ''
+            };
+        }
+    }
+
+    getConsumablesData() {
+        const consumablesData = [];
+
+        // Get all consumable rows with quantities > 0, preserving their row index
+        document.querySelectorAll('.consumable-qty').forEach((qtyInput) => {
+            const qty = parseFloat(qtyInput.value) || 0;
+            if (qty > 0) {
+                const row = qtyInput.closest('tr');
+                const itemText = row.querySelector('td:first-child').textContent.trim();
+                const priceInput = row.querySelector('.consumable-price');
+                const price = parseFloat(priceInput.value) || 0;
+                const totalSpan = row.querySelector('.consumable-total');
+                const total = parseFloat(totalSpan.textContent.replace('$', '')) || 0;
+                const rowIndex = parseInt(qtyInput.dataset.row); // Get the row index from data-row attribute
+
+                consumablesData.push({
+                    item: itemText,
+                    qty: qty,
+                    price: price,
+                    total: total,
+                    rowIndex: rowIndex // Include the original row index
+                });
+            }
+        });
+
+        // Add grand total
+        const grandTotalText = document.getElementById('consumablesGrandTotal').textContent;
+        const grandTotal = parseFloat(grandTotalText.replace('$', '')) || 0;
+
+        return {
+            items: consumablesData,
+            grandTotal: grandTotal
+        };
+    }
+
+    async createPurchaseOrderPdf(consumablesData, caseData, stickerPhotos) {
+        const { PDFDocument, rgb, StandardFonts } = window.PDFLib;
+
+        // Load the template image
+        const templatePath = 'documents/request-for-purchase-order-template.png';
+        const imageBytes = await fetch(templatePath).then(res => res.arrayBuffer());
+
+        // Create a new PDF document
+        const pdfDoc = await PDFDocument.create();
+
+        // Embed the template image
+        const image = await pdfDoc.embedPng(imageBytes);
+        const imageDims = image.scale(1);
+
+        // Add a page with the same dimensions as the image
+        const page = pdfDoc.addPage([imageDims.width, imageDims.height]);
+
+        // Draw the template image
+        page.drawImage(image, {
+            x: 0,
+            y: 0,
+            width: imageDims.width,
+            height: imageDims.height,
+        });
+
+        // Embed fonts
+        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+        // Helper function to sanitize text for PDF encoding
+        const sanitizeText = (text) => {
+            // Ensure text is a string
+            if (!text) return '';
+            const str = String(text);
+
+            // Remove or replace characters that can't be encoded in WinAnsi
+            return str
+                .replace(/×/g, 'x') // Replace multiplication sign with x
+                .replace(/°/g, ' deg') // Replace degree symbol
+                .replace(/'/g, "'") // Replace smart quotes
+                .replace(/"/g, '"')
+                .replace(/–/g, '-') // Replace en-dash
+                .replace(/—/g, '-') // Replace em-dash
+                .replace(/[^\x20-\x7E]/g, ''); // Remove any other non-ASCII characters
+        };
+
+        // CALIBRATION MODE - Draw alignment markers to find exact positions
+        // The disposables table appears to start around row with "300073 - Exam Pin, 2.0 mm"
+        // COMMENTED OUT - hidden for now, will need later for adjustments
+
+        /*
+        // Draw vertical grid lines every 50 pixels to help identify X positions
+        for (let x = 0; x < imageDims.width; x += 50) {
+            page.drawLine({
+                start: { x: x, y: 0 },
+                end: { x: x, y: imageDims.height },
+                thickness: 0.5,
+                color: rgb(1, 0, 0), // Red
+                opacity: 0.3,
+            });
+            // Label the X coordinate
+            page.drawText(sanitizeText(`${x}`), {
+                x: x + 2,
+                y: imageDims.height - 20,
+                size: 8,
+                font: font,
+                color: rgb(1, 0, 0),
+            });
+        }
+
+        // Draw horizontal grid lines every 50 pixels to help identify Y positions
+        for (let y = 0; y < imageDims.height; y += 50) {
+            page.drawLine({
+                start: { x: 0, y: y },
+                end: { x: imageDims.width, y: y },
+                thickness: 0.5,
+                color: rgb(0, 0, 1), // Blue
+                opacity: 0.3,
+            });
+            // Label the Y coordinate
+            page.drawText(sanitizeText(`${y}`), {
+                x: 5,
+                y: y + 2,
+                size: 8,
+                font: font,
+                color: rgb(0, 0, 1),
+            });
+        }
+        */
+
+        // Draw test markers at estimated positions for the disposables columns
+        // Adjusted based on user feedback
+        const qtyX = 1015;
+        const priceX = 1045; // Moved left by 20px
+        const totalX = 1095; // Moved left by 20px
+        const firstRowY = 1127; // PDF coordinates are from bottom (brought down 3px)
+        const lineHeight = 15.5;
+        const fontSize = 8;
+
+
+        // Items that use double height (two lines) - map row index to whether it's double height
+        const doubleHeightItems = ['400471', '501820', '400170', '502156'];
+
+        // Map of row indices to determine which rows are double height
+        const rowHeightMap = {};
+        // Pre-calculate height for each row (0-34)
+        const allItemsInOrder = [
+            '500373', '500374', '500375', '500376', '500377', '500378', '400146', '501168', '501117',
+            '400471', '501820', '500079', '500842', '500845', '400170', '501765', '501769-0250',
+            '501769-0330', '501770-0330', '501770-0450', '501771-0330', '501771-0450', '501772-0450',
+            '501918-0330', '501918-0450', '501939-0016', '500076', '500078', '500090', '500095',
+            '500250', '500906', '500907', '501385', '502156'
+        ];
+
+        allItemsInOrder.forEach((partNum, idx) => {
+            rowHeightMap[idx] = doubleHeightItems.includes(partNum) ? lineHeight * 2 : lineHeight;
+        });
+
+        // Draw actual consumable items
+        if (consumablesData.items.length > 0) {
+            consumablesData.items.forEach((item) => {
+                // Calculate Y position based on the item's original row index
+                // Sum up all the heights of rows from 0 to rowIndex-1
+                let yOffset = 0;
+                for (let i = 0; i < item.rowIndex; i++) {
+                    yOffset += rowHeightMap[i] || lineHeight;
+                }
+
+                const itemY = firstRowY - yOffset;
+
+                // Draw quantity
+                page.drawText(sanitizeText(item.qty.toString()), {
+                    x: qtyX,
+                    y: itemY,
+                    size: fontSize,
+                    font: font,
+                    color: rgb(0, 0, 0),
+                });
+
+                // Draw price
+                page.drawText(sanitizeText(`$${item.price.toFixed(2)}`), {
+                    x: priceX,
+                    y: itemY,
+                    size: fontSize,
+                    font: font,
+                    color: rgb(0, 0, 0),
+                });
+
+                // Draw total
+                page.drawText(sanitizeText(`$${item.total.toFixed(2)}`), {
+                    x: totalX,
+                    y: itemY,
+                    size: fontSize,
+                    font: font,
+                    color: rgb(0, 0, 0),
+                });
+            });
+        }
+
+        // Disposable Total - moved up by 7px, then down by 3px
+        const disposableTotalY = 354;
+        page.drawText(sanitizeText('Disposable Total:'), {
+            x: 950,
+            y: disposableTotalY,
+            size: 9,
+            font: fontBold,
+            color: rgb(0, 0, 0),
+        });
+        page.drawText(sanitizeText(consumablesData.grandTotal.toFixed(2)), {
+            x: 1085,
+            y: disposableTotalY,
+            size: 9,
+            font: font,
+            color: rgb(0, 0, 0),
+        });
+
+        // Grand Total (30px below disposable total, same value) - moved 10px right and 10px down
+        const grandTotalY = disposableTotalY - 30;
+        page.drawText(sanitizeText('Grand Total:'), {
+            x: 970,
+            y: grandTotalY,
+            size: 9,
+            font: fontBold,
+            color: rgb(0, 0, 0),
+        });
+        page.drawText(sanitizeText(consumablesData.grandTotal.toFixed(2)), {
+            x: 1085,
+            y: grandTotalY,
+            size: 9,
+            font: fontBold,
+            color: rgb(0, 0, 0),
+        });
+
+        // CALIBRATION - Add case data fields with test positioning
+        // These positions are estimates based on the template image structure
+
+        // Physician Name - positioned to the right of "Physician (Full Name):" label
+        // OCR found label at x:78, y:199 (from top), width:125
+        // Input field starts at x: 78+125 = 203
+        // PDF y-coord = imageDims.height - 199 - 17 - 10 (brought down 10px)
+        page.drawText(sanitizeText(caseData.physicianName || 'Dr. Test Physician'), {
+            x: 210,
+            y: imageDims.height - 220,
+            size: 16,
+            font: font,
+            color: rgb(0, 0, 0),
+        });
+
+        // Facility City, State, Zip - moved down 5px (define first so we can use cityStateZipY)
+        const cityStateZip = `${caseData.facilityData.city || 'Test City'}, ${caseData.facilityData.state || 'CA'} ${caseData.facilityData.zip || '12345'}`;
+        const cityStateZipY = imageDims.height - 201;
+        page.drawText(sanitizeText(cityStateZip), {
+            x: 150,
+            y: cityStateZipY,
+            size: 16,
+            font: font,
+            color: rgb(0, 0, 0),
+        });
+
+        // Facility Address - positioned 20px above city/st/zip, moved up 2px
+        page.drawText(sanitizeText(caseData.facilityData.address || '123 Test Street'), {
+            x: 130,
+            y: cityStateZipY + 22,
+            size: 16,
+            font: font,
+            color: rgb(0, 0, 0),
+        });
+
+        // Institution/Facility Name - positioned 20px above address
+        page.drawText(sanitizeText(caseData.facilityData.name || 'TEST FACILITY NAME'), {
+            x: 145,
+            y: cityStateZipY + 42,
+            size: 16,
+            font: font,
+            color: rgb(0, 0, 0),
+        });
+
+        // Sales Rep Name - positioned 20px above city/st/zip (which means +20 in y coordinate)
+        const salesRepY = cityStateZipY + 20;
+        page.drawText(sanitizeText(caseData.salesRepName || 'TEST REP NAME'), {
+            x: 700,
+            y: salesRepY,
+            size: 16,
+            font: font,
+            color: rgb(0, 0, 0),
+        });
+
+        // Case Date - positioned 40px above sales rep name
+        page.drawText(sanitizeText(caseData.caseDate || 'NO DATE'), {
+            x: 670,
+            y: salesRepY + 40,
+            size: 16,
+            font: font,
+            color: rgb(0, 0, 0),
+        });
+
+        // Helper function to calculate dimensions with max constraints
+        const calculateImageDimensions = (image, maxWidth = 300, maxHeight = 300) => {
+            const originalWidth = image.width;
+            const originalHeight = image.height;
+
+            // Calculate scale to fit within constraints
+            const widthScale = maxWidth / originalWidth;
+            const heightScale = maxHeight / originalHeight;
+            const scale = Math.min(widthScale, heightScale, 1); // Don't scale up
+
+            return {
+                width: originalWidth * scale,
+                height: originalHeight * scale
+            };
+        };
+
+        // Add sticker photos if they exist
+        if (stickerPhotos) {
+            // Left Side Stickers - top-left at x: 100, y: 1100 (from bottom)
+            if (stickerPhotos.leftSideStickers) {
+                try {
+                    const leftImageBytes = await fetch(stickerPhotos.leftSideStickers).then(res => res.arrayBuffer());
+                    let leftImage;
+                    if (stickerPhotos.leftSideStickers.startsWith('data:image/png')) {
+                        leftImage = await pdfDoc.embedPng(leftImageBytes);
+                    } else {
+                        leftImage = await pdfDoc.embedJpg(leftImageBytes);
+                    }
+                    const dims = calculateImageDimensions(leftImage);
+                    // PDF coordinates are from bottom-left, so y position needs to account for image height
+                    page.drawImage(leftImage, {
+                        x: 100,
+                        y: 1100 - dims.height, // Subtract height so top-left is at y: 1100
+                        width: dims.width,
+                        height: dims.height,
+                    });
+                } catch (error) {
+                    console.error('Error embedding left side sticker:', error);
+                }
+            }
+
+            // Patient Stickers - top-left at x: 100, y: 850 (from bottom)
+            if (stickerPhotos.patientStickers) {
+                try {
+                    const patientImageBytes = await fetch(stickerPhotos.patientStickers).then(res => res.arrayBuffer());
+                    let patientImage;
+                    if (stickerPhotos.patientStickers.startsWith('data:image/png')) {
+                        patientImage = await pdfDoc.embedPng(patientImageBytes);
+                    } else {
+                        patientImage = await pdfDoc.embedJpg(patientImageBytes);
+                    }
+                    const dims = calculateImageDimensions(patientImage);
+                    page.drawImage(patientImage, {
+                        x: 100,
+                        y: 850 - dims.height, // Subtract height so top-left is at y: 850
+                        width: dims.width,
+                        height: dims.height,
+                    });
+                } catch (error) {
+                    console.error('Error embedding patient sticker:', error);
+                }
+            }
+
+            // Right Side Stickers - top-left at x: 100, y: 550 (from bottom)
+            if (stickerPhotos.rightSideStickers) {
+                try {
+                    const rightImageBytes = await fetch(stickerPhotos.rightSideStickers).then(res => res.arrayBuffer());
+                    let rightImage;
+                    if (stickerPhotos.rightSideStickers.startsWith('data:image/png')) {
+                        rightImage = await pdfDoc.embedPng(rightImageBytes);
+                    } else {
+                        rightImage = await pdfDoc.embedJpg(rightImageBytes);
+                    }
+                    const dims = calculateImageDimensions(rightImage);
+                    page.drawImage(rightImage, {
+                        x: 100,
+                        y: 550 - dims.height, // Subtract height so top-left is at y: 550
+                        width: dims.width,
+                        height: dims.height,
+                    });
+                } catch (error) {
+                    console.error('Error embedding right side sticker:', error);
+                }
+            }
+        }
+
+        // Serialize the PDF to bytes
+        const pdfBytes = await pdfDoc.save();
+        return pdfBytes;
+    }
+
+    async showPdfPreview(pdfBytes) {
+        // Show the preview modal with highest z-index
+        const previewModalElement = document.getElementById('pdfPreviewModal');
+        const previewModal = new bootstrap.Modal(previewModalElement);
+
+        // Listen for modal shown event to adjust z-index to be highest
+        previewModalElement.addEventListener('shown.bs.modal', () => {
+            // Set z-index higher than Complete Case modal (1057)
+            const backdrop = document.querySelector('.modal-backdrop:last-of-type');
+            if (backdrop) {
+                backdrop.style.zIndex = '1060';
+            }
+            previewModalElement.style.zIndex = '1061';
+        }, { once: true });
+
+        previewModal.show();
+
+        // Create blob URL for PDF
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+
+        // Load PDF.js if not already loaded
+        if (!window.pdfjsLib) {
+            await this.loadPdfJs();
+        }
+
+        // Initialize zoom level
+        let currentZoom = 1.5;
+        let defaultZoom = 1.5;
+        const zoomStep = 0.25;
+        const minZoom = 0.5;
+        const maxZoom = 3.0;
+
+        // Render PDF to canvas
+        const canvas = document.getElementById('pdfPreviewCanvas');
+        const container = document.getElementById('pdfPreviewContainer');
+        const loadingTask = pdfjsLib.getDocument(url);
+
+        const renderPage = (zoom) => {
+            loadingTask.promise.then(pdf => {
+                // Render first page
+                pdf.getPage(1).then(page => {
+                    const viewport = page.getViewport({ scale: zoom });
+                    const context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+
+                    const renderContext = {
+                        canvasContext: context,
+                        viewport: viewport
+                    };
+
+                    page.render(renderContext);
+
+                    // Update zoom level display
+                    document.getElementById('zoomLevel').textContent = `${Math.round(zoom * 100)}%`;
+                });
+            });
+        };
+
+        // Calculate fit-to-width zoom and render
+        return loadingTask.promise.then(pdf => {
+            return pdf.getPage(1).then(page => {
+                const viewport = page.getViewport({ scale: 1.0 });
+                const containerWidth = container.clientWidth - 20; // Subtract padding
+                let fitZoom = containerWidth / viewport.width;
+
+                // Ensure minimum zoom level (prevent negative or very small values)
+                if (!fitZoom || fitZoom < minZoom || !isFinite(fitZoom)) {
+                    console.warn('Invalid fit zoom calculated:', fitZoom, 'Using default 1.0');
+                    fitZoom = 1.0;
+                }
+
+                currentZoom = fitZoom;
+                defaultZoom = fitZoom;
+
+                // Render and wait for completion
+                return loadingTask.promise.then(pdf => {
+                    return pdf.getPage(1).then(page => {
+                        const viewport = page.getViewport({ scale: currentZoom });
+                        const context = canvas.getContext('2d');
+                        canvas.height = viewport.height;
+                        canvas.width = viewport.width;
+
+                        const renderContext = {
+                            canvasContext: context,
+                            viewport: viewport
+                        };
+
+                        // Return the render promise so we can wait for it
+                        return page.render(renderContext).promise.then(() => {
+                            // Update zoom level display
+                            document.getElementById('zoomLevel').textContent = `${Math.round(currentZoom * 100)}%`;
+                        });
+                    });
+                });
+            });
+        });
+
+        // Set up zoom buttons
+        document.getElementById('zoomInBtn').onclick = () => {
+            if (currentZoom < maxZoom) {
+                currentZoom += zoomStep;
+                renderPage(currentZoom);
+            }
+        };
+
+        document.getElementById('zoomOutBtn').onclick = () => {
+            if (currentZoom > minZoom) {
+                currentZoom -= zoomStep;
+                renderPage(currentZoom);
+            }
+        };
+
+        document.getElementById('resetZoomBtn').onclick = () => {
+            currentZoom = defaultZoom;
+            renderPage(currentZoom);
+        };
+
+        // Mouse wheel zoom
+        const wheelZoomHandler = (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                if (e.deltaY < 0 && currentZoom < maxZoom) {
+                    currentZoom += zoomStep;
+                    renderPage(currentZoom);
+                } else if (e.deltaY > 0 && currentZoom > minZoom) {
+                    currentZoom -= zoomStep;
+                    renderPage(currentZoom);
+                }
+            }
+        };
+        container.addEventListener('wheel', wheelZoomHandler, { passive: false });
+
+        // Set up download button
+        const downloadBtn = document.getElementById('downloadPdfBtn');
+        downloadBtn.onclick = () => {
+            this.downloadPdf();
+        };
+
+        // Clean up blob URL and event listeners when modal is closed
+        document.getElementById('pdfPreviewModal').addEventListener('hidden.bs.modal', () => {
+            URL.revokeObjectURL(url);
+            container.removeEventListener('wheel', wheelZoomHandler);
+        }, { once: true });
+    }
+
+    async loadPdfJs() {
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+            script.onload = () => {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+                resolve();
+            };
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
+    }
+
+    downloadPdf() {
+        if (!this.currentPdfBlob) {
+            this.showErrorNotification('No PDF available to download');
+            return;
+        }
+
+        // Create download link
+        const url = URL.createObjectURL(this.currentPdfBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `purchase-order-${new Date().toISOString().split('T')[0]}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        this.showSuccessNotification('PDF downloaded successfully');
+    }
+
+    async completeCase(caseId) {
         try {
             // Update case status to completed
             await this.dataManager.updateCase(caseId, {
@@ -1277,7 +2276,7 @@ export class CasesManager {
                             <button type="button" class="btn btn-warning me-2" onclick="window.app.casesManager.cancelCase('${caseData.id}')" data-bs-dismiss="modal">
                                 <i class="fas fa-times-circle"></i> Cancel Case
                             </button>
-                            <button type="button" class="btn btn-success" onclick="window.app.casesManager.completeCase('${caseData.id}')" data-bs-dismiss="modal">
+                            <button type="button" class="btn btn-success" onclick="window.app.casesManager.showCompleteCaseModal('${caseData.id}')">
                                 <i class="fas fa-check-circle"></i> Complete Case
                             </button>
                         </div>
@@ -1854,6 +2853,35 @@ END:VCALENDAR`;
         } else {
             console.error('DashboardManager not available');
             this.showErrorNotification('Check-in functionality not available');
+        }
+    }
+
+    // Loader methods
+    showLoader(message = 'Loading...') {
+        const loadingScreen = document.getElementById('loadingScreen');
+        const loadingText = document.querySelector('.loading-text');
+        if (loadingScreen) {
+            if (loadingText) {
+                loadingText.textContent = message;
+            }
+            // Set high z-index to appear above modals
+            loadingScreen.style.zIndex = '9999';
+            loadingScreen.style.display = 'flex';
+            console.log('Loader shown:', message);
+        } else {
+            console.error('Loading screen element not found');
+        }
+    }
+
+    hideLoader() {
+        const loadingScreen = document.getElementById('loadingScreen');
+        const loadingText = document.querySelector('.loading-text');
+        if (loadingScreen) {
+            loadingScreen.style.display = 'none';
+            if (loadingText) {
+                loadingText.textContent = 'Loading Tray Tracker...';
+            }
+            console.log('Loader hidden');
         }
     }
 }

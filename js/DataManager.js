@@ -110,9 +110,6 @@ export class DataManager {
         // Listen to surgeons collection
         const surgeonsQuery = query(collection(this.db, 'physicians'), orderBy('full_name', 'asc'));
         this.surgeonsUnsubscribe = onSnapshot(surgeonsQuery, (snapshot) => {
-            console.log('🔄 DataManager physicians listener triggered');
-            console.log('  - Snapshot size:', snapshot.size);
-
             const surgeons = [];
             snapshot.forEach((doc) => {
                 const surgeonData = doc.data();
@@ -880,12 +877,7 @@ export class DataManager {
 
     getSurgeons() {
         // Return surgeons from Firebase instead of hardcoded array
-        const surgeons = this.surgeons || [];
-        console.log(`📋 DataManager.getSurgeons() called - returning ${surgeons.length} surgeons`);
-        if (surgeons.length > 0) {
-            console.log(`  - Sample surgeon:`, surgeons[0]);
-        }
-        return surgeons;
+        return this.surgeons || [];
     }
 
     // Force refresh surgeon data when needed (for SPA navigation issues)

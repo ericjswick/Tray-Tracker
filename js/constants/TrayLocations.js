@@ -395,9 +395,7 @@ function getUserFacilityCoordinates() {
             console.log('User has no location_facility_id assigned');
             return null;
         }
-        
-        console.log('🏥 Looking up coordinates for user facility:', userData.location_facility_id);
-        
+
         // Get facility coordinates from facility manager
         if (window.app?.facilityManager?.currentFacilities) {
             const facility = window.app.facilityManager.currentFacilities.find(
@@ -405,11 +403,6 @@ function getUserFacilityCoordinates() {
             );
             
             if (facility && facility.latitude && facility.longitude) {
-                console.log('✅ Found facility coordinates:', {
-                    facility: facility.account_name || facility.name,
-                    coordinates: [facility.latitude, facility.longitude]
-                });
-                
                 return {
                     latitude: parseFloat(facility.latitude),
                     longitude: parseFloat(facility.longitude),
@@ -424,11 +417,6 @@ function getUserFacilityCoordinates() {
             const facility = facilities.find(f => f.id === userData.location_facility_id);
             
             if (facility && facility.latitude && facility.longitude) {
-                console.log('✅ Found facility coordinates from dataManager:', {
-                    facility: facility.account_name || facility.name,
-                    coordinates: [facility.latitude, facility.longitude]
-                });
-                
                 return {
                     latitude: parseFloat(facility.latitude),
                     longitude: parseFloat(facility.longitude),

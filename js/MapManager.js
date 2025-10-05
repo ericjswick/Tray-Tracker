@@ -7,6 +7,8 @@ export class MapManager {
         this.map = null;
         this.markers = [];
         this.spiderfier = null;
+        this.mapInitRetries = 0; // Track initialization retries
+        this._pendingTrays = null; // Store trays that arrive before map is initialized
         this.facilityLocations = {
             'Aurora Medical Center - Grafton': [43.3239, -87.9511],
             'Aurora Medical Center - Summit': [43.0166, -88.0711],
@@ -19,6 +21,37 @@ export class MapManager {
             'St. Joseph\'s Hospital': [43.0731, -88.0373],
             'University of Wisconsin Hospital': [43.0642, -89.4012]
         };
+
+        // Set up EventBus listeners immediately when MapManager is created
+        // This ensures we catch updates even if they fire before map view is displayed
+        if (window.eventBus) {
+            // Subscribe to tray updates
+            this.traysUpdateUnsubscribe = window.eventBus.subscribe('trays-updated', (data) => {
+                // Only process if we're on the map view
+                if (window.app?.viewManager?.currentView === 'map') {
+                    const trays = data?.trays || window.app.trayManager.currentTrays;
+                    if (trays && trays.length > 0) {
+                        if (this.map) {
+                            this.updateMap(trays);
+                        } else {
+                            this._pendingTrays = trays;
+                        }
+                    }
+                }
+            });
+
+            // Subscribe to facility updates - when facilities load, re-render map with current trays
+            this.facilitiesUpdateUnsubscribe = window.eventBus.subscribe('facilities-updated', (data) => {
+                // When facilities load, re-render the map with current trays
+                // This handles the case where trays arrived before facilities
+                if (window.app?.viewManager?.currentView === 'map' && this.map) {
+                    const trays = window.app.trayManager?.currentTrays;
+                    if (trays && trays.length > 0) {
+                        this.updateMap(trays);
+                    }
+                }
+            });
+        }
     }
 
     initializeMap() {
@@ -32,14 +65,27 @@ export class MapManager {
 
         // Check if container has proper dimensions
         if (mapContainer.offsetWidth === 0 || mapContainer.offsetHeight === 0) {
-            console.warn('🗺️ Map container has zero dimensions, waiting for proper sizing');
-            setTimeout(() => this.initializeMap(), 100);
-            return;
+            this.mapInitRetries++;
+
+            if (this.mapInitRetries < 10) {
+                console.warn(`🗺️ Map container has zero dimensions, retry ${this.mapInitRetries}/10`);
+                setTimeout(() => this.initializeMap(), 150);
+                return;
+            } else {
+                // After 10 retries, force dimensions
+                console.warn('🗺️ Forcing map container dimensions after retry limit');
+                mapContainer.style.minHeight = '600px';
+                mapContainer.style.height = '100%';
+                mapContainer.style.width = '100%';
+                // Force reflow
+                mapContainer.offsetHeight;
+            }
         }
 
         console.log('🗺️ Initializing map with container dimensions:', {
             width: mapContainer.offsetWidth,
-            height: mapContainer.offsetHeight
+            height: mapContainer.offsetHeight,
+            retries: this.mapInitRetries
         });
 
         try {
@@ -60,6 +106,13 @@ export class MapManager {
                 if (this.map) {
                     this.map.invalidateSize();
                     console.log('🗺️ Map initialization complete');
+
+                    // Load pending trays if any arrived before map was ready
+                    if (this._pendingTrays && this._pendingTrays.length > 0) {
+                        console.log('🗺️ Loading', this._pendingTrays.length, 'pending trays that arrived early');
+                        this.updateMap(this._pendingTrays);
+                        this._pendingTrays = null;
+                    }
                 }
             }, 100);
 
@@ -139,9 +192,21 @@ export class MapManager {
     }
 
     updateMap(trays) {
-        if (!this.map) return;
-        
-        console.log('🗺️ DEBUG: updateMap called with', trays.length, 'trays');
+        console.log('🗺️ updateMap called', {
+            mapExists: !!this.map,
+            traysCount: trays?.length,
+            traysIsArray: Array.isArray(trays)
+        });
+
+        if (!this.map) {
+            console.error('🗺️ ❌ Cannot update map - map not initialized');
+            return;
+        }
+
+        if (!trays || !Array.isArray(trays)) {
+            console.error('🗺️ ❌ Invalid trays data:', trays);
+            return;
+        }
 
         // Clear existing markers
         this.clearAllMarkers();
@@ -172,51 +237,115 @@ export class MapManager {
             }
             return true;
         });
-        
-        console.log('🗺️ DEBUG: After filtering:', filteredTrays.length, 'trays remain');
-        console.log('🗺️ DEBUG: Filters applied - search:', searchTerm, 'status:', availabilityFilter, 'type:', typeFilter);
 
         filteredTrays.forEach(tray => {
-            let position;
+            try {
+                let position;
 
-            if (tray.location === TRAY_LOCATIONS.FACILITY && tray.facility && this.facilityLocations[tray.facility]) {
-                position = this.facilityLocations[tray.facility];
-            } else if (tray.location === TRAY_LOCATIONS.CORPORATE) {
-                position = getLocationCoordinatesArray(TRAY_LOCATIONS.CORPORATE);
-            } else if (tray.location === TRAY_LOCATIONS.TRUNK) {
-                position = getLocationCoordinatesArray(TRAY_LOCATIONS.TRUNK);
-            }
-
-            if (position) {
-                const marker = L.marker(position);
-
-                const statusClass = `status-${normalizeStatus(tray.status).replace('_', '-')}`;
-
-                // Get surgeon name for display (handle both old and new format)
-                let surgeonName = '';
-                if (tray.physician_id && window.app.surgeonManager) {
-                    const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === tray.physician_id);
-                    surgeonName = surgeon ? surgeon.full_name : 'Unknown Surgeon';
-                } else if (tray.surgeon) {
-                    surgeonName = tray.surgeon; // Legacy format
+                // Handle standard TrayTracker locations
+                if (tray.location === TRAY_LOCATIONS.FACILITY && tray.facility && this.facilityLocations[tray.facility]) {
+                    position = this.facilityLocations[tray.facility];
+                } else if (tray.location === TRAY_LOCATIONS.CORPORATE) {
+                    position = getLocationCoordinatesArray(TRAY_LOCATIONS.CORPORATE);
+                } else if (tray.location === TRAY_LOCATIONS.TRUNK) {
+                    position = getLocationCoordinatesArray(TRAY_LOCATIONS.TRUNK);
+                }
+                // Handle legacy MyRepData format where location is a facility ID
+                else if (tray.location && typeof tray.location === 'string' && tray.location.length > 10) {
+                    // Location appears to be a document ID, try to find facility
+                    const facilities = window.app.facilityManager?.currentFacilities || [];
+                    const facility = facilities.find(f => f.id === tray.location || f.id === tray.facility);
+                    if (facility && facility.latitude && facility.longitude) {
+                        position = [facility.latitude, facility.longitude];
+                    }
                 }
 
-                const popupContent = `
-                <div class="p-2">
-                    <h6>${tray.tray_name}</h6>
-                    <p class="mb-1"><span class="badge ${statusClass}">${tray.status}</span></p>
-                    <p class="mb-1"><strong>Type:</strong> ${window.app.trayManager.getTrayTypeText(tray)}</p>
-                    <p class="mb-1"><strong>Location:</strong> ${window.app.trayManager.getLocationText(tray.location)}</p>
-                    ${tray.facility ? `<p class="mb-1"><strong>Facility:</strong> ${tray.facility}</p>` : ''}
-                    ${tray.caseDate ? `<p class="mb-1"><strong>Case Date:</strong> ${tray.caseDate}</p>` : ''}
-                    ${surgeonName ? `<p class="mb-0"><strong>Surgeon:</strong> ${surgeonName}</p>` : ''}
-                </div>
-            `;
+                if (position) {
+                    // Create custom colored marker based on tray status
+                    const markerColor = this.getTrayMarkerColor(tray.status);
+                    const markerIcon = L.divIcon({
+                        className: 'tray-marker',
+                        html: `<div class="marker-pin" style="background-color: ${markerColor}; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"><i class="fas fa-box" style="color: white; font-size: 10px;"></i></div>`,
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 20]
+                    });
 
-                marker.bindPopup(popupContent);
-                this.addMarkerWithSpider(marker);
+                    const marker = L.marker(position, { icon: markerIcon });
+
+                    const surgeonName = this.getSurgeonName(tray.physician_id);
+
+                    // Generate action buttons based on tray status (same logic as tray cards)
+                    let actions = '';
+                    if (isAvailableStatus(tray.status)) {
+                        actions += `
+                            <button class="btn-primary-custom btn-sm" onclick="app.modalManager.showCheckinModal('${tray.id}')">
+                                <i class="fas fa-sign-in-alt"></i> Check-in
+                            </button>
+                        `;
+                    }
+                    if (isInUseStatus(tray.status)) {
+                        actions += `
+                            <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
+                                <i class="fas fa-hand-paper"></i> Pickup
+                            </button>
+                            <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showTurnoverModal('${tray.id}')">
+                                <i class="fas fa-exchange-alt"></i> Turnover
+                            </button>
+                        `;
+                    }
+                    if (normalizeStatus(tray.status) === TRAY_STATUS.CHECKED_IN) {
+                        actions += `
+                            <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
+                                <i class="fas fa-hand-paper"></i> Pickup
+                            </button>
+                        `;
+                    }
+                    if (normalizeStatus(tray.status) === TRAY_STATUS.READY_FOR_PICKUP) {
+                        actions += `
+                            <button class="btn-secondary-custom btn-sm" onclick="app.modalManager.showPickupModal('${tray.id}')">
+                                <i class="fas fa-hand-paper"></i> Pickup
+                            </button>
+                        `;
+                    }
+                    if (normalizeStatus(tray.status) === TRAY_STATUS.PICKED_UP) {
+                        actions += `
+                            <button class="btn-primary-custom btn-sm" onclick="app.modalManager.showCheckinModal('${tray.id}')">
+                                <i class="fas fa-sign-in-alt"></i> Check-in
+                            </button>
+                        `;
+                    }
+
+                    const locationInfo = window.app.trayManager.getLocationText(tray.location);
+
+                    const popupContent = `
+                        <div class="tray-popup">
+                            <h6 class="popup-title">${tray.tray_name}</h6>
+                            <p class="mb-1"><strong>Status:</strong> <span class="status-${normalizeStatus(tray.status)}">${getStatusDisplayText(tray.status)}</span></p>
+                            <p class="mb-1"><strong>Location:</strong> ${locationInfo}</p>
+                            ${tray.assignedTo ? `<p class="mb-1"><strong>Assigned to:</strong> ${window.app.trayManager.getUserName(tray.assignedTo)}</p>` : ''}
+                            ${tray.caseDate ? `<p class="mb-1"><strong>Case Date:</strong> ${tray.caseDate}</p>` : ''}
+                            ${surgeonName && surgeonName !== 'Not assigned' ? `<p class="mb-2"><strong>Physician:</strong> ${surgeonName}</p>` : ''}
+                            ${actions ? `<div class="d-flex gap-2 mt-2">${actions}</div>` : ''}
+                        </div>
+                    `;
+
+                    marker.bindPopup(popupContent, {
+                        offset: [0, -20]
+                    });
+                    this.addMarkerWithSpider(marker);
+                }
+            } catch (error) {
+                console.error('Error adding tray marker:', error);
             }
         });
+
+        // Also add facility markers if display filter allows
+        const displayFilter = document.getElementById('mapDisplayFilter')?.value || 'both';
+        const trayFiltersActive = availabilityFilter || typeFilter || searchTerm;
+
+        if ((displayFilter === 'both' || displayFilter === 'facilities') && !trayFiltersActive) {
+            this.addFilteredFacilityMarkers();
+        }
 
         // Center map around markers if any exist
         this.centerMapOnMarkers();
@@ -538,9 +667,7 @@ export class MapManager {
 
         // Get facilities from FacilityManager
         const locations = window.app.facilityManager?.currentFacilities || [];
-        
-        console.log('🗺️ DEBUG: Facilities for map:', locations.length, locations);
-        
+
         // Apply facility filters
         const filteredLocations = locations.filter(location => {
             // Search filter
@@ -568,10 +695,6 @@ export class MapManager {
             
             return true;
         });
-
-        console.log('🗺️ DEBUG: Filtered facilities:', filteredLocations.length);
-        const facilitiesWithCoords = filteredLocations.filter(loc => loc.latitude && loc.longitude);
-        console.log('🗺️ DEBUG: Facilities with coordinates:', facilitiesWithCoords.length, facilitiesWithCoords);
 
         // Display facility markers
         this.displayLocationMarkers(filteredLocations);
@@ -674,27 +797,22 @@ export class MapManager {
             if (tray.latitude && tray.longitude) {
                 position = [parseFloat(tray.latitude), parseFloat(tray.longitude)];
                 coordinateTrays++;
-                console.log(`📍 Using tray coordinates for ${tray.tray_name}: [${position[0]}, ${position[1]}]`);
             }
             // Fallback to legacy logic for trays without coordinates
             else if (tray.location === TRAY_LOCATIONS.FACILITY && tray.facility && this.facilityLocations[tray.facility]) {
                 position = this.facilityLocations[tray.facility];
                 legacyTrays++;
-                console.log(`📍 Using legacy facility coordinates for ${tray.tray_name}: [${position[0]}, ${position[1]}]`);
             } else if (tray.location === TRAY_LOCATIONS.CORPORATE) {
                 position = getLocationCoordinatesArray(TRAY_LOCATIONS.CORPORATE);
                 corporateTrays++;
-                console.log(`📍 Using corporate location for ${tray.tray_name}`);
             } else if (tray.location === TRAY_LOCATIONS.TRUNK) {
                 position = getLocationCoordinatesArray(TRAY_LOCATIONS.TRUNK);
                 trunkTrays++;
-                console.log(`📍 Using trunk location for ${tray.tray_name}`);
             } else {
                 // Default fallback location for trays with no coordinates
                 // Use trunk location as default
                 position = getLocationCoordinatesArray(TRAY_LOCATIONS.TRUNK);
                 noLocationTrays++;
-                console.log(`📍 Using default location for ${tray.tray_name} (no coordinates available)`);
             }
 
             if (position) {
@@ -744,6 +862,13 @@ export class MapManager {
                         </button>
                     `;
                 }
+                if (normalizeStatus(tray.status) === TRAY_STATUS.PICKED_UP) {
+                    actions += `
+                        <button class="btn-primary-custom btn-sm" onclick="app.modalManager.showCheckinModal('${tray.id}')">
+                            <i class="fas fa-sign-in-alt"></i> Check-in
+                        </button>
+                    `;
+                }
 
                 // Create location info with coordinates if available
                 let locationInfo = window.app.trayManager.getLocationText(tray.location);
@@ -780,7 +905,9 @@ export class MapManager {
                     </div>
                 `;
 
-                marker.bindPopup(popupContent);
+                marker.bindPopup(popupContent, {
+                    offset: [0, -20] // Increase Y offset to move popup further up from marker
+                });
                 this.addMarkerWithSpider(marker);
             } else {
                 // Log trays that couldn't be positioned on the map
@@ -862,7 +989,9 @@ export class MapManager {
                     </div>
                 `;
 
-                marker.bindPopup(popupContent);
+                marker.bindPopup(popupContent, {
+                    offset: [0, -20] // Increase Y offset to move popup further up from marker
+                });
                 this.addMarkerWithSpider(marker);
             }
         });

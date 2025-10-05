@@ -798,6 +798,31 @@ export class TrayManager {
         this.renderTrays(trays);
         this.updateStats(trays);
 
+        // Emit trays-updated event via EventBus
+        if (window.eventBus) {
+            console.log('📢 TrayManager emitting trays-updated event via EventBus with', trays.length, 'trays');
+            window.eventBus.emit('trays-updated', { trays: trays });
+        } else {
+            console.warn('⚠️ EventBus not available, cannot emit trays-updated event');
+        }
+
+        // Update map directly if we're on the map view and map is initialized
+        const onMapView = window.app?.viewManager?.currentView === 'map';
+        const mapInitialized = !!window.app?.mapManager?.map;
+
+        console.log('🗺️ TrayManager: Checking if should update map:', {
+            onMapView,
+            mapInitialized,
+            currentView: window.app?.viewManager?.currentView
+        });
+
+        if (onMapView && mapInitialized) {
+            console.log('🗺️ ✅ On map view with initialized map, updating directly with', trays.length, 'trays');
+            window.app.mapManager.updateMap(trays);
+        } else if (onMapView && !mapInitialized) {
+            console.warn('🗺️ ⚠️ On map view but map not initialized yet, will rely on EventBus');
+        }
+
         // Update dashboard if currently viewing dashboard
         if (window.app.viewManager && window.app.viewManager.currentView === 'dashboard') {
             console.log('📊 Updating dashboard with trays...');
@@ -805,11 +830,6 @@ export class TrayManager {
             window.app.viewManager.updateTrayStats(trays);
         } else {
             console.log('ℹ️ Not on dashboard view, skipping dashboard tray update');
-        }
-
-        // Update map if available
-        if (window.app.mapManager) {
-            window.app.mapManager.updateMap(trays);
         }
 
         // If users are not loaded yet, schedule a re-render when they are

@@ -78,7 +78,12 @@ export class FacilityManager {
             this.currentFacilities = facilities;
             this.renderFacilities(facilities);
             this.updateStats(facilities);
-            
+
+            // Emit EventBus event for facilities update
+            if (window.eventBus && facilities.length > 0) {
+                window.eventBus.emit('facilities-updated', { facilities: facilities });
+            }
+
             // Trigger tray re-render when facilities are loaded/updated
             if (window.app.trayManager && facilities.length > 0) {
                 window.app.trayManager.onFacilitiesLoaded();

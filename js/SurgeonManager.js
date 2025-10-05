@@ -326,7 +326,6 @@ export class SurgeonManager {
         console.log('🔄 SurgeonManager.handleSurgeonsUpdate called');
         console.log('  - Received surgeons count:', surgeons.length);
         console.log('  - Previous currentSurgeons count:', this.currentSurgeons?.length || 0);
-        console.log('  - Sample surgeon data:', surgeons.length > 0 ? surgeons[0] : 'none');
 
         this.currentSurgeons = surgeons;
         this.renderSurgeons(surgeons);

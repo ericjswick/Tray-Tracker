@@ -15,6 +15,13 @@ export class ViewManager {
 
     showView(viewName, updateUrl = true) {
 
+        // Cleanup previous view's EventBus subscriptions
+        if (this.currentView === 'map' && window.app.mapManager?.traysUpdateUnsubscribe) {
+            console.log('🗺️ Cleaning up map EventBus subscription');
+            window.app.mapManager.traysUpdateUnsubscribe();
+            window.app.mapManager.traysUpdateUnsubscribe = null;
+        }
+
         // Update URL if requested (avoid infinite loops during initial load)
         if (updateUrl) {
             this.updateUrl(viewName);
@@ -392,6 +399,7 @@ export class ViewManager {
     }
 
     initializeMapView() {
+        // EventBus subscription is now handled in MapManager constructor
         // Use longer timeout to ensure container is properly sized
         setTimeout(() => {
             if (window.app.mapManager) {
@@ -401,25 +409,23 @@ export class ViewManager {
                     // Force reflow to ensure container dimensions are calculated
                     mapContainer.style.display = 'block';
                     mapContainer.offsetHeight; // Force reflow
-                    
+
                     console.log('🗺️ Initializing map view with container size:', {
                         width: mapContainer.offsetWidth,
                         height: mapContainer.offsetHeight,
                         visible: mapContainer.offsetParent !== null
                     });
                 }
-                
+
                 window.app.mapManager.initializeMap();
-                
-                // Additional timeout to ensure map is fully initialized before adding markers
+
+                // Additional timeout to ensure map is fully initialized
                 setTimeout(() => {
                     if (window.app.mapManager.map) {
                         // Force map to invalidate size in case container wasn't properly sized initially
                         window.app.mapManager.map.invalidateSize();
-                        
-                        if (window.app.trayManager.currentTrays) {
-                            window.app.mapManager.updateMap(window.app.trayManager.currentTrays);
-                        }
+                        console.log('🗺️ Map fully initialized in ViewManager');
+                        // Pending trays and EventBus updates are now handled in MapManager
                     }
                 }, 100);
             }
