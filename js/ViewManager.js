@@ -4,6 +4,7 @@ import { isInUseStatus, isAvailableStatus, isCheckedInStatus, normalizeStatus, T
 import { populateFacilityTypeDropdown } from './constants/FacilityTypes.js';
 import { TRAY_LOCATIONS } from './constants/TrayLocations.js';
 import { USER_ROLES } from './constants/UserRoles.js';
+import { getPhysicianName } from './utils/PhysicianHelper.js';
 
 export class ViewManager {
     constructor() {
@@ -966,25 +967,7 @@ export class ViewManager {
     }
 
     getSurgeonName(surgeonId) {
-        // If it's already a name (legacy data), return as is
-        if (!surgeonId || typeof surgeonId !== 'string') return 'Unknown Surgeon';
-
-        // Check if it looks like an ID (Firebase IDs are longer)
-        if (surgeonId.length < 15) {
-            // Probably a legacy name, return as is
-            return surgeonId;
-        }
-
-        // Try to find surgeon by ID
-        if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons) {
-            const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === surgeonId);
-            if (surgeon) {
-                return `${surgeon.title || 'Dr.'} ${surgeon.full_name}`;
-            }
-        }
-
-        // Fallback: if surgeon not found, return the ID (shouldn't happen in normal use)
-        return surgeonId;
+        return getPhysicianName(surgeonId, window.app.dataManager?.getSurgeons()) || 'Unknown Surgeon';
     }
 
     // Helper methods for dashboard tray cards

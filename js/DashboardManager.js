@@ -4,6 +4,7 @@
 import { CASE_STATUS, CASE_STATUS_OPTIONS, getCaseStatusClass, populateCaseStatusDropdown } from './constants/CaseStatus.js';
 import { TRAY_STATUS, normalizeStatus, isInUseStatus, isAvailableStatus, isCheckedInStatus, getStatusDisplayText } from './constants/TrayStatus.js';
 import { TRAY_LOCATIONS, getLocationDisplayText as getLocationDisplay } from './constants/TrayLocations.js';
+import { getPhysicianName } from './utils/PhysicianHelper.js';
 
 export class DashboardManager {
     constructor(dataManager) {
@@ -1242,33 +1243,7 @@ export class DashboardManager {
 
     // Helper function to get surgeon name from ID
     getSurgeonName(surgeonId) {
-        if (!surgeonId) return null;
-
-        // If it's already a name (not an ID), return it
-        if (typeof surgeonId === 'string' && surgeonId.length > 20 && !surgeonId.match(/^[a-zA-Z0-9]{20}$/)) {
-            return surgeonId;
-        }
-
-        // Check if it looks like a short legacy name
-        if (typeof surgeonId === 'string' && surgeonId.length < 15) {
-            return surgeonId;
-        }
-
-        // Try to find surgeon by ID using DataManager
-        const surgeons = this.dataManager.getSurgeons();
-        if (surgeons && surgeons.length > 0) {
-            const surgeon = surgeons.find(s => s.id === surgeonId);
-            if (surgeon) {
-                // Handle both full_name and first_name/last_name formats
-                const name = surgeon.full_name ||
-                            (surgeon.first_name && surgeon.last_name ?
-                             `${surgeon.first_name} ${surgeon.last_name}` :
-                             surgeon.first_name || surgeon.last_name || 'Unknown');
-                return `${surgeon.title || 'Dr.'} ${name}`;
-            }
-        }
-
-        return null; // Return null if surgeon not found instead of ID
+        return getPhysicianName(surgeonId, this.dataManager.getSurgeons());
     }
 
     getCaseTypeName(caseTypeId) {

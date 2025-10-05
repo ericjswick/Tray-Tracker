@@ -2,6 +2,7 @@
 import { TRAY_STATUS, normalizeStatus, isInUseStatus, isAvailableStatus, isCheckedInStatus, getStatusDisplayText, getStatusColor } from './constants/TrayStatus.js';
 import { TRAY_LOCATIONS, getLocationDisplayText, getLocationIcon, getLocationCoordinates } from './constants/TrayLocations.js';
 import { collection, addDoc, query, where, getDocs } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
+import { getPhysicianName } from './utils/PhysicianHelper.js';
 export class TrayManager {
     constructor(dataManager) {
         this.dataManager = dataManager;
@@ -1309,21 +1310,7 @@ export class TrayManager {
     }
 
     getSurgeonName(surgeonId) {
-        if (!surgeonId) return null;
-
-        const surgeons = this.dataManager.getSurgeons();
-        if (surgeons && surgeons.length > 0) {
-            const surgeon = surgeons.find(s => s.id === surgeonId);
-            if (surgeon) {
-                // Handle both full_name and first_name/last_name formats
-                const name = surgeon.full_name ||
-                            (surgeon.first_name && surgeon.last_name ?
-                             `${surgeon.first_name} ${surgeon.last_name}` :
-                             surgeon.first_name || surgeon.last_name || 'Unknown');
-                return `${surgeon.title || 'Dr.'} ${name}`;
-            }
-        }
-        return null;
+        return getPhysicianName(surgeonId, this.dataManager.getSurgeons());
     }
 
     getTrayDate(tray) {

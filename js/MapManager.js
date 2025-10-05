@@ -1,6 +1,7 @@
 // js/MapManager.js
 import { TRAY_STATUS, normalizeStatus, isInUseStatus, isAvailableStatus, getStatusDisplayText } from './constants/TrayStatus.js';
 import { TRAY_LOCATIONS, getLocationCoordinatesArray } from './constants/TrayLocations.js';
+import { getPhysicianName } from './utils/PhysicianHelper.js';
 export class MapManager {
     constructor() {
         this.map = null;
@@ -812,11 +813,7 @@ export class MapManager {
     }
 
     getSurgeonName(surgeonId) {
-        if (!surgeonId) return 'Not assigned';
-        
-        const surgeons = window.app.surgeonManager?.currentSurgeons || [];
-        const surgeon = surgeons.find(s => s.id === surgeonId);
-        return surgeon ? surgeon.full_name : 'Unknown Surgeon';
+        return getPhysicianName(surgeonId, window.app.dataManager?.getSurgeons()) || 'Not assigned';
     }
 
     // Display location markers on the map

@@ -4,6 +4,7 @@ import { TRAY_LOCATIONS } from './constants/TrayLocations.js';
 import { TRAY_STATUS, isCheckedInStatus } from './constants/TrayStatus.js';
 import { emailNotifications } from './utils/EmailNotifications.js';
 import { smsNotifications } from './utils/SmsNotifications.js';
+import { getPhysicianName } from './utils/PhysicianHelper.js';
 
 export class CasesManager {
     constructor(dataManager) {
@@ -1627,21 +1628,7 @@ export class CasesManager {
 
     // Helper function to get surgeon name from ID - consistent with DashboardManager
     getSurgeonName(surgeonId) {
-        if (!surgeonId) return null;
-
-        // If it's already a name (not an ID), return it
-        if (typeof surgeonId === 'string' && !surgeonId.match(/^[a-zA-Z0-9]{20,}$/)) {
-            return surgeonId;
-        }
-
-        // Try to find surgeon by ID using DataManager
-        const surgeons = this.dataManager.getSurgeons();
-        if (surgeons && surgeons.length > 0) {
-            const surgeon = surgeons.find(s => s && s.id === surgeonId);
-            return surgeon ? `${surgeon.title || 'Dr.'} ${surgeon.full_name}` : null;
-        }
-
-        return null; // Return null if surgeon not found instead of ID
+        return getPhysicianName(surgeonId, this.dataManager.getSurgeons());
     }
 
     // Calendar modal functionality - same as DashboardManager

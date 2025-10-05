@@ -5,6 +5,7 @@ import { populateTrayStatusDropdown } from './constants/TrayStatus.js';
 import { populateTrayLocationDropdown, TRAY_LOCATIONS, getLocationDisplayText } from './constants/TrayLocations.js';
 import { populateRoleSelect } from './constants/UserRoles.js';
 import { googlePlacesAutocomplete } from './utils/GooglePlacesAutocomplete.js';
+import { getPhysicianName } from './utils/PhysicianHelper.js';
 
 export class ModalManager {
     constructor(dataManager) {
@@ -672,25 +673,7 @@ export class ModalManager {
     }
 
     getSurgeonName(surgeonId) {
-        // If it's already a name (legacy data), return as is
-        if (!surgeonId || typeof surgeonId !== 'string') return 'Unknown Physician';
-
-        // Check if it looks like an ID (Firebase IDs are longer)
-        if (surgeonId.length < 15) {
-            // Probably a legacy name, return as is
-            return surgeonId;
-        }
-
-        // Try to find surgeon by ID
-        if (window.app.surgeonManager && window.app.surgeonManager.currentSurgeons) {
-            const surgeon = window.app.surgeonManager.currentSurgeons.find(s => s.id === surgeonId);
-            if (surgeon) {
-                return `${surgeon.title || 'Dr.'} ${surgeon.full_name}`;
-            }
-        }
-
-        // Fallback: if surgeon not found, return the ID (shouldn't happen in normal use)
-        return surgeonId;
+        return getPhysicianName(surgeonId, this.dataManager.getSurgeons());
     }
 
     createHistoryItem(entry) {
@@ -2390,11 +2373,7 @@ export class ModalManager {
     }
 
     getPhysicianName(physicianId) {
-        if (window.app.dataManager && window.app.dataManager.physicians) {
-            const physician = window.app.dataManager.physicians.find(p => p.id === physicianId);
-            return physician ? physician.full_name : 'Unknown Physician';
-        }
-        return 'Unknown Physician';
+        return getPhysicianName(physicianId, this.dataManager.getSurgeons());
     }
 
     /**

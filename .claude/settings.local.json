@@ -37,7 +37,9 @@
       "WebSearch",
       "WebFetch(domain:pdf-lib.js.org)",
       "WebFetch(domain:mozilla.github.io)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(git reset:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
