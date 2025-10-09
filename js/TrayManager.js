@@ -509,29 +509,60 @@ export class TrayManager {
                 photoUrl = await window.app.photoManager.uploadPhoto('pickup', 'pickup-photos');
             }
 
-            // Get trunk coordinates from central function
-            const trunkCoords = getLocationCoordinates(TRAY_LOCATIONS.TRUNK);
-
-            // Get current user ID for custody
+            // Get current user ID and location for custody and tray location
             const currentUser = window.app.authManager.getCurrentUser();
             const currentUserId = currentUser?.uid;
 
+            // Get the current user's location_facility_id from the users collection
+            let userRepTrayLocation = TRAY_LOCATIONS.TRUNK; // Default fallback
+            let locationCoords = null;
+
+            if (currentUserId && window.app.dataManager?.users) {
+                const userData = window.app.dataManager.users.get(currentUserId);
+
+                if (userData?.location_facility_id) {
+                    userRepTrayLocation = userData.location_facility_id;
+                    console.log(`✅ Using user's location_facility_id: ${userRepTrayLocation}`);
+                } else {
+                    console.log(`⚠️ User has no location_facility_id set, using default: ${TRAY_LOCATIONS.TRUNK}`);
+                }
+            } else {
+                console.log(`⚠️ Cannot get user data - userId: ${currentUserId}`);
+            }
+
+            // Get coordinates for the rep tray location
+            // First try predefined location coordinates (like trunk, corporate)
+            locationCoords = getLocationCoordinates(userRepTrayLocation);
+
+            // If no predefined coordinates, try to get facility coordinates
+            if (!locationCoords && userRepTrayLocation !== TRAY_LOCATIONS.TRUNK) {
+                locationCoords = this.getFacilityCoordinates(userRepTrayLocation);
+                console.log(`📍 Using facility coordinates for ${userRepTrayLocation}:`, locationCoords);
+            }
+
             const updates = {
                 status: TRAY_STATUS.PICKED_UP,
-                location: TRAY_LOCATIONS.TRUNK,
-                facility: '',
+                location: userRepTrayLocation, // Use user's location_facility_id
+                facility: userRepTrayLocation, // Set facility to same as location_facility_id
+                facility_id: userRepTrayLocation, // Also set facility_id for consistency
                 caseDate: '',
                 surgeon: '',
                 notes: notes,
                 pickupPhotoUrl: photoUrl,
                 // Set custody to current user on pickup
                 custody_id: currentUserId,
-                // Set coordinates to trunk location
-                latitude: trunkCoords?.latitude,
-                longitude: trunkCoords?.longitude,
-                locationSource: 'trunk_pickup',
+                locationSource: 'user_location_facility',
                 locationTimestamp: new Date().toISOString()
             };
+
+            // Only set coordinates if we found them (don't set undefined values)
+            if (locationCoords?.latitude && locationCoords?.longitude) {
+                updates.latitude = locationCoords.latitude;
+                updates.longitude = locationCoords.longitude;
+                console.log(`✅ Set pickup coordinates:`, locationCoords);
+            } else {
+                console.log(`⚠️ No coordinates available for location: ${userRepTrayLocation}`);
+            }
 
             await this.dataManager.updateTray(trayId, updates);
 

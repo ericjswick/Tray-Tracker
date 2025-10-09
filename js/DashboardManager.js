@@ -1367,6 +1367,12 @@ export class DashboardManager {
                                 hasUnavailableTrays = true;
                             }
                             break;
+                        case TRAY_STATUS.READY_FOR_PICKUP:
+                            status = getStatusDisplayText(normalizedStatus); // Use central function to show "Ready For Pickup"
+                            statusColor = '#17a2b8'; // Info blue
+                            statusIcon = 'fas fa-hand-pointer';
+                            isUnavailable = false;
+                            break;
                         default:
                             status = getStatusDisplayText(normalizedStatus); // Use central function
                             statusColor = unavailableColor; // Use warning color
@@ -1389,8 +1395,8 @@ export class DashboardManager {
                 // Use status color for tray name to match icon and status text
                 const trayNameColor = statusColor;
 
-                // Make "Checked In And Ready" trays clickable to pick up
-                const isReadyForPickup = status === 'Checked In And Ready' && matchingTray;
+                // Make "Checked In And Ready" and "Ready For Pickup" trays clickable to pick up
+                const isReadyForPickup = (status === 'Checked In And Ready' || status === 'Ready For Pickup') && matchingTray;
                 const cursorStyle = isReadyForPickup ? 'cursor: pointer;' : '';
                 const onclickAttr = isReadyForPickup ? `onclick="window.app.modalManager.showPickupModal('${trayId}')" title="Click to pick up this tray"` : '';
 
