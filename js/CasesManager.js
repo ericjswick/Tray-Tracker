@@ -662,39 +662,30 @@ export class CasesManager {
                 // Update modal footer based on case status
                 const modalFooter = document.querySelector('#editCaseModal .modal-footer');
                 if (modalFooter) {
-                    // Show different buttons based on case status
-                    if (isCompletedCaseStatus(caseData.status)) {
-                        modalFooter.innerHTML = `
-                            <div class="d-flex justify-content-between w-100">
-                                <div>
-                                    <button type="button" class="btn btn-info" onclick="window.app.casesManager.downloadCompletedCaseRPO('${caseData.id}', '${caseData.facility_id || caseData.facility}', '${caseData.case_type || caseData.type}')">
-                                        <i class="fas fa-download"></i> Download RPO
-                                    </button>
-                                </div>
-                                <div>
-                                    <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Close</button>
-                                    <button type="button" class="btn btn-primary" onclick="app.casesManager.updateCase()">Update Case</button>
-                                </div>
+                    // Always show Complete Case button, add Download RPO button for completed cases
+                    const downloadButton = isCompletedCaseStatus(caseData.status)
+                        ? `<button type="button" class="btn btn-info me-2" onclick="window.app.casesManager.downloadCompletedCaseRPO('${caseData.id}', '${caseData.facility_id || caseData.facility}', '${caseData.case_type || caseData.type}')">
+                            <i class="fas fa-download"></i> Download RPO
+                           </button>`
+                        : '';
+
+                    modalFooter.innerHTML = `
+                        <div class="d-flex justify-content-between w-100">
+                            <div>
+                                ${downloadButton}
+                                <button type="button" class="btn btn-warning me-2" onclick="app.casesManager.cancelCase('${caseData.id}')" data-bs-dismiss="modal">
+                                    <i class="fas fa-times-circle"></i> Cancel Case
+                                </button>
+                                <button type="button" class="btn btn-success" onclick="app.casesManager.showCompleteCaseModal('${caseData.id}')">
+                                    <i class="fas fa-check-circle"></i> Complete Case
+                                </button>
                             </div>
-                        `;
-                    } else {
-                        modalFooter.innerHTML = `
-                            <div class="d-flex justify-content-between w-100">
-                                <div>
-                                    <button type="button" class="btn btn-warning me-2" onclick="app.casesManager.cancelCase('${caseData.id}')" data-bs-dismiss="modal">
-                                        <i class="fas fa-times-circle"></i> Cancel Case
-                                    </button>
-                                    <button type="button" class="btn btn-success" onclick="app.casesManager.showCompleteCaseModal('${caseData.id}')">
-                                        <i class="fas fa-check-circle"></i> Complete Case
-                                    </button>
-                                </div>
-                                <div>
-                                    <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Close</button>
-                                    <button type="button" class="btn btn-primary" onclick="app.casesManager.updateCase()">Update Case</button>
-                                </div>
+                            <div>
+                                <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Close</button>
+                                <button type="button" class="btn btn-primary" onclick="app.casesManager.updateCase()">Update Case</button>
                             </div>
-                        `;
-                    }
+                        </div>
+                    `;
                 }
 
                 const modal = new bootstrap.Modal(document.getElementById('editCaseModal'));
@@ -2625,6 +2616,18 @@ export class CasesManager {
         const facility = this.dataManager.getFacilities().find(f => f && f.id === caseData.facility_id);
         const caseType = this.dataManager.getCaseTypes().find(ct => ct && ct.id === caseData.caseTypeId);
 
+        // Format date without timezone conversion
+        const formatDateOnly = (dateStr) => {
+            if (!dateStr) return 'N/A';
+            // Handle YYYY-MM-DD format - parse as local date
+            const [year, month, day] = dateStr.split('-');
+            if (year && month && day) {
+                const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                return date.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
+            }
+            return dateStr;
+        };
+
         const modalBody = document.getElementById('caseDetailsModalBody');
         if (modalBody) {
             modalBody.innerHTML = `
@@ -2637,7 +2640,7 @@ export class CasesManager {
                             <strong>Case Type:</strong> ${caseType ? caseType.name : 'Unknown'}
                         </div>
                         <div class="col-md-6">
-                            <strong>Date:</strong> ${new Date(caseData.scheduledDate).toLocaleDateString()}<br>
+                            <strong>Date:</strong> ${formatDateOnly(caseData.scheduledDate)}<br>
                             <strong>Time:</strong> ${caseData.scheduledTime || 'N/A'}<br>
                             <strong>Duration:</strong> ${caseData.estimatedDuration || 'N/A'} mins<br>
                             <strong>Status:</strong> <span class="badge bg-${getCaseStatusColor(caseData.status)}">${getCaseStatusLabel(caseData.status)}</span>
