@@ -429,7 +429,7 @@ export class CasesManager {
                     <thead>
                         <tr>
                             <th>Case Name</th>
-                            <th>Surgeon</th>
+                            <th>Physician</th>
                             <th>Facility</th>
                             <th>Date & Time</th>
                             <th>Case Type</th>
@@ -476,8 +476,8 @@ export class CasesManager {
                 </td>
                 <td>${caseType ? caseType.name : (caseTypes.length === 0 ? 'Loading...' : 'Unknown')}</td>
                 <td>
-                    <span class="badge bg-${this.getStatusColor(caseItem.status)}">
-                        ${this.capitalizeFirst(caseItem.status)}
+                    <span class="badge bg-${getCaseStatusColor(caseItem.status)}">
+                        ${getCaseStatusLabel(caseItem.status)}
                     </span>
                 </td>
                 <td>
