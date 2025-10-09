@@ -323,6 +323,7 @@ export class MapManager {
                             <p class="mb-1"><strong>Status:</strong> <span class="status-${normalizeStatus(tray.status)}">${getStatusDisplayText(tray.status)}</span></p>
                             <p class="mb-1"><strong>Location:</strong> ${locationInfo}</p>
                             ${tray.assignedTo ? `<p class="mb-1"><strong>Assigned to:</strong> ${window.app.trayManager.getUserName(tray.assignedTo)}</p>` : ''}
+                            ${tray.custody_id ? `<p class="mb-1"><strong>Custody:</strong> ${window.app.trayManager.getUserName(tray.custody_id)}</p>` : ''}
                             ${tray.caseDate ? `<p class="mb-1"><strong>Case Date:</strong> ${tray.caseDate}</p>` : ''}
                             ${surgeonName && surgeonName !== 'Not assigned' ? `<p class="mb-2"><strong>Physician:</strong> ${surgeonName}</p>` : ''}
                             ${actions ? `<div class="d-flex gap-2 mt-2">${actions}</div>` : ''}
@@ -899,6 +900,7 @@ export class MapManager {
                         <p class="mb-1"><strong>Status:</strong> <span class="status-${tray.status}">${getStatusDisplayText(tray.status)}</span></p>
                         <p class="mb-1"><strong>Location:</strong> ${locationInfo}</p>
                         ${tray.assignedTo ? `<p class="mb-1"><strong>Assigned to:</strong> ${window.app.trayManager.getUserName(tray.assignedTo)}</p>` : ''}
+                        ${tray.custody_id ? `<p class="mb-1"><strong>Custody:</strong> ${window.app.trayManager.getUserName(tray.custody_id)}</p>` : ''}
                         ${tray.caseDate ? `<p class="mb-1"><strong>Case Date:</strong> ${tray.caseDate}</p>` : ''}
                         ${surgeonName && surgeonName !== 'Not assigned' ? `<p class="mb-2"><strong>Physician:</strong> ${surgeonName}</p>` : ''}
                         ${actions ? `<div class="d-flex gap-2 mt-2">${actions}</div>` : ''}
