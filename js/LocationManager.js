@@ -179,12 +179,12 @@ export class LocationManager {
         this.renderLocations(locations);
         this.updateStats(locations);
 
-        // Update facilities in DataManager for tray forms
+        // Update facilities in DataManager for dropdowns
         if (window.app.dataManager) {
-            const facilityNames = locations
-                .filter(loc => loc.type === 'medical_facility' && loc.active)
-                .map(loc => loc.name);
-            window.app.dataManager.facilities = facilityNames;
+            // Store full facility objects (not just names) so dropdowns can access id and other fields
+            const activeFacilities = locations
+                .filter(loc => loc.type === 'medical_facility' && loc.active !== false);
+            window.app.dataManager.facilities = activeFacilities;
         }
     }
 

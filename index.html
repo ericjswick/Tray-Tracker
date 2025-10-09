@@ -2767,6 +2767,30 @@
 
                 <hr class="my-3">
 
+                <h6>Implant Type</h6>
+                <div class="mb-3">
+                    <div class="row">
+                        <div class="col-md-5">
+                            <label class="form-label mb-1 small">&nbsp;</label>
+                            <div class="form-control form-control-sm d-flex align-items-center" style="border: none; background: transparent; padding-left: 0;"><strong id="completeCaseImplantTypeName">-</strong></div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label mb-1 small">Qty</label>
+                            <input type="number" class="form-control form-control-sm" id="completeCaseImplantTypeQty" min="0" value="0">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label mb-1 small">Price</label>
+                            <input type="number" class="form-control form-control-sm" id="completeCaseImplantTypePrice" min="0" step="0.01" value="0.00">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label mb-1 small">Total</label>
+                            <div class="form-control form-control-sm d-flex align-items-center" style="border: none; background: transparent; padding-left: 0;"><strong id="completeCaseImplantTypeTotal">$0.00</strong></div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-3">
+
                 <h6>Consumables Used</h6>
                 <div style="max-height: 400px; overflow-y: auto;">
                     <style>
@@ -3011,46 +3035,43 @@
                 <hr class="my-3">
 
                 <h6>Sticker Photos</h6>
-                <div class="mb-3">
+                <div class="mb-3" id="leftSideStickersContainer">
                     <label class="form-label">Left Side Stickers:</label>
-                    <div class="d-flex gap-2 align-items-center">
-                        <button type="button" class="btn btn-primary" id="captureLeftSideStickers">
+                    <div class="photo-preview" id="leftSideStickersPreview"></div>
+                    <video id="leftSideStickersCamera" class="d-none" autoplay playsinline style="width: 100%; max-width: 400px; border-radius: 0.5rem;"></video>
+                    <canvas id="leftSideStickersCanvas" class="d-none"></canvas>
+                    <div class="photo-controls">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="app.photoManager.startCamera('leftSideStickers')">
                             <i class="fas fa-camera"></i> Take Photo
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="clearLeftSideStickers" style="display: none;">
-                            <i class="fas fa-times"></i> Clear
-                        </button>
+                        <input type="file" class="form-control mt-2" id="leftSideStickersPhotoFile" accept="image/*" onchange="app.photoManager.handleFileSelect('leftSideStickers', this)">
                     </div>
-                    <input type="file" id="leftSideStickersInput" accept="image/*" capture="environment" style="display: none;">
-                    <div id="leftSideStickersPreview" class="mt-2"></div>
                 </div>
 
-                <div class="mb-3">
+                <div class="mb-3" id="rightSideStickersContainer">
                     <label class="form-label">Right Side Stickers:</label>
-                    <div class="d-flex gap-2 align-items-center">
-                        <button type="button" class="btn btn-primary" id="captureRightSideStickers">
+                    <div class="photo-preview" id="rightSideStickersPreview"></div>
+                    <video id="rightSideStickersCamera" class="d-none" autoplay playsinline style="width: 100%; max-width: 400px; border-radius: 0.5rem;"></video>
+                    <canvas id="rightSideStickersCanvas" class="d-none"></canvas>
+                    <div class="photo-controls">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="app.photoManager.startCamera('rightSideStickers')">
                             <i class="fas fa-camera"></i> Take Photo
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="clearRightSideStickers" style="display: none;">
-                            <i class="fas fa-times"></i> Clear
-                        </button>
+                        <input type="file" class="form-control mt-2" id="rightSideStickersPhotoFile" accept="image/*" onchange="app.photoManager.handleFileSelect('rightSideStickers', this)">
                     </div>
-                    <input type="file" id="rightSideStickersInput" accept="image/*" capture="environment" style="display: none;">
-                    <div id="rightSideStickersPreview" class="mt-2"></div>
                 </div>
 
-                <div class="mb-3">
+                <div class="mb-3" id="patientStickersContainer">
                     <label class="form-label">Patient Stickers:</label>
-                    <div class="d-flex gap-2 align-items-center">
-                        <button type="button" class="btn btn-primary" id="capturePatientStickers">
+                    <div class="photo-preview" id="patientStickersPreview"></div>
+                    <video id="patientStickersCamera" class="d-none" autoplay playsinline style="width: 100%; max-width: 400px; border-radius: 0.5rem;"></video>
+                    <canvas id="patientStickersCanvas" class="d-none"></canvas>
+                    <div class="photo-controls">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="app.photoManager.startCamera('patientStickers')">
                             <i class="fas fa-camera"></i> Take Photo
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="clearPatientStickers" style="display: none;">
-                            <i class="fas fa-times"></i> Clear
-                        </button>
+                        <input type="file" class="form-control mt-2" id="patientStickersPhotoFile" accept="image/*" onchange="app.photoManager.handleFileSelect('patientStickers', this)">
                     </div>
-                    <input type="file" id="patientStickersInput" accept="image/*" capture="environment" style="display: none;">
-                    <div id="patientStickersPreview" class="mt-2"></div>
                 </div>
             </div>
             <div class="modal-footer">

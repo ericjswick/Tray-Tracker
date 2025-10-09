@@ -1343,9 +1343,12 @@ export class ModalManager {
             // Populate surgeons with improved retry logic for timing issues
             const surgeonSelect = document.getElementById('addCasePhysician');
             const editSurgeonSelect = document.getElementById('editCasePhysician');
+
             if (surgeonSelect || editSurgeonSelect) {
+                // Ensure surgeons are loaded first
+                await this.dataManager.ensureSurgeonsLoaded();
+
                 let surgeons = this.dataManager.getSurgeons();
-                console.log(`🔍 Initial surgeons check: ${surgeons ? surgeons.length : 'null/undefined'} surgeons found`);
 
                 // If surgeons aren't loaded yet, wait a bit and retry with longer timeout
                 let retryCount = 0;
@@ -1353,18 +1356,13 @@ export class ModalManager {
                 const retryDelay = 300; // Increased from 200ms
 
                 while ((!surgeons || surgeons.length === 0) && retryCount < maxRetries) {
-                    console.log(`⏳ Waiting for surgeons to load... attempt ${retryCount + 1}/${maxRetries}`);
                     await new Promise(resolve => setTimeout(resolve, retryDelay));
                     surgeons = this.dataManager.getSurgeons();
                     retryCount++;
                 }
 
-                console.log(`👨‍⚕️ Final surgeons check after ${retryCount} retries: ${surgeons ? surgeons.length : 'null/undefined'} surgeons`);
-
                 if (surgeons && surgeons.length > 0) {
                     const validSurgeons = surgeons.filter(surgeon => surgeon && surgeon.id && surgeon.full_name);
-                    console.log(`✅ Valid surgeons for dropdown: ${validSurgeons.length}`);
-
                     const surgeonOptions = '<option value="">Select Physician</option>' +
                         validSurgeons.map(surgeon => `<option value="${surgeon.id}">${surgeon.full_name}</option>`).join('');
 
@@ -1388,7 +1386,6 @@ export class ModalManager {
 
                         if (valueToSet) {
                             editSurgeonSelect.value = valueToSet;
-                            console.log(`✅ Set physician value after repopulation: ${valueToSet} (was: current=${currentValue}, pending=${pendingValue}, original=${originalValue})`);
 
                             // Clear pending value attribute once set
                             if (pendingValue) {
@@ -1405,8 +1402,12 @@ export class ModalManager {
                     this.setupPhysicianChangeHandlers();
                 } else {
                     console.error('❌ No surgeons available after waiting - DataManager surgeons:', this.dataManager.surgeons);
-                    surgeonSelect.innerHTML = '<option value="">No physicians available (loading...)</option>';
-                    if (editSurgeonSelect) editSurgeonSelect.innerHTML = '<option value="">No physicians available (loading...)</option>';
+                    if (surgeonSelect) {
+                        surgeonSelect.innerHTML = '<option value="">No physicians available (loading...)</option>';
+                    }
+                    if (editSurgeonSelect) {
+                        editSurgeonSelect.innerHTML = '<option value="">No physicians available (loading...)</option>';
+                    }
                 }
             }
 

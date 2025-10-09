@@ -331,16 +331,15 @@ export class SurgeonManager {
         this.renderSurgeons(surgeons);
         this.updateStats(surgeons);
 
-        // Update DataManager with surgeon names for dropdowns
+        // Update DataManager with full surgeon objects for dropdowns
         if (window.app.dataManager) {
             console.log('  - Updating DataManager.surgeons');
             console.log('  - Previous DataManager.surgeons count:', window.app.dataManager.surgeons?.length || 0);
 
-            const surgeonNames = surgeons
-                .filter(surgeon => surgeon.active)
-                .map(surgeon => surgeon.full_name || 'Physician with no full name');
+            // Store full surgeon objects (not just names) so dropdowns can access id and full_name
+            const activeSurgeons = surgeons.filter(surgeon => surgeon.active !== false);
 
-            window.app.dataManager.surgeons = surgeonNames;
+            window.app.dataManager.surgeons = activeSurgeons;
             console.log('  - New DataManager.surgeons count:', window.app.dataManager.surgeons?.length || 0);
         } else {
             console.warn('⚠️ window.app.dataManager not available!');

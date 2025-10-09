@@ -1,10 +1,10 @@
 // Case Status Constants - Single source of truth for all case statuses
-// Order: Scheduled, Set, Cancelled, Complete, Removed
+// Order: Scheduled, Set, Cancelled, Completed, Removed
 export const CASE_STATUS = {
     SCHEDULED: 'Scheduled',
     SET: 'Set',
     CANCELLED: 'Cancelled',
-    COMPLETE: 'Complete',
+    COMPLETED: 'Completed',
     REMOVED: 'Removed'
 };
 
@@ -13,7 +13,7 @@ export const CASE_STATUS_OPTIONS = [
     { value: CASE_STATUS.SCHEDULED, label: 'Scheduled' },
     { value: CASE_STATUS.SET, label: 'Set' },
     { value: CASE_STATUS.CANCELLED, label: 'Cancelled' },
-    { value: CASE_STATUS.COMPLETE, label: 'Complete' },
+    { value: CASE_STATUS.COMPLETED, label: 'Completed' },
     { value: CASE_STATUS.REMOVED, label: 'Removed' }
 ];
 
@@ -28,25 +28,67 @@ export function isValidCaseStatus(status) {
     return CASE_STATUS_VALUES.includes(status);
 }
 
+// Helper to normalize status values (handle legacy lowercase values)
+export function normalizeCaseStatus(status) {
+    if (!status) return DEFAULT_CASE_STATUS;
+
+    const lowerStatus = status.toLowerCase();
+    switch (lowerStatus) {
+        case 'scheduled':
+            return CASE_STATUS.SCHEDULED;
+        case 'set':
+            return CASE_STATUS.SET;
+        case 'cancelled':
+            return CASE_STATUS.CANCELLED;
+        case 'completed':
+        case 'complete':
+            return CASE_STATUS.COMPLETED;
+        case 'removed':
+            return CASE_STATUS.REMOVED;
+        default:
+            return status; // Return as-is if it's already normalized
+    }
+}
+
 // Status display helpers
 export function getCaseStatusLabel(status) {
-    return status || DEFAULT_CASE_STATUS;
+    return normalizeCaseStatus(status);
 }
 
 export function getCaseStatusClass(status) {
-    switch (status) {
+    const normalized = normalizeCaseStatus(status);
+    switch (normalized) {
         case CASE_STATUS.SCHEDULED:
             return 'status-scheduled';
         case CASE_STATUS.SET:
             return 'status-set';
         case CASE_STATUS.CANCELLED:
             return 'status-cancelled';
-        case CASE_STATUS.COMPLETE:
-            return 'status-complete';
+        case CASE_STATUS.COMPLETED:
+            return 'status-completed';
         case CASE_STATUS.REMOVED:
             return 'status-removed';
         default:
             return 'status-scheduled';
+    }
+}
+
+// Get Bootstrap color class for status badge
+export function getCaseStatusColor(status) {
+    const normalized = normalizeCaseStatus(status);
+    switch (normalized) {
+        case CASE_STATUS.SCHEDULED:
+            return 'primary';
+        case CASE_STATUS.SET:
+            return 'info';
+        case CASE_STATUS.CANCELLED:
+            return 'danger';
+        case CASE_STATUS.COMPLETED:
+            return 'success';
+        case CASE_STATUS.REMOVED:
+            return 'secondary';
+        default:
+            return 'secondary';
     }
 }
 
@@ -56,15 +98,15 @@ export function getNextCaseStatus(currentStatus) {
         CASE_STATUS.SCHEDULED,
         CASE_STATUS.SET,
         CASE_STATUS.CANCELLED,
-        CASE_STATUS.COMPLETE,
+        CASE_STATUS.COMPLETED,
         CASE_STATUS.REMOVED
     ];
-    
+
     const currentIndex = statusOrder.indexOf(currentStatus);
     if (currentIndex === -1 || currentIndex === statusOrder.length - 1) {
         return currentStatus; // Return current if not found or if it's the last status
     }
-    
+
     return statusOrder[currentIndex + 1];
 }
 
@@ -73,29 +115,32 @@ export function getPreviousCaseStatus(currentStatus) {
         CASE_STATUS.SCHEDULED,
         CASE_STATUS.SET,
         CASE_STATUS.CANCELLED,
-        CASE_STATUS.COMPLETE,
+        CASE_STATUS.COMPLETED,
         CASE_STATUS.REMOVED
     ];
-    
+
     const currentIndex = statusOrder.indexOf(currentStatus);
     if (currentIndex <= 0) {
         return currentStatus; // Return current if not found or if it's the first status
     }
-    
+
     return statusOrder[currentIndex - 1];
 }
 
 // Status category helpers
 export function isActiveCaseStatus(status) {
-    return status === CASE_STATUS.SCHEDULED || status === CASE_STATUS.SET;
+    const normalized = normalizeCaseStatus(status);
+    return normalized === CASE_STATUS.SCHEDULED || normalized === CASE_STATUS.SET;
 }
 
 export function isCompletedCaseStatus(status) {
-    return status === CASE_STATUS.COMPLETE;
+    const normalized = normalizeCaseStatus(status);
+    return normalized === CASE_STATUS.COMPLETED;
 }
 
 export function isInactiveCaseStatus(status) {
-    return status === CASE_STATUS.CANCELLED || status === CASE_STATUS.REMOVED;
+    const normalized = normalizeCaseStatus(status);
+    return normalized === CASE_STATUS.CANCELLED || normalized === CASE_STATUS.REMOVED;
 }
 
 // Status filtering helpers

@@ -81,7 +81,9 @@ export class DashboardManager {
 
     filterCasesByDate(cases, filterType) {
         // Use string-based date comparison to avoid timezone issues
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+        // Get today's date in local timezone as YYYY-MM-DD format
+        const todayDate = new Date();
+        const today = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
 
         const filtered = cases.filter(caseItem => {
             const caseDate = caseItem.scheduledDate; // Already in YYYY-MM-DD format
@@ -97,13 +99,13 @@ export class DashboardManager {
                 case 'tomorrow':
                     const tomorrowDate = new Date();
                     tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-                    const tomorrow = tomorrowDate.toISOString().split('T')[0];
+                    const tomorrow = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`;
                     return caseDate === tomorrow;
 
                 case 'week':
                     const weekEndDate = new Date();
                     weekEndDate.setDate(weekEndDate.getDate() + 7);
-                    const weekEnd = weekEndDate.toISOString().split('T')[0];
+                    const weekEnd = `${weekEndDate.getFullYear()}-${String(weekEndDate.getMonth() + 1).padStart(2, '0')}-${String(weekEndDate.getDate()).padStart(2, '0')}`;
                     return caseDate >= today && caseDate <= weekEnd;
 
                 case 'upcoming':
@@ -112,14 +114,14 @@ export class DashboardManager {
                 case 'month':
                     const monthEndDate = new Date();
                     monthEndDate.setMonth(monthEndDate.getMonth() + 1);
-                    const monthEnd = monthEndDate.toISOString().split('T')[0];
+                    const monthEnd = `${monthEndDate.getFullYear()}-${String(monthEndDate.getMonth() + 1).padStart(2, '0')}-${String(monthEndDate.getDate()).padStart(2, '0')}`;
                     return caseDate >= today && caseDate <= monthEnd;
 
                 case 'recent':
                     // Last 7 days (past cases)
                     const sevenDaysAgoDate = new Date();
                     sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 7);
-                    const sevenDaysAgo = sevenDaysAgoDate.toISOString().split('T')[0];
+                    const sevenDaysAgo = `${sevenDaysAgoDate.getFullYear()}-${String(sevenDaysAgoDate.getMonth() + 1).padStart(2, '0')}-${String(sevenDaysAgoDate.getDate()).padStart(2, '0')}`;
                     return caseDate >= sevenDaysAgo && caseDate < today;
 
                 case 'past':
@@ -181,12 +183,15 @@ export class DashboardManager {
 
         // Determine appropriate date label based on filter type and case date
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const caseDate = new Date(caseItem.scheduledDate);
-        caseDate.setHours(0, 0, 0, 0);
-        const diffTime = caseDate - today;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
+        const todayDateOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+        // Parse the case date string (YYYY-MM-DD) to avoid timezone issues
+        const [year, month, day] = caseItem.scheduledDate.split('-').map(Number);
+        const caseDateOnly = new Date(year, month - 1, day); // month is 0-indexed
+
+        const diffTime = caseDateOnly - todayDateOnly;
+        const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
         let dateLabel = '';
         
         if (this.dateFilter === 'recent' || this.dateFilter === 'past') {
@@ -267,6 +272,11 @@ export class DashboardManager {
                     ${caseItem.status === CASE_STATUS.SCHEDULED ? `
                         <button class="btn btn-sm btn-outline-primary" onclick="window.app.dashboardManager.showManualCheckInModal('${caseItem.id}')" title="Select Trays to Check In">
                             <i class="fas fa-hand-pointer"></i> Check In
+                        </button>
+                    ` : ''}
+                    ${caseItem.status === 'completed' ? `
+                        <button class="btn btn-sm btn-info" onclick="window.app.casesManager.downloadCompletedCaseRPO('${caseItem.id}', '${caseItem.facility_id || caseItem.facility}', '${caseItem.case_type || caseItem.type}')" title="Download RPO">
+                            <i class="fas fa-download"></i> Download RPO
                         </button>
                     ` : ''}
                 </div>
@@ -1268,12 +1278,14 @@ export class DashboardManager {
                 return 'No Trays Required';
             }
 
-            // Calculate days until case starts
-            const caseDate = new Date(caseItem.scheduledDate);
+            // Calculate days until case starts (avoid timezone issues)
             const today = new Date();
-            today.setHours(0, 0, 0, 0); // Reset time for accurate date comparison
-            caseDate.setHours(0, 0, 0, 0);
-            const daysUntilCase = Math.ceil((caseDate - today) / (1000 * 60 * 60 * 24));
+            const todayDateOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+            const [year, month, day] = caseItem.scheduledDate.split('-').map(Number);
+            const caseDateOnly = new Date(year, month - 1, day);
+
+            const daysUntilCase = Math.ceil((caseDateOnly - todayDateOnly) / (1000 * 60 * 60 * 24));
 
             // Get all available trays to match with requirements
             const allTrays = await this.dataManager.getAllTrays();

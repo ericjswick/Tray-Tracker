@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OCR Text Position Analyzer</title>
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js'></script>
+</head>
+<body>
+    <h1>OCR Text Position Analyzer</h1>
+    <p>Analyzing: documents/request-for-purchase-order-template.png</p>
+    <div id="status">Loading image...</div>
+    <div id="results"></div>
+    <img id="sourceImage" src="documents/request-for-purchase-order-template.png" style="max-width: 100%; border: 1px solid #ccc; margin-top: 20px;">
+
+    <script>
+        const imageUrl = 'documents/request-for-purchase-order-template.png';
+        const statusDiv = document.getElementById('status');
+        const resultsDiv = document.getElementById('results');
+
+        statusDiv.textContent = 'Initializing Tesseract...';
+
+        Tesseract.recognize(
+            imageUrl,
+            'eng',
+            {
+                logger: m => {
+                    if (m.status === 'recognizing text') {
+                        statusDiv.textContent = `Processing: ${Math.round(m.progress * 100)}%`;
+                    }
+                }
+            }
+        ).then(({ data: { words, text } }) => {
+            statusDiv.textContent = 'OCR Complete!';
+
+            // Find specific fields we're looking for
+            const fieldsToFind = [
+                'Institution',
+                'Physician',
+                'Address',
+                'City',
+                'State',
+                'Zip',
+                'Sales',
+                'Rep',
+                'Distributor'
+            ];
+
+            let output = '<h2>Text Positions Found:</h2><pre>';
+            output += 'Field Name                     | X     | Y     | Width | Height\n';
+            output += '-----------------------------------------------------------\n';
+
+            words.forEach(word => {
+                const text = word.text.trim();
+                const bbox = word.bbox;
+
+                // Check if this word matches any of our fields
+                fieldsToFind.forEach(field => {
+                    if (text.toLowerCase().includes(field.toLowerCase())) {
+                        output += `${text.padEnd(30)} | ${bbox.x0.toString().padEnd(5)} | ${bbox.y0.toString().padEnd(5)} | ${(bbox.x1-bbox.x0).toString().padEnd(5)} | ${(bbox.y1-bbox.y0)}\n`;
+                    }
+                });
+            });
+
+            output += '\n\nAll detected words:\n';
+            words.forEach(word => {
+                const bbox = word.bbox;
+                output += `"${word.text}" at (${bbox.x0}, ${bbox.y0}) size: ${bbox.x1-bbox.x0}x${bbox.y1-bbox.y0}\n`;
+            });
+
+            output += '</pre>';
+            resultsDiv.innerHTML = output;
+
+            // Log to console as well
+            console.log('OCR Results:', words);
+
+        }).catch(err => {
+            statusDiv.textContent = 'Error: ' + err.message;
+            console.error(err);
+        });
+    </script>
+</body>
+</html>

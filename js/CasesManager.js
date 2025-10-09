@@ -1,5 +1,5 @@
 // js/CasesManager.js - Cases Management for Tray Tracker
-import { CASE_STATUS, CASE_STATUS_OPTIONS, DEFAULT_CASE_STATUS, getCaseStatusClass, isValidCaseStatus, populateCaseStatusDropdown } from './constants/CaseStatus.js';
+import { CASE_STATUS, CASE_STATUS_OPTIONS, DEFAULT_CASE_STATUS, getCaseStatusClass, getCaseStatusColor, getCaseStatusLabel, isCompletedCaseStatus, isValidCaseStatus, normalizeCaseStatus, populateCaseStatusDropdown } from './constants/CaseStatus.js';
 import { TRAY_LOCATIONS } from './constants/TrayLocations.js';
 import { TRAY_STATUS, isCheckedInStatus } from './constants/TrayStatus.js';
 import { emailNotifications } from './utils/EmailNotifications.js';
@@ -199,7 +199,7 @@ export class CasesManager {
                 scheduledDate: scheduledDate, // Store date (assume CDT)
                 scheduledTime: scheduledTime, // Store time (assume CDT)
                 estimatedDuration: parseInt(document.getElementById('estimatedDuration').value) || 60,
-                status: document.getElementById('caseStatus').value || DEFAULT_CASE_STATUS,
+                status: normalizeCaseStatus(document.getElementById('caseStatus').value || DEFAULT_CASE_STATUS),
                 notes: document.getElementById('caseNotes').value,
                 priority: document.getElementById('casePriority').value || 'normal'
             };
@@ -344,25 +344,26 @@ export class CasesManager {
             filteredCases = filteredCases.filter(caseItem => caseItem.status === statusFilter);
         }
 
-        // Apply date filter - use string-based comparison to avoid timezone issues
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+        // Apply date filter - use local timezone dates to avoid timezone issues
+        const todayDate = new Date();
+        const today = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
 
-        // Calculate other dates as strings
+        // Calculate other dates as strings in local timezone
         const tomorrowDate = new Date();
         tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-        const tomorrow = tomorrowDate.toISOString().split('T')[0];
+        const tomorrow = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`;
 
         const weekFromNowDate = new Date();
         weekFromNowDate.setDate(weekFromNowDate.getDate() + 7);
-        const weekFromNow = weekFromNowDate.toISOString().split('T')[0];
+        const weekFromNow = `${weekFromNowDate.getFullYear()}-${String(weekFromNowDate.getMonth() + 1).padStart(2, '0')}-${String(weekFromNowDate.getDate()).padStart(2, '0')}`;
 
         const monthFromNowDate = new Date();
         monthFromNowDate.setMonth(monthFromNowDate.getMonth() + 1);
-        const monthFromNow = monthFromNowDate.toISOString().split('T')[0];
+        const monthFromNow = `${monthFromNowDate.getFullYear()}-${String(monthFromNowDate.getMonth() + 1).padStart(2, '0')}-${String(monthFromNowDate.getDate()).padStart(2, '0')}`;
 
         const weekAgoDate = new Date();
         weekAgoDate.setDate(weekAgoDate.getDate() - 7);
-        const weekAgo = weekAgoDate.toISOString().split('T')[0];
+        const weekAgo = `${weekAgoDate.getFullYear()}-${String(weekAgoDate.getMonth() + 1).padStart(2, '0')}-${String(weekAgoDate.getDate()).padStart(2, '0')}`;
 
         filteredCases = filteredCases.filter(caseItem => {
             const caseDate = caseItem.scheduledDate; // Already in YYYY-MM-DD format
@@ -427,7 +428,7 @@ export class CasesManager {
                 <table class="table table-hover">
                     <thead>
                         <tr>
-                            <th>Patient</th>
+                            <th>Case Name</th>
                             <th>Surgeon</th>
                             <th>Facility</th>
                             <th>Date & Time</th>
@@ -578,7 +579,8 @@ export class CasesManager {
     }
 
     updateCasesStats(cases) {
-        const today = new Date().toISOString().split('T')[0];
+        const todayDate = new Date();
+        const today = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
         const totalCases = cases.length;
         const todayCases = cases.filter(c => c.scheduledDate === today).length;
         const urgentCases = cases.filter(c => c.priority === 'urgent').length;
@@ -657,25 +659,42 @@ export class CasesManager {
                 // Ensure dropdowns are populated before showing modal
                 await window.app.modalManager.populateCaseModalDropdowns();
 
-                // Update modal footer to include Cancel Case and Complete Case buttons
+                // Update modal footer based on case status
                 const modalFooter = document.querySelector('#editCaseModal .modal-footer');
                 if (modalFooter) {
-                    modalFooter.innerHTML = `
-                        <div class="d-flex justify-content-between w-100">
-                            <div>
-                                <button type="button" class="btn btn-warning me-2" onclick="app.casesManager.cancelCase('${caseData.id}')" data-bs-dismiss="modal">
-                                    <i class="fas fa-times-circle"></i> Cancel Case
-                                </button>
-                                <button type="button" class="btn btn-success" onclick="app.casesManager.showCompleteCaseModal('${caseData.id}')">
-                                    <i class="fas fa-check-circle"></i> Complete Case
-                                </button>
+                    // Show different buttons based on case status
+                    if (isCompletedCaseStatus(caseData.status)) {
+                        modalFooter.innerHTML = `
+                            <div class="d-flex justify-content-between w-100">
+                                <div>
+                                    <button type="button" class="btn btn-info" onclick="window.app.casesManager.downloadCompletedCaseRPO('${caseData.id}', '${caseData.facility_id || caseData.facility}', '${caseData.case_type || caseData.type}')">
+                                        <i class="fas fa-download"></i> Download RPO
+                                    </button>
+                                </div>
+                                <div>
+                                    <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Close</button>
+                                    <button type="button" class="btn btn-primary" onclick="app.casesManager.updateCase()">Update Case</button>
+                                </div>
                             </div>
-                            <div>
-                                <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Close</button>
-                                <button type="button" class="btn btn-primary" onclick="app.casesManager.updateCase()">Update Case</button>
+                        `;
+                    } else {
+                        modalFooter.innerHTML = `
+                            <div class="d-flex justify-content-between w-100">
+                                <div>
+                                    <button type="button" class="btn btn-warning me-2" onclick="app.casesManager.cancelCase('${caseData.id}')" data-bs-dismiss="modal">
+                                        <i class="fas fa-times-circle"></i> Cancel Case
+                                    </button>
+                                    <button type="button" class="btn btn-success" onclick="app.casesManager.showCompleteCaseModal('${caseData.id}')">
+                                        <i class="fas fa-check-circle"></i> Complete Case
+                                    </button>
+                                </div>
+                                <div>
+                                    <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Close</button>
+                                    <button type="button" class="btn btn-primary" onclick="app.casesManager.updateCase()">Update Case</button>
+                                </div>
                             </div>
-                        </div>
-                    `;
+                        `;
+                    }
                 }
 
                 const modal = new bootstrap.Modal(document.getElementById('editCaseModal'));
@@ -755,11 +774,20 @@ export class CasesManager {
         // Initialize and populate case status dropdown using central function
         const statusDropdown = document.getElementById('editCaseStatus');
         if (statusDropdown) {
+            // Normalize status value using centralized function
+            const normalizedStatus = normalizeCaseStatus(caseData.status);
+
+            console.log('🔍 Setting status dropdown:', {
+                caseDataStatus: caseData.status,
+                normalizedStatus: normalizedStatus,
+                defaultStatus: DEFAULT_CASE_STATUS
+            });
             populateCaseStatusDropdown(statusDropdown, {
                 includeAllOption: false,
                 includeEmptyOption: false,
-                selectedValue: caseData.status || DEFAULT_CASE_STATUS
+                selectedValue: normalizedStatus
             });
+            console.log('✅ Status dropdown set to:', statusDropdown.value);
         }
         
         document.getElementById('editCasePriority').value = caseData.priority || '';
@@ -998,7 +1026,7 @@ export class CasesManager {
                 scheduledDate: document.getElementById('editScheduledDate').value,
                 scheduledTime: document.getElementById('editScheduledTime').value,
                 estimatedDuration: parseInt(document.getElementById('editEstimatedDuration').value) || 60,
-                status: document.getElementById('editCaseStatus').value,
+                status: normalizeCaseStatus(document.getElementById('editCaseStatus').value),
                 priority: document.getElementById('editCasePriority').value,
                 notes: document.getElementById('editCaseNotes').value,
                 tray_requirements: trayRequirements
@@ -1041,7 +1069,7 @@ export class CasesManager {
             }
             
             // Check if case status was changed to "Removed" - if so, move all checked-in trays to trunk
-            if (updates.status === 'removed') {
+            if (updates.status === CASE_STATUS.REMOVED) {
                 await this.handleCaseRemovedTrays(caseId);
             }
             
@@ -1091,7 +1119,7 @@ export class CasesManager {
         try {
             // Update case status to cancelled
             await this.dataManager.updateCase(caseId, {
-                status: 'cancelled',
+                status: CASE_STATUS.CANCELLED,
                 updated_at: new Date().toISOString()
             });
 
@@ -1139,6 +1167,26 @@ export class CasesManager {
         this.currentCaseFacility = caseData.facility_id || caseData.facility;
         this.currentCaseType = caseData.case_type || caseData.type;
 
+        // Get implant type name
+        let implantTypeName = 'Unknown Implant Type';
+        console.log('Case implant_type_id:', caseData.implant_type_id);
+        console.log('implantTypeManager available:', !!window.app?.implantTypeManager);
+
+        if (caseData.implant_type_id && window.app?.implantTypeManager) {
+            const implantTypes = window.app.implantTypeManager.getActiveImplantTypes?.() || [];
+            console.log('Available implant types:', implantTypes.length);
+            console.log('First implant type:', implantTypes[0]);
+
+            const implantType = implantTypes.find(it => it && it.id === caseData.implant_type_id);
+            console.log('Found implant type:', implantType);
+
+            if (implantType) {
+                implantTypeName = implantType.name || implantType.implant_type_name || 'Unknown Implant Type';
+            }
+        }
+
+        console.log('Final implant type name:', implantTypeName);
+
         // Show the modal with higher z-index to appear above case details modal
         const modalElement = document.getElementById('completeCaseModal');
         const modal = new bootstrap.Modal(modalElement);
@@ -1156,26 +1204,86 @@ export class CasesManager {
 
         modal.show();
 
-        // Set up consumables calculation
-        this.setupConsumablesCalculation();
+        // Set implant type name after modal is shown
+        const implantTypeNameElement = document.getElementById('completeCaseImplantTypeName');
+        console.log('implantTypeName element:', implantTypeNameElement);
+        if (implantTypeNameElement) {
+            implantTypeNameElement.textContent = implantTypeName;
+            console.log('Set implant type name to:', implantTypeName);
+        } else {
+            console.error('implantTypeName element not found!');
+        }
 
-        // Load saved line items for this facility and case type
-        await this.loadSavedLineItems(this.currentCaseFacility, this.currentCaseType);
+        // Set up disposables calculation (includes implant type now)
+        this.setupDisposablesCalculation();
 
-        // Set up sticker photo handlers
-        this.setupStickerPhotoHandlers();
+        // First, try to load case-specific disposables data if it exists
+        if (caseData.disposables_data) {
+            console.log('Loading case-specific disposables data:', caseData.disposables_data);
+            this.loadDisposablesFromData(caseData.disposables_data);
+        } else {
+            // Fall back to template data if no case-specific data exists
+            await this.loadSavedLineItems(this.currentCaseFacility, this.currentCaseType);
+        }
 
         // Set up the confirm button click handler
         const confirmBtn = document.getElementById('confirmCompleteCaseBtn');
         confirmBtn.onclick = async () => {
+            // Collect disposables data
+            const implantTypeQty = document.getElementById('completeCaseImplantTypeQty');
+            const implantTypePrice = document.getElementById('completeCaseImplantTypePrice');
+            const implantTypeName = document.getElementById('completeCaseImplantTypeName');
+
+            const implantType = {
+                name: implantTypeName ? implantTypeName.textContent : '',
+                qty: implantTypeQty ? (parseFloat(implantTypeQty.value) || 0) : 0,
+                price: implantTypePrice ? (parseFloat(implantTypePrice.value) || 0) : 0
+            };
+
+            // Collect all line items
+            const lineItems = {};
+            document.querySelectorAll('.consumable-qty').forEach((qtyInput) => {
+                const rowIndex = qtyInput.dataset.row;
+                const priceInput = document.querySelector(`.consumable-price[data-row="${rowIndex}"]`);
+                const itemName = qtyInput.closest('tr').querySelector('td:first-child').textContent.trim();
+
+                lineItems[rowIndex] = {
+                    itemName: itemName,
+                    qty: parseFloat(qtyInput.value) || 0,
+                    price: parseFloat(priceInput.value) || 0
+                };
+            });
+
+            const disposablesData = {
+                implant_type: implantType,
+                line_items: lineItems
+            };
+
+            // Save to template (for future cases with same facility + case type)
             await this.saveLineItems(this.currentCaseFacility, this.currentCaseType);
+
+            // Save disposables to the case document itself
+            await this.saveCaseDisposables(caseId, disposablesData);
+
+            const completionData = {
+                implant_type: {
+                    name: implantType.name,
+                    qty: implantType.qty,
+                    price: implantType.price,
+                    total: implantType.qty * implantType.price
+                },
+                disposables: this.getDisposablesData()
+            };
+
+            console.log('Completion data being saved:', completionData);
+
             modal.hide();
             // Close parent modal (case details modal) if it exists
             const caseDetailsModal = bootstrap.Modal.getInstance(document.getElementById('caseDetailsModal'));
             if (caseDetailsModal) {
                 caseDetailsModal.hide();
             }
-            this.completeCase(caseId);
+            this.completeCase(caseId, completionData);
         };
 
         // Set up PDF preview button click handler
@@ -1186,97 +1294,6 @@ export class CasesManager {
         };
     }
 
-    setupStickerPhotoHandlers() {
-        // Left Side Stickers
-        const captureLeftBtn = document.getElementById('captureLeftSideStickers');
-        const leftSideInput = document.getElementById('leftSideStickersInput');
-        const leftSidePreview = document.getElementById('leftSideStickersPreview');
-        const clearLeftSide = document.getElementById('clearLeftSideStickers');
-
-        captureLeftBtn.addEventListener('click', () => {
-            leftSideInput.click();
-        });
-
-        leftSideInput.addEventListener('change', (e) => {
-            this.handlePhotoUpload(e, leftSidePreview, 'leftSideStickers', clearLeftSide);
-        });
-
-        clearLeftSide.addEventListener('click', () => {
-            leftSideInput.value = '';
-            leftSidePreview.innerHTML = '';
-            clearLeftSide.style.display = 'none';
-            this.stickerPhotos.leftSideStickers = null;
-        });
-
-        // Right Side Stickers
-        const captureRightBtn = document.getElementById('captureRightSideStickers');
-        const rightSideInput = document.getElementById('rightSideStickersInput');
-        const rightSidePreview = document.getElementById('rightSideStickersPreview');
-        const clearRightSide = document.getElementById('clearRightSideStickers');
-
-        captureRightBtn.addEventListener('click', () => {
-            rightSideInput.click();
-        });
-
-        rightSideInput.addEventListener('change', (e) => {
-            this.handlePhotoUpload(e, rightSidePreview, 'rightSideStickers', clearRightSide);
-        });
-
-        clearRightSide.addEventListener('click', () => {
-            rightSideInput.value = '';
-            rightSidePreview.innerHTML = '';
-            clearRightSide.style.display = 'none';
-            this.stickerPhotos.rightSideStickers = null;
-        });
-
-        // Patient Stickers
-        const capturePatientBtn = document.getElementById('capturePatientStickers');
-        const patientInput = document.getElementById('patientStickersInput');
-        const patientPreview = document.getElementById('patientStickersPreview');
-        const clearPatient = document.getElementById('clearPatientStickers');
-
-        capturePatientBtn.addEventListener('click', () => {
-            patientInput.click();
-        });
-
-        patientInput.addEventListener('change', (e) => {
-            this.handlePhotoUpload(e, patientPreview, 'patientStickers', clearPatient);
-        });
-
-        clearPatient.addEventListener('click', () => {
-            patientInput.value = '';
-            patientPreview.innerHTML = '';
-            clearPatient.style.display = 'none';
-            this.stickerPhotos.patientStickers = null;
-        });
-
-        // Initialize sticker photos object
-        this.stickerPhotos = {
-            leftSideStickers: null,
-            rightSideStickers: null,
-            patientStickers: null
-        };
-    }
-
-    handlePhotoUpload(event, previewContainer, photoType, clearButton) {
-        const file = event.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            // Store the photo data
-            this.stickerPhotos[photoType] = e.target.result;
-
-            // Show preview
-            previewContainer.innerHTML = `
-                <img src="${e.target.result}" class="img-thumbnail" style="max-width: 200px; max-height: 200px;">
-            `;
-
-            // Show clear button
-            clearButton.style.display = 'inline-block';
-        };
-        reader.readAsDataURL(file);
-    }
 
     async saveLineItems(facilityId, caseType) {
         try {
@@ -1284,6 +1301,17 @@ export class CasesManager {
                 console.warn('Missing facility or case type for saving line items');
                 return;
             }
+
+            // Collect implant type data
+            const implantTypeQty = document.getElementById('completeCaseImplantTypeQty');
+            const implantTypePrice = document.getElementById('completeCaseImplantTypePrice');
+            const implantTypeName = document.getElementById('completeCaseImplantTypeName');
+
+            const implantType = {
+                name: implantTypeName ? implantTypeName.textContent : '',
+                qty: implantTypeQty ? (parseFloat(implantTypeQty.value) || 0) : 0,
+                price: implantTypePrice ? (parseFloat(implantTypePrice.value) || 0) : 0
+            };
 
             // Collect all line item data
             const lineItems = {};
@@ -1308,6 +1336,7 @@ export class CasesManager {
             await setDoc(doc(this.dataManager.db, 'disposable_saved_line_items', docId), {
                 facility_id: facilityId,
                 case_type: caseType,
+                implant_type: implantType,
                 line_items: lineItems,
                 updated_at: serverTimestamp(),
                 updated_by: currentUser?.uid || null
@@ -1320,8 +1349,68 @@ export class CasesManager {
         }
     }
 
+    async saveCaseDisposables(caseId, disposablesData) {
+        try {
+            console.log('💾 Saving disposables to case document:', caseId, disposablesData);
+
+            await this.dataManager.updateCase(caseId, {
+                disposables_data: disposablesData,
+                updated_at: new Date().toISOString()
+            });
+
+            console.log('✅ Saved disposables to case document');
+        } catch (error) {
+            console.error('Error saving disposables to case:', error);
+        }
+    }
+
+    loadDisposablesFromData(disposablesData) {
+        try {
+            console.log('Loading disposables from case data:', disposablesData);
+
+            // Load implant type if available
+            if (disposablesData.implant_type) {
+                const implantTypeQty = document.getElementById('completeCaseImplantTypeQty');
+                const implantTypePrice = document.getElementById('completeCaseImplantTypePrice');
+
+                if (implantTypeQty && implantTypePrice) {
+                    implantTypeQty.value = disposablesData.implant_type.qty || 0;
+                    implantTypePrice.value = disposablesData.implant_type.price || 0;
+
+                    // Trigger calculation
+                    const event = new Event('input', { bubbles: true });
+                    implantTypeQty.dispatchEvent(event);
+                }
+            }
+
+            // Load line items if available
+            if (disposablesData.line_items) {
+                Object.keys(disposablesData.line_items).forEach((rowIndex) => {
+                    const item = disposablesData.line_items[rowIndex];
+                    const qtyInput = document.querySelector(`.consumable-qty[data-row="${rowIndex}"]`);
+                    const priceInput = document.querySelector(`.consumable-price[data-row="${rowIndex}"]`);
+
+                    if (qtyInput && priceInput) {
+                        qtyInput.value = item.qty || 0;
+                        priceInput.value = item.price || 0;
+
+                        // Trigger calculation
+                        const event = new Event('input', { bubbles: true });
+                        qtyInput.dispatchEvent(event);
+                    }
+                });
+            }
+
+            console.log('✅ Loaded disposables from case data');
+        } catch (error) {
+            console.error('Error loading disposables from case data:', error);
+        }
+    }
+
     async loadSavedLineItems(facilityId, caseType) {
         try {
+            console.log('🔍 loadSavedLineItems called with:', { facilityId, caseType });
+
             if (!facilityId || !caseType) {
                 console.warn('Missing facility or case type for loading line items');
                 return;
@@ -1329,20 +1418,47 @@ export class CasesManager {
 
             // Create composite key for facility + case type
             const docId = `${facilityId}_${caseType}`;
+            console.log('Looking for document ID:', docId);
 
             // Load from Firestore using modular SDK
             const docRef = doc(this.dataManager.db, 'disposable_saved_line_items', docId);
             const docSnap = await getDoc(docRef);
 
+            console.log('Document exists:', docSnap.exists());
+
             if (docSnap.exists()) {
                 const data = docSnap.data();
+                console.log('Saved data:', data);
+
+                // Load implant type data if available
+                if (data.implant_type) {
+                    console.log('Loading implant type data:', data.implant_type);
+                    const implantTypeQty = document.getElementById('completeCaseImplantTypeQty');
+                    const implantTypePrice = document.getElementById('completeCaseImplantTypePrice');
+
+                    console.log('Implant type elements found:', { qtyInput: !!implantTypeQty, priceInput: !!implantTypePrice });
+
+                    if (implantTypeQty && implantTypePrice) {
+                        implantTypeQty.value = data.implant_type.qty || 0;
+                        implantTypePrice.value = data.implant_type.price || 0;
+
+                        // Trigger calculation
+                        const event = new Event('input', { bubbles: true });
+                        implantTypeQty.dispatchEvent(event);
+                    }
+                }
+
+                // Load line items
                 const lineItems = data.line_items;
+                console.log('Line items to load:', lineItems);
 
                 // Populate the form with saved values
                 Object.keys(lineItems).forEach((rowIndex) => {
                     const item = lineItems[rowIndex];
                     const qtyInput = document.querySelector(`.consumable-qty[data-row="${rowIndex}"]`);
                     const priceInput = document.querySelector(`.consumable-price[data-row="${rowIndex}"]`);
+
+                    console.log(`Row ${rowIndex}:`, { item, foundQty: !!qtyInput, foundPrice: !!priceInput });
 
                     if (qtyInput && priceInput) {
                         qtyInput.value = item.qty || 0;
@@ -1356,7 +1472,7 @@ export class CasesManager {
 
                 console.log(`✅ Loaded saved line items for facility ${facilityId}, case type ${caseType}`);
             } else {
-                console.log(`No saved line items found for facility ${facilityId}, case type ${caseType}`);
+                console.log(`❌ No saved line items found for facility ${facilityId}, case type ${caseType}`);
             }
         } catch (error) {
             console.error('Error loading line items:', error);
@@ -1364,7 +1480,21 @@ export class CasesManager {
         }
     }
 
-    setupConsumablesCalculation() {
+    setupDisposablesCalculation() {
+        // Function to calculate implant type total
+        const calculateImplantTypeTotal = () => {
+            const qtyInput = document.getElementById('completeCaseImplantTypeQty');
+            const priceInput = document.getElementById('completeCaseImplantTypePrice');
+            const totalSpan = document.getElementById('completeCaseImplantTypeTotal');
+
+            if (qtyInput && priceInput && totalSpan) {
+                const qty = parseFloat(qtyInput.value) || 0;
+                const price = parseFloat(priceInput.value) || 0;
+                const total = qty * price;
+                totalSpan.textContent = `$${total.toFixed(2)}`;
+            }
+        };
+
         // Function to calculate row total
         const calculateRowTotal = (rowIndex) => {
             const qtyInput = document.querySelector(`.consumable-qty[data-row="${rowIndex}"]`);
@@ -1379,15 +1509,42 @@ export class CasesManager {
             }
         };
 
-        // Function to calculate grand total
+        // Function to calculate grand total (includes implant type)
         const calculateGrandTotal = () => {
             let grandTotal = 0;
+
+            // Add implant type total
+            const implantTotal = document.getElementById('completeCaseImplantTypeTotal');
+            if (implantTotal) {
+                const value = implantTotal.textContent.replace('$', '');
+                grandTotal += parseFloat(value) || 0;
+            }
+
+            // Add all disposable totals
             document.querySelectorAll('.consumable-total').forEach(span => {
                 const value = span.textContent.replace('$', '');
                 grandTotal += parseFloat(value) || 0;
             });
+
             document.getElementById('consumablesGrandTotal').textContent = `$${grandTotal.toFixed(2)}`;
         };
+
+        // Add event listeners to implant type inputs
+        const implantTypeQty = document.getElementById('completeCaseImplantTypeQty');
+        const implantTypePrice = document.getElementById('completeCaseImplantTypePrice');
+
+        if (implantTypeQty && implantTypePrice) {
+            [implantTypeQty, implantTypePrice].forEach(input => {
+                input.addEventListener('input', () => {
+                    calculateImplantTypeTotal();
+                    calculateGrandTotal();
+                });
+
+                input.addEventListener('focus', (e) => {
+                    e.target.select();
+                });
+            });
+        }
 
         // Add event listeners to all qty and price inputs
         document.querySelectorAll('.consumable-qty, .consumable-price').forEach(input => {
@@ -1409,17 +1566,32 @@ export class CasesManager {
             // Show loader
             this.showLoader('Generating PDF preview...');
 
-            // Collect consumable data
-            const consumablesData = this.getConsumablesData();
+            // Collect disposable data
+            const disposablesData = this.getDisposablesData();
 
             // Get case data
             const caseData = await this.getCaseData(this.completeCaseId);
 
-            // Get sticker photos
-            const stickerPhotos = this.stickerPhotos || {};
+            // Get sticker photos from PhotoManager
+            const photoManager = window.app?.photoManager;
+            let stickerPhotos = {
+                leftSideStickers: null,
+                rightSideStickers: null,
+                patientStickers: null
+            };
+
+            if (photoManager && typeof photoManager.getPhoto === 'function') {
+                stickerPhotos = {
+                    leftSideStickers: await photoManager.getPhoto('leftSideStickers'),
+                    rightSideStickers: await photoManager.getPhoto('rightSideStickers'),
+                    patientStickers: await photoManager.getPhoto('patientStickers')
+                };
+            } else {
+                console.error('PhotoManager.getPhoto not available');
+            }
 
             // Generate the PDF
-            const pdfBytes = await this.createPurchaseOrderPdf(consumablesData, caseData, stickerPhotos);
+            const pdfBytes = await this.createPurchaseOrderPdf(disposablesData, caseData, stickerPhotos);
 
             // Store the PDF for download
             this.currentPdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
@@ -1434,6 +1606,97 @@ export class CasesManager {
             console.error('Error generating PDF preview:', error);
             this.hideLoader();
             this.showErrorNotification('Error generating PDF preview: ' + error.message);
+        }
+    }
+
+    async downloadCompletedCaseRPO(caseId, facilityId, caseType) {
+        console.log('🔍 downloadCompletedCaseRPO called with:', { caseId, facilityId, caseType });
+        try {
+            // Show loader
+            this.showLoader('Generating RPO PDF...');
+
+            // Get the case document to access disposables_data
+            const caseDoc = await this.dataManager.getCase(caseId);
+
+            if (!caseDoc || !caseDoc.disposables_data) {
+                this.hideLoader();
+                this.showErrorNotification('No disposables data found for this case');
+                return;
+            }
+
+            const savedData = caseDoc.disposables_data;
+            const lineItems = savedData.line_items;
+
+            // Include implant type if it has qty > 0
+            const items = [];
+
+            if (savedData.implant_type && savedData.implant_type.qty > 0) {
+                items.push({
+                    item: savedData.implant_type.name,
+                    qty: savedData.implant_type.qty,
+                    price: savedData.implant_type.price,
+                    total: savedData.implant_type.qty * savedData.implant_type.price,
+                    rowIndex: -1, // Special index for implant type
+                    isImplantType: true // Flag to identify implant type
+                });
+            }
+
+            // Convert saved line items to disposablesData format
+            Object.keys(lineItems).forEach(rowIndex => {
+                const item = lineItems[rowIndex];
+                if (item.qty > 0) {
+                    items.push({
+                        item: item.itemName,
+                        qty: item.qty,
+                        price: item.price,
+                        total: item.qty * item.price,
+                        rowIndex: parseInt(rowIndex)
+                    });
+                }
+            });
+
+            // Calculate grand total
+            const grandTotal = items.reduce((sum, item) => sum + item.total, 0);
+
+            const disposablesData = {
+                items: items,
+                grandTotal: grandTotal
+            };
+
+            // Get case data
+            const caseData = await this.getCaseData(caseId);
+
+            // No sticker photos for completed cases (they weren't saved)
+            const stickerPhotos = {
+                leftSideStickers: null,
+                rightSideStickers: null,
+                patientStickers: null
+            };
+
+            // Generate the PDF
+            const pdfBytes = await this.createPurchaseOrderPdf(disposablesData, caseData, stickerPhotos);
+
+            // Download the PDF directly
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `RPO_${caseData.patientName || 'Case'}_${new Date().toISOString().split('T')[0]}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            // Hide loader
+            this.hideLoader();
+
+            // Show success message
+            this.showSuccessNotification('RPO PDF downloaded successfully');
+
+        } catch (error) {
+            console.error('Error generating completed case RPO:', error);
+            this.hideLoader();
+            this.showErrorNotification('Error generating RPO: ' + error.message);
         }
     }
 
@@ -1546,13 +1809,20 @@ export class CasesManager {
 
             console.log('Final case data:', { physicianName, facilityData, salesRepName, caseDate, rawDate });
 
-            return {
+            const result = {
                 physicianName,
                 facilityData,
                 salesRepName,
                 caseType: caseObj.case_type || '',
                 caseDate: caseDate
             };
+
+            // Include completion_data if it exists
+            if (caseObj.completion_data) {
+                result.completion_data = caseObj.completion_data;
+            }
+
+            return result;
 
         } catch (error) {
             console.error('Error getting case data:', error);
@@ -1566,10 +1836,43 @@ export class CasesManager {
         }
     }
 
-    getConsumablesData() {
-        const consumablesData = [];
+    getDisposablesData() {
+        const disposablesData = [];
 
-        // Get all consumable rows with quantities > 0, preserving their row index
+        // Get implant type if qty > 0
+        const implantTypeQty = document.getElementById('completeCaseImplantTypeQty');
+        const implantTypePrice = document.getElementById('completeCaseImplantTypePrice');
+        const implantTypeName = document.getElementById('completeCaseImplantTypeName');
+
+        console.log('Implant Type Elements:', {
+            qtyElement: implantTypeQty,
+            priceElement: implantTypePrice,
+            nameElement: implantTypeName,
+            qty: implantTypeQty?.value,
+            price: implantTypePrice?.value,
+            name: implantTypeName?.textContent
+        });
+
+        if (implantTypeQty && implantTypePrice && implantTypeName) {
+            const qty = parseFloat(implantTypeQty.value) || 0;
+            console.log('Implant Type Qty:', qty);
+            if (qty > 0) {
+                const price = parseFloat(implantTypePrice.value) || 0;
+                const total = qty * price;
+                const implantData = {
+                    item: implantTypeName.textContent.trim(),
+                    qty: qty,
+                    price: price,
+                    total: total,
+                    rowIndex: -1, // Special index for implant type
+                    isImplantType: true // Flag to identify implant type
+                };
+                console.log('Adding implant type to disposablesData:', implantData);
+                disposablesData.push(implantData);
+            }
+        }
+
+        // Get all disposable rows with quantities > 0, preserving their row index
         document.querySelectorAll('.consumable-qty').forEach((qtyInput) => {
             const qty = parseFloat(qtyInput.value) || 0;
             if (qty > 0) {
@@ -1581,7 +1884,7 @@ export class CasesManager {
                 const total = parseFloat(totalSpan.textContent.replace('$', '')) || 0;
                 const rowIndex = parseInt(qtyInput.dataset.row); // Get the row index from data-row attribute
 
-                consumablesData.push({
+                disposablesData.push({
                     item: itemText,
                     qty: qty,
                     price: price,
@@ -1596,12 +1899,12 @@ export class CasesManager {
         const grandTotal = parseFloat(grandTotalText.replace('$', '')) || 0;
 
         return {
-            items: consumablesData,
+            items: disposablesData,
             grandTotal: grandTotal
         };
     }
 
-    async createPurchaseOrderPdf(consumablesData, caseData, stickerPhotos) {
+    async createPurchaseOrderPdf(disposablesData, caseData, stickerPhotos) {
         const { PDFDocument, rgb, StandardFonts } = window.PDFLib;
 
         // Load the template image
@@ -1719,9 +2022,16 @@ export class CasesManager {
             rowHeightMap[idx] = doubleHeightItems.includes(partNum) ? lineHeight * 2 : lineHeight;
         });
 
-        // Draw actual consumable items
-        if (consumablesData.items.length > 0) {
-            consumablesData.items.forEach((item) => {
+        // Separate implant type from disposables
+        const implantTypeItem = disposablesData.items.find(item => item.isImplantType);
+        const disposableItems = disposablesData.items.filter(item => !item.isImplantType);
+
+        console.log('Implant type item found:', implantTypeItem);
+        console.log('Disposable items:', disposableItems.length);
+
+        // Draw disposable items (not including implant type)
+        if (disposableItems.length > 0) {
+            disposableItems.forEach((item) => {
                 // Calculate Y position based on the item's original row index
                 // Sum up all the heights of rows from 0 to rowIndex-1
                 let yOffset = 0;
@@ -1762,6 +2072,48 @@ export class CasesManager {
 
         // Disposable Total - moved up by 7px, then down by 3px
         const disposableTotalY = 354;
+
+        // Draw Implant Type if present (above disposable total)
+        if (implantTypeItem) {
+            const implantTypeNameQtyPriceY = disposableTotalY + 80 + 20 - 7 + 4; // Name, qty, price up by 20 then down by 7 then up by 4
+            const implantTypeTotalY = disposableTotalY + 80 - 10 - 10 + 5 - 2; // Total down by 10 then down by 10 then up by 5 then down by 2
+
+            // Draw implant type name
+            page.drawText(sanitizeText(implantTypeItem.item), {
+                x: 775,
+                y: implantTypeNameQtyPriceY,
+                size: fontSize,
+                font: fontBold,
+                color: rgb(0, 0, 0),
+            });
+
+            // Draw quantity
+            page.drawText(sanitizeText(implantTypeItem.qty.toString()), {
+                x: 965,
+                y: implantTypeNameQtyPriceY,
+                size: fontSize,
+                font: font,
+                color: rgb(0, 0, 0),
+            });
+
+            // Draw price (no $ sign)
+            page.drawText(sanitizeText(`${implantTypeItem.price.toFixed(2)}`), {
+                x: 1025,
+                y: implantTypeNameQtyPriceY,
+                size: fontSize,
+                font: font,
+                color: rgb(0, 0, 0),
+            });
+
+            // Draw total (no $ sign)
+            page.drawText(sanitizeText(`${implantTypeItem.total.toFixed(2)}`), {
+                x: totalX,
+                y: implantTypeTotalY,
+                size: fontSize,
+                font: font,
+                color: rgb(0, 0, 0),
+            });
+        }
         page.drawText(sanitizeText('Disposable Total:'), {
             x: 950,
             y: disposableTotalY,
@@ -1769,7 +2121,7 @@ export class CasesManager {
             font: fontBold,
             color: rgb(0, 0, 0),
         });
-        page.drawText(sanitizeText(consumablesData.grandTotal.toFixed(2)), {
+        page.drawText(sanitizeText(disposablesData.grandTotal.toFixed(2)), {
             x: 1085,
             y: disposableTotalY,
             size: 9,
@@ -1786,7 +2138,7 @@ export class CasesManager {
             font: fontBold,
             color: rgb(0, 0, 0),
         });
-        page.drawText(sanitizeText(consumablesData.grandTotal.toFixed(2)), {
+        page.drawText(sanitizeText(disposablesData.grandTotal.toFixed(2)), {
             x: 1085,
             y: grandTotalY,
             size: 9,
@@ -1986,7 +2338,16 @@ export class CasesManager {
         const container = document.getElementById('pdfPreviewContainer');
         const loadingTask = pdfjsLib.getDocument(url);
 
+        // Track current render task
+        let currentRenderTask = null;
+
         const renderPage = (zoom) => {
+            // Cancel previous render if still in progress
+            if (currentRenderTask) {
+                currentRenderTask.cancel();
+                currentRenderTask = null;
+            }
+
             loadingTask.promise.then(pdf => {
                 // Render first page
                 pdf.getPage(1).then(page => {
@@ -2000,10 +2361,17 @@ export class CasesManager {
                         viewport: viewport
                     };
 
-                    page.render(renderContext);
-
-                    // Update zoom level display
-                    document.getElementById('zoomLevel').textContent = `${Math.round(zoom * 100)}%`;
+                    currentRenderTask = page.render(renderContext);
+                    currentRenderTask.promise.then(() => {
+                        currentRenderTask = null;
+                        // Update zoom level display
+                        document.getElementById('zoomLevel').textContent = `${Math.round(zoom * 100)}%`;
+                    }).catch(err => {
+                        if (err.name !== 'RenderingCancelledException') {
+                            console.error('Render error:', err);
+                        }
+                        currentRenderTask = null;
+                    });
                 });
             });
         };
@@ -2017,7 +2385,6 @@ export class CasesManager {
 
                 // Ensure minimum zoom level (prevent negative or very small values)
                 if (!fitZoom || fitZoom < minZoom || !isFinite(fitZoom)) {
-                    console.warn('Invalid fit zoom calculated:', fitZoom, 'Using default 1.0');
                     fitZoom = 1.0;
                 }
 
@@ -2041,31 +2408,54 @@ export class CasesManager {
                         return page.render(renderContext).promise.then(() => {
                             // Update zoom level display
                             document.getElementById('zoomLevel').textContent = `${Math.round(currentZoom * 100)}%`;
+
+                            // Set up zoom buttons NOW that rendering is complete
+                            const zoomInBtn = document.getElementById('zoomInBtn');
+                            const zoomOutBtn = document.getElementById('zoomOutBtn');
+                            const resetZoomBtn = document.getElementById('resetZoomBtn');
+
+                            if (!zoomInBtn || !zoomOutBtn || !resetZoomBtn) {
+                                return;
+                            }
+
+                            // Remove old listeners if any
+                            const newZoomInBtn = zoomInBtn.cloneNode(true);
+                            const newZoomOutBtn = zoomOutBtn.cloneNode(true);
+                            const newResetZoomBtn = resetZoomBtn.cloneNode(true);
+
+                            zoomInBtn.parentNode.replaceChild(newZoomInBtn, zoomInBtn);
+                            zoomOutBtn.parentNode.replaceChild(newZoomOutBtn, zoomOutBtn);
+                            resetZoomBtn.parentNode.replaceChild(newResetZoomBtn, resetZoomBtn);
+
+                            newZoomInBtn.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (currentZoom < maxZoom) {
+                                    currentZoom += zoomStep;
+                                    renderPage(currentZoom);
+                                }
+                            });
+
+                            newZoomOutBtn.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (currentZoom > minZoom) {
+                                    currentZoom -= zoomStep;
+                                    renderPage(currentZoom);
+                                }
+                            });
+
+                            newResetZoomBtn.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                currentZoom = defaultZoom;
+                                renderPage(currentZoom);
+                            });
                         });
                     });
                 });
             });
         });
-
-        // Set up zoom buttons
-        document.getElementById('zoomInBtn').onclick = () => {
-            if (currentZoom < maxZoom) {
-                currentZoom += zoomStep;
-                renderPage(currentZoom);
-            }
-        };
-
-        document.getElementById('zoomOutBtn').onclick = () => {
-            if (currentZoom > minZoom) {
-                currentZoom -= zoomStep;
-                renderPage(currentZoom);
-            }
-        };
-
-        document.getElementById('resetZoomBtn').onclick = () => {
-            currentZoom = defaultZoom;
-            renderPage(currentZoom);
-        };
 
         // Mouse wheel zoom
         const wheelZoomHandler = (e) => {
@@ -2127,14 +2517,25 @@ export class CasesManager {
         this.showSuccessNotification('PDF downloaded successfully');
     }
 
-    async completeCase(caseId) {
+    async completeCase(caseId, completionData = null) {
         try {
-            // Update case status to completed
-            await this.dataManager.updateCase(caseId, {
-                status: 'completed',
+            // Prepare update data
+            const updateData = {
+                status: CASE_STATUS.COMPLETED,
                 completed_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
-            });
+            };
+
+            // Add completion data if provided
+            if (completionData) {
+                updateData.completion_data = completionData;
+                console.log('Saving case with completion_data:', updateData.completion_data);
+            }
+
+            console.log('Update data being saved to case:', updateData);
+
+            // Update case status to completed
+            await this.dataManager.updateCase(caseId, updateData);
 
             // Get all trays assigned to this case and update their status
             const trays = await this.dataManager.getAllTrays();
@@ -2239,7 +2640,7 @@ export class CasesManager {
                             <strong>Date:</strong> ${new Date(caseData.scheduledDate).toLocaleDateString()}<br>
                             <strong>Time:</strong> ${caseData.scheduledTime || 'N/A'}<br>
                             <strong>Duration:</strong> ${caseData.estimatedDuration || 'N/A'} mins<br>
-                            <strong>Status:</strong> <span class="badge bg-${this.getStatusColor(caseData.status)}">${this.capitalizeFirst(caseData.status)}</span>
+                            <strong>Status:</strong> <span class="badge bg-${getCaseStatusColor(caseData.status)}">${getCaseStatusLabel(caseData.status)}</span>
                         </div>
                     </div>
                     ${this.getTrayRequirements(caseData).length > 0 ? `
@@ -2270,46 +2671,38 @@ export class CasesManager {
             // Update modal footer to include delete button on the left
             const modalFooter = document.querySelector('#caseDetailsModal .modal-footer');
             if (modalFooter) {
-                modalFooter.innerHTML = `
-                    <div class="d-flex justify-content-between w-100">
-                        <div>
-                            <button type="button" class="btn btn-warning me-2" onclick="window.app.casesManager.cancelCase('${caseData.id}')" data-bs-dismiss="modal">
-                                <i class="fas fa-times-circle"></i> Cancel Case
-                            </button>
-                            <button type="button" class="btn btn-success" onclick="window.app.casesManager.showCompleteCaseModal('${caseData.id}')">
-                                <i class="fas fa-check-circle"></i> Complete Case
-                            </button>
+                // Show different buttons based on case status
+                if (isCompletedCaseStatus(caseData.status)) {
+                    modalFooter.innerHTML = `
+                        <div class="d-flex justify-content-between w-100">
+                            <div>
+                                <button type="button" class="btn btn-info" onclick="window.app.casesManager.downloadCompletedCaseRPO('${caseData.id}', '${caseData.facility_id || caseData.facility}', '${caseData.case_type || caseData.type}')">
+                                    <i class="fas fa-download"></i> Download RPO
+                                </button>
+                            </div>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                         </div>
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    </div>
-                `;
+                    `;
+                } else {
+                    modalFooter.innerHTML = `
+                        <div class="d-flex justify-content-between w-100">
+                            <div>
+                                <button type="button" class="btn btn-warning me-2" onclick="window.app.casesManager.cancelCase('${caseData.id}')" data-bs-dismiss="modal">
+                                    <i class="fas fa-times-circle"></i> Cancel Case
+                                </button>
+                                <button type="button" class="btn btn-success" onclick="window.app.casesManager.showCompleteCaseModal('${caseData.id}')">
+                                    <i class="fas fa-check-circle"></i> Complete Case
+                                </button>
+                            </div>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    `;
+                }
             }
 
             const modal = new bootstrap.Modal(document.getElementById('caseDetailsModal'));
             modal.show();
         }
-    }
-
-    getStatusColor(status) {
-        const colors = {
-            'scheduled': 'primary',
-            'in-progress': 'warning',
-            'completed': 'success',
-            'cancelled': 'danger',
-            'postponed': 'secondary'
-        };
-        return colors[status] || 'secondary';
-    }
-
-    getStatusClass(status) {
-        const classes = {
-            'scheduled': 'status-scheduled',
-            'in-progress': 'status-in-progress', 
-            'completed': 'status-completed',
-            'cancelled': 'status-cancelled',
-            'postponed': 'status-postponed'
-        };
-        return classes[status] || 'status-unknown';
     }
 
     capitalizeFirst(str) {
@@ -2589,28 +2982,39 @@ export class CasesManager {
 
     getFacilityDisplayName(facilityId, facilities) {
         if (!facilityId) return 'No Facility';
-        
+
         // If it's already a name (not an ID), return it
         if (facilityId.length > 20 && !facilityId.match(/^[a-zA-Z0-9]{20}$/)) {
             return facilityId;
         }
-        
-        // First try the provided facilities array
-        if (facilities && facilities.length > 0) {
-            const facility = facilities.find(f => f.id === facilityId);
-            if (facility) {
-                return facility.account_name || facility.name || facilityId;
+
+        // First try the provided facilities array/map
+        if (facilities) {
+            // Handle if facilities is a Map
+            if (facilities instanceof Map) {
+                const facility = facilities.get(facilityId);
+                if (facility) {
+                    return facility.account_name || facility.name || 'Unknown Facility';
+                }
+            }
+            // Handle if facilities is an array
+            else if (Array.isArray(facilities) && facilities.length > 0) {
+                const facility = facilities.find(f => f && f.id === facilityId);
+                if (facility) {
+                    return facility.account_name || facility.name || 'Unknown Facility';
+                }
             }
         }
-        
+
         // Try facilityManager as backup
         if (window.app.facilityManager && window.app.facilityManager.currentFacilities) {
-            const facility = window.app.facilityManager.currentFacilities.find(f => f.id === facilityId);
+            const facility = window.app.facilityManager.currentFacilities.find(f => f && f.id === facilityId);
             if (facility) {
-                return facility.account_name || facility.name || facilityId;
+                return facility.account_name || facility.name || 'Unknown Facility';
             }
         }
-        if (facilities && facilities.length === 0) {
+
+        if (facilities && ((Array.isArray(facilities) && facilities.length === 0) || (facilities instanceof Map && facilities.size === 0))) {
             return 'Loading...';
         } else {
             return `Unknown Facility (${facilityId.substring(0, 8)}...)`;

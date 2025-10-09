@@ -76,6 +76,10 @@ export class PhotoManager {
         const container = document.getElementById(`${context}Camera`)?.parentElement;
         if (!container) return;
 
+        // Preserve the preview div if it exists
+        const existingPreview = container.querySelector('.photo-preview');
+        const existingLabel = container.querySelector('.form-label');
+
         // Create mobile-friendly photo options
         const mobileOptions = document.createElement('div');
         mobileOptions.className = 'mobile-photo-options';
@@ -83,19 +87,21 @@ export class PhotoManager {
             <div class="photo-option-buttons">
                 <input type="file" id="${context}CameraInput" accept="image/*" capture="environment" class="d-none" onchange="app.photoManager.handleFileSelect('${context}', this)">
                 <input type="file" id="${context}GalleryInput" accept="image/*" class="d-none" onchange="app.photoManager.handleFileSelect('${context}', this)">
-                
+
                 <button type="button" class="btn btn-primary w-100 mb-2" onclick="document.getElementById('${context}CameraInput').click()">
                     <i class="fas fa-camera"></i> Take Photo
                 </button>
-                
+
                 <button type="button" class="btn btn-secondary w-100" onclick="document.getElementById('${context}GalleryInput').click()">
                     <i class="fas fa-images"></i> Choose from Gallery
                 </button>
             </div>
         `;
 
-        // Replace existing content
+        // Replace existing content but preserve label and preview
         container.innerHTML = '';
+        if (existingLabel) container.appendChild(existingLabel);
+        if (existingPreview) container.appendChild(existingPreview);
         container.appendChild(mobileOptions);
     }
 
@@ -220,6 +226,7 @@ export class PhotoManager {
 
             // Show preview - try both PhotoPreview and Preview (for photo slots)
             let previewDiv = document.getElementById(`${context}PhotoPreview`);
+
             if (!previewDiv) {
                 previewDiv = document.getElementById(`${context}Preview`);
             }
@@ -323,6 +330,19 @@ export class PhotoManager {
 
     hasPhoto(context) {
         return this.capturedPhotos.has(context);
+    }
+
+    getPhoto(context) {
+        const blob = this.capturedPhotos.get(context);
+        if (!blob) return null;
+
+        // Return as data URL for use in PDF
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+        });
     }
 
     clearPhoto(context) {
