@@ -194,7 +194,8 @@ export class CasesManager {
                 physician_id: physician_id,
                 facility_id: document.getElementById('addCaseFacility').value,
                 caseTypeId: caseTypeId,
-                implant_type_id: document.getElementById('addCaseImplantType').value || '',
+                implant_type_id: document.getElementById('addCaseImplantType').value || '', // Keep for legacy compatibility
+                implant_type_ids: Array.from(document.getElementById('addCaseImplantType').selectedOptions).map(opt => opt.value), // Store as array
                 case_type: caseTypeName, // MyRepData compatibility
                 scheduledDate: scheduledDate, // Store date (assume CDT)
                 scheduledTime: scheduledTime, // Store time (assume CDT)
@@ -757,7 +758,14 @@ export class CasesManager {
 
         document.getElementById('editCaseFacility').value = caseData.facility_id || '';
         document.getElementById('editCaseType').value = caseData.caseTypeId || '';
-        document.getElementById('editCaseImplantType').value = caseData.implant_type_id || '';
+
+        // Set implant type multi-select (handle both array and single value)
+        const implantTypeSelect = document.getElementById('editCaseImplantType');
+        const implantTypeIds = caseData.implant_type_ids || (caseData.implant_type_id ? [caseData.implant_type_id] : []);
+        Array.from(implantTypeSelect.options).forEach(option => {
+            option.selected = implantTypeIds.includes(option.value);
+        });
+
         document.getElementById('editScheduledDate').value = caseData.scheduledDate || '';
         document.getElementById('editScheduledTime').value = caseData.scheduledTime || '';
         document.getElementById('editEstimatedDuration').value = caseData.estimatedDuration || '';
@@ -1013,7 +1021,8 @@ export class CasesManager {
                 physician_id: finalPhysicianId,
                 facility_id: document.getElementById('editCaseFacility').value,
                 caseTypeId: document.getElementById('editCaseType').value,
-                implant_type_id: document.getElementById('editCaseImplantType').value || '',
+                implant_type_id: document.getElementById('editCaseImplantType').value || '', // Keep for legacy compatibility
+                implant_type_ids: Array.from(document.getElementById('editCaseImplantType').selectedOptions).map(opt => opt.value), // Store as array
                 scheduledDate: document.getElementById('editScheduledDate').value,
                 scheduledTime: document.getElementById('editScheduledTime').value,
                 estimatedDuration: parseInt(document.getElementById('editEstimatedDuration').value) || 60,
@@ -1158,25 +1167,30 @@ export class CasesManager {
         this.currentCaseFacility = caseData.facility_id || caseData.facility;
         this.currentCaseType = caseData.case_type || caseData.type;
 
-        // Get implant type name
+        // Get implant type names (handle multiple implant types)
         let implantTypeName = 'Unknown Implant Type';
-        console.log('Case implant_type_id:', caseData.implant_type_id);
+        const implantTypeIds = caseData.implant_type_ids || (caseData.implant_type_id ? [caseData.implant_type_id] : []);
+
+        console.log('Case implant_type_ids:', implantTypeIds);
         console.log('implantTypeManager available:', !!window.app?.implantTypeManager);
 
-        if (caseData.implant_type_id && window.app?.implantTypeManager) {
+        if (implantTypeIds.length > 0 && window.app?.implantTypeManager) {
             const implantTypes = window.app.implantTypeManager.getActiveImplantTypes?.() || [];
             console.log('Available implant types:', implantTypes.length);
-            console.log('First implant type:', implantTypes[0]);
 
-            const implantType = implantTypes.find(it => it && it.id === caseData.implant_type_id);
-            console.log('Found implant type:', implantType);
+            const matchedImplantTypes = implantTypeIds
+                .map(id => implantTypes.find(it => it && it.id === id))
+                .filter(it => it)
+                .map(it => it.name || it.implant_type_name || 'Unknown');
 
-            if (implantType) {
-                implantTypeName = implantType.name || implantType.implant_type_name || 'Unknown Implant Type';
+            console.log('Found implant types:', matchedImplantTypes);
+
+            if (matchedImplantTypes.length > 0) {
+                implantTypeName = matchedImplantTypes.join(', ');
             }
         }
 
-        console.log('Final implant type name:', implantTypeName);
+        console.log('Final implant type names:', implantTypeName);
 
         // Show the modal with higher z-index to appear above case details modal
         const modalElement = document.getElementById('completeCaseModal');
@@ -1195,14 +1209,42 @@ export class CasesManager {
 
         modal.show();
 
-        // Set implant type name after modal is shown
-        const implantTypeNameElement = document.getElementById('completeCaseImplantTypeName');
-        console.log('implantTypeName element:', implantTypeNameElement);
-        if (implantTypeNameElement) {
-            implantTypeNameElement.textContent = implantTypeName;
-            console.log('Set implant type name to:', implantTypeName);
+        // Populate implant types container with rows for each implant type
+        const implantTypesContainer = document.getElementById('completeCaseImplantTypesContainer');
+        if (implantTypesContainer && implantTypeIds.length > 0 && window.app?.implantTypeManager) {
+            const implantTypes = window.app.implantTypeManager.getActiveImplantTypes?.() || [];
+            let implantTypesHtml = '';
+
+            implantTypeIds.forEach((typeId, index) => {
+                const implantType = implantTypes.find(it => it && it.id === typeId);
+                if (implantType) {
+                    const typeName = implantType.name || implantType.implant_type_name || 'Unknown';
+                    implantTypesHtml += `
+                        <div class="row mb-2">
+                            <div class="col-md-5">
+                                ${index === 0 ? '<label class="form-label mb-1 small">&nbsp;</label>' : ''}
+                                <div class="form-control form-control-sm d-flex align-items-center" style="border: none; background: transparent; padding-left: 0;"><strong>${typeName}</strong></div>
+                            </div>
+                            <div class="col-md-2">
+                                ${index === 0 ? '<label class="form-label mb-1 small">Qty</label>' : ''}
+                                <input type="number" class="form-control form-control-sm implant-type-qty" data-type-id="${typeId}" data-type-index="${index}" min="0" value="0">
+                            </div>
+                            <div class="col-md-3">
+                                ${index === 0 ? '<label class="form-label mb-1 small">Price</label>' : ''}
+                                <input type="number" class="form-control form-control-sm implant-type-price" data-type-id="${typeId}" data-type-index="${index}" min="0" step="0.01" value="0.00">
+                            </div>
+                            <div class="col-md-2">
+                                ${index === 0 ? '<label class="form-label mb-1 small">Total</label>' : ''}
+                                <div class="form-control form-control-sm d-flex align-items-center" style="border: none; background: transparent; padding-left: 0;"><strong class="implant-type-total" data-type-index="${index}">$0.00</strong></div>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            implantTypesContainer.innerHTML = implantTypesHtml || '<div class="text-muted">No implant types found</div>';
         } else {
-            console.error('implantTypeName element not found!');
+            implantTypesContainer.innerHTML = '<div class="text-muted">No implant types selected for this case</div>';
         }
 
         // Set up disposables calculation (includes implant type now)
@@ -1220,15 +1262,31 @@ export class CasesManager {
         // Set up the confirm button click handler
         const confirmBtn = document.getElementById('confirmCompleteCaseBtn');
         confirmBtn.onclick = async () => {
-            // Collect disposables data
-            const implantTypeQty = document.getElementById('completeCaseImplantTypeQty');
-            const implantTypePrice = document.getElementById('completeCaseImplantTypePrice');
-            const implantTypeName = document.getElementById('completeCaseImplantTypeName');
+            // Collect implant types data (support multiple)
+            const implantTypes = [];
+            document.querySelectorAll('.implant-type-qty').forEach((qtyInput) => {
+                const typeIndex = qtyInput.dataset.typeIndex;
+                const typeId = qtyInput.dataset.typeId;
+                const priceInput = document.querySelector(`.implant-type-price[data-type-index="${typeIndex}"]`);
+                const typeName = qtyInput.closest('.row').querySelector('.col-md-5 strong').textContent.trim();
 
-            const implantType = {
-                name: implantTypeName ? implantTypeName.textContent : '',
-                qty: implantTypeQty ? (parseFloat(implantTypeQty.value) || 0) : 0,
-                price: implantTypePrice ? (parseFloat(implantTypePrice.value) || 0) : 0
+                const qty = parseFloat(qtyInput.value) || 0;
+                const price = parseFloat(priceInput.value) || 0;
+
+                implantTypes.push({
+                    id: typeId,
+                    name: typeName,
+                    qty: qty,
+                    price: price,
+                    total: qty * price
+                });
+            });
+
+            // For backward compatibility, also store first implant type in old format
+            const implantType = implantTypes.length > 0 ? implantTypes[0] : {
+                name: '',
+                qty: 0,
+                price: 0
             };
 
             // Collect all line items
@@ -1246,7 +1304,8 @@ export class CasesManager {
             });
 
             const disposablesData = {
-                implant_type: implantType,
+                implant_type: implantType, // Keep for backward compatibility
+                implant_types: implantTypes, // New array format
                 line_items: lineItems
             };
 
@@ -1257,12 +1316,8 @@ export class CasesManager {
             await this.saveCaseDisposables(caseId, disposablesData);
 
             const completionData = {
-                implant_type: {
-                    name: implantType.name,
-                    qty: implantType.qty,
-                    price: implantType.price,
-                    total: implantType.qty * implantType.price
-                },
+                implant_type: implantType, // Keep for backward compatibility
+                implant_types: implantTypes, // New array format
                 disposables: this.getDisposablesData()
             };
 
@@ -1280,7 +1335,57 @@ export class CasesManager {
         // Set up PDF preview button click handler
         const previewPdfBtn = document.getElementById('previewPdfBtn');
         previewPdfBtn.onclick = async () => {
+            // Collect current disposables data
+            const implantTypes = [];
+            document.querySelectorAll('.implant-type-qty').forEach((qtyInput) => {
+                const typeIndex = qtyInput.dataset.typeIndex;
+                const typeId = qtyInput.dataset.typeId;
+                const priceInput = document.querySelector(`.implant-type-price[data-type-index="${typeIndex}"]`);
+                const typeName = qtyInput.closest('.row').querySelector('.col-md-5 strong').textContent.trim();
+
+                const qty = parseFloat(qtyInput.value) || 0;
+                const price = parseFloat(priceInput.value) || 0;
+
+                implantTypes.push({
+                    id: typeId,
+                    name: typeName,
+                    qty: qty,
+                    price: price
+                });
+            });
+
+            const implantType = implantTypes.length > 0 ? implantTypes[0] : {
+                name: '',
+                qty: 0,
+                price: 0
+            };
+
+            const lineItems = {};
+            document.querySelectorAll('.consumable-qty').forEach((qtyInput) => {
+                const rowIndex = qtyInput.dataset.row;
+                const priceInput = document.querySelector(`.consumable-price[data-row="${rowIndex}"]`);
+                const itemName = qtyInput.closest('tr').querySelector('td:first-child').textContent.trim();
+
+                lineItems[rowIndex] = {
+                    itemName: itemName,
+                    qty: parseFloat(qtyInput.value) || 0,
+                    price: parseFloat(priceInput.value) || 0
+                };
+            });
+
+            const disposablesData = {
+                implant_type: implantType,
+                implant_types: implantTypes,
+                line_items: lineItems
+            };
+
+            // Save to template (for future cases)
             await this.saveLineItems(this.currentCaseFacility, this.currentCaseType);
+
+            // Save to case document (so it persists when reopening this case)
+            await this.saveCaseDisposables(caseId, disposablesData);
+
+            // Generate preview
             this.generatePdfPreview();
         };
     }
@@ -1293,15 +1398,30 @@ export class CasesManager {
                 return;
             }
 
-            // Collect implant type data
-            const implantTypeQty = document.getElementById('completeCaseImplantTypeQty');
-            const implantTypePrice = document.getElementById('completeCaseImplantTypePrice');
-            const implantTypeName = document.getElementById('completeCaseImplantTypeName');
+            // Collect implant types data (support multiple)
+            const implantTypes = [];
+            document.querySelectorAll('.implant-type-qty').forEach((qtyInput) => {
+                const typeIndex = qtyInput.dataset.typeIndex;
+                const typeId = qtyInput.dataset.typeId;
+                const priceInput = document.querySelector(`.implant-type-price[data-type-index="${typeIndex}"]`);
+                const typeName = qtyInput.closest('.row').querySelector('.col-md-5 strong').textContent.trim();
 
-            const implantType = {
-                name: implantTypeName ? implantTypeName.textContent : '',
-                qty: implantTypeQty ? (parseFloat(implantTypeQty.value) || 0) : 0,
-                price: implantTypePrice ? (parseFloat(implantTypePrice.value) || 0) : 0
+                const qty = parseFloat(qtyInput.value) || 0;
+                const price = parseFloat(priceInput.value) || 0;
+
+                implantTypes.push({
+                    id: typeId,
+                    name: typeName,
+                    qty: qty,
+                    price: price
+                });
+            });
+
+            // For backward compatibility, also store first implant type in old format
+            const implantType = implantTypes.length > 0 ? implantTypes[0] : {
+                name: '',
+                qty: 0,
+                price: 0
             };
 
             // Collect all line item data
@@ -1327,7 +1447,8 @@ export class CasesManager {
             await setDoc(doc(this.dataManager.db, 'disposable_saved_line_items', docId), {
                 facility_id: facilityId,
                 case_type: caseType,
-                implant_type: implantType,
+                implant_type: implantType, // Keep for backward compatibility
+                implant_types: implantTypes, // New array format
                 line_items: lineItems,
                 updated_at: serverTimestamp(),
                 updated_by: currentUser?.uid || null
@@ -1359,18 +1480,41 @@ export class CasesManager {
         try {
             console.log('Loading disposables from case data:', disposablesData);
 
-            // Load implant type if available
-            if (disposablesData.implant_type) {
-                const implantTypeQty = document.getElementById('completeCaseImplantTypeQty');
-                const implantTypePrice = document.getElementById('completeCaseImplantTypePrice');
+            // Load implant types (handle both new array and legacy single format)
+            if (disposablesData.implant_types && Array.isArray(disposablesData.implant_types)) {
+                // New format: multiple implant types - match by ID
+                console.log('Loading multiple implant types:', disposablesData.implant_types);
+                disposablesData.implant_types.forEach((savedImplantType) => {
+                    // Find the input with matching type ID
+                    const qtyInput = document.querySelector(`.implant-type-qty[data-type-id="${savedImplantType.id}"]`);
+                    const priceInput = document.querySelector(`.implant-type-price[data-type-id="${savedImplantType.id}"]`);
 
-                if (implantTypeQty && implantTypePrice) {
-                    implantTypeQty.value = disposablesData.implant_type.qty || 0;
-                    implantTypePrice.value = disposablesData.implant_type.price || 0;
+                    if (qtyInput && priceInput) {
+                        qtyInput.value = savedImplantType.qty || 0;
+                        priceInput.value = savedImplantType.price || 0;
+                        console.log(`  Loaded implant type ${savedImplantType.name}: qty=${savedImplantType.qty}, price=${savedImplantType.price}`);
+
+                        // Trigger calculation
+                        const event = new Event('input', { bubbles: true });
+                        qtyInput.dispatchEvent(event);
+                    } else {
+                        console.warn(`  Could not find inputs for implant type ID: ${savedImplantType.id}`);
+                    }
+                });
+            } else if (disposablesData.implant_type) {
+                // Legacy format: single implant type - load into first available input
+                console.log('Loading single implant type (legacy):', disposablesData.implant_type);
+                const qtyInput = document.querySelector('.implant-type-qty[data-type-index="0"]');
+                const priceInput = document.querySelector('.implant-type-price[data-type-index="0"]');
+
+                if (qtyInput && priceInput) {
+                    qtyInput.value = disposablesData.implant_type.qty || 0;
+                    priceInput.value = disposablesData.implant_type.price || 0;
+                    console.log(`  Loaded legacy implant type: qty=${disposablesData.implant_type.qty}, price=${disposablesData.implant_type.price}`);
 
                     // Trigger calculation
                     const event = new Event('input', { bubbles: true });
-                    implantTypeQty.dispatchEvent(event);
+                    qtyInput.dispatchEvent(event);
                 }
             }
 
@@ -1472,11 +1616,11 @@ export class CasesManager {
     }
 
     setupDisposablesCalculation() {
-        // Function to calculate implant type total
-        const calculateImplantTypeTotal = () => {
-            const qtyInput = document.getElementById('completeCaseImplantTypeQty');
-            const priceInput = document.getElementById('completeCaseImplantTypePrice');
-            const totalSpan = document.getElementById('completeCaseImplantTypeTotal');
+        // Function to calculate implant type total for a specific row
+        const calculateImplantTypeTotal = (typeIndex) => {
+            const qtyInput = document.querySelector(`.implant-type-qty[data-type-index="${typeIndex}"]`);
+            const priceInput = document.querySelector(`.implant-type-price[data-type-index="${typeIndex}"]`);
+            const totalSpan = document.querySelector(`.implant-type-total[data-type-index="${typeIndex}"]`);
 
             if (qtyInput && priceInput && totalSpan) {
                 const qty = parseFloat(qtyInput.value) || 0;
@@ -1500,16 +1644,15 @@ export class CasesManager {
             }
         };
 
-        // Function to calculate grand total (includes implant type)
+        // Function to calculate grand total (includes all implant types)
         const calculateGrandTotal = () => {
             let grandTotal = 0;
 
-            // Add implant type total
-            const implantTotal = document.getElementById('completeCaseImplantTypeTotal');
-            if (implantTotal) {
-                const value = implantTotal.textContent.replace('$', '');
+            // Add all implant type totals
+            document.querySelectorAll('.implant-type-total').forEach(span => {
+                const value = span.textContent.replace('$', '');
                 grandTotal += parseFloat(value) || 0;
-            }
+            });
 
             // Add all disposable totals
             document.querySelectorAll('.consumable-total').forEach(span => {
@@ -1520,22 +1663,18 @@ export class CasesManager {
             document.getElementById('consumablesGrandTotal').textContent = `$${grandTotal.toFixed(2)}`;
         };
 
-        // Add event listeners to implant type inputs
-        const implantTypeQty = document.getElementById('completeCaseImplantTypeQty');
-        const implantTypePrice = document.getElementById('completeCaseImplantTypePrice');
-
-        if (implantTypeQty && implantTypePrice) {
-            [implantTypeQty, implantTypePrice].forEach(input => {
-                input.addEventListener('input', () => {
-                    calculateImplantTypeTotal();
-                    calculateGrandTotal();
-                });
-
-                input.addEventListener('focus', (e) => {
-                    e.target.select();
-                });
+        // Add event listeners to all implant type inputs
+        document.querySelectorAll('.implant-type-qty, .implant-type-price').forEach(input => {
+            input.addEventListener('input', (e) => {
+                const typeIndex = e.target.dataset.typeIndex;
+                calculateImplantTypeTotal(typeIndex);
+                calculateGrandTotal();
             });
-        }
+
+            input.addEventListener('focus', (e) => {
+                e.target.select();
+            });
+        });
 
         // Add event listeners to all qty and price inputs
         document.querySelectorAll('.consumable-qty, .consumable-price').forEach(input => {
@@ -1618,10 +1757,26 @@ export class CasesManager {
             const savedData = caseDoc.disposables_data;
             const lineItems = savedData.line_items;
 
-            // Include implant type if it has qty > 0
+            // Include implant types if they have qty > 0
             const items = [];
 
-            if (savedData.implant_type && savedData.implant_type.qty > 0) {
+            // Handle multiple implant types (new format)
+            if (savedData.implant_types && Array.isArray(savedData.implant_types)) {
+                savedData.implant_types.forEach((implantType, index) => {
+                    if (implantType.qty > 0) {
+                        items.push({
+                            item: implantType.name,
+                            qty: implantType.qty,
+                            price: implantType.price,
+                            total: implantType.qty * implantType.price,
+                            rowIndex: -1 - index, // Special negative indexes for implant types
+                            isImplantType: true // Flag to identify implant type
+                        });
+                    }
+                });
+            }
+            // Fall back to single implant type (legacy format)
+            else if (savedData.implant_type && savedData.implant_type.qty > 0) {
                 items.push({
                     item: savedData.implant_type.name,
                     qty: savedData.implant_type.qty,
@@ -1830,38 +1985,38 @@ export class CasesManager {
     getDisposablesData() {
         const disposablesData = [];
 
-        // Get implant type if qty > 0
-        const implantTypeQty = document.getElementById('completeCaseImplantTypeQty');
-        const implantTypePrice = document.getElementById('completeCaseImplantTypePrice');
-        const implantTypeName = document.getElementById('completeCaseImplantTypeName');
+        // Get all implant types (support multiple implant types)
+        console.log('🔍 Collecting implant types for PDF...');
+        const implantTypeInputs = document.querySelectorAll('.implant-type-qty');
+        console.log(`Found ${implantTypeInputs.length} implant type input(s)`);
 
-        console.log('Implant Type Elements:', {
-            qtyElement: implantTypeQty,
-            priceElement: implantTypePrice,
-            nameElement: implantTypeName,
-            qty: implantTypeQty?.value,
-            price: implantTypePrice?.value,
-            name: implantTypeName?.textContent
-        });
+        implantTypeInputs.forEach((qtyInput, index) => {
+            const typeIndex = qtyInput.dataset.typeIndex;
+            const typeId = qtyInput.dataset.typeId;
+            const priceInput = document.querySelector(`.implant-type-price[data-type-index="${typeIndex}"]`);
+            const typeName = qtyInput.closest('.row').querySelector('.col-md-5 strong')?.textContent.trim();
 
-        if (implantTypeQty && implantTypePrice && implantTypeName) {
-            const qty = parseFloat(implantTypeQty.value) || 0;
-            console.log('Implant Type Qty:', qty);
-            if (qty > 0) {
-                const price = parseFloat(implantTypePrice.value) || 0;
+            const qty = parseFloat(qtyInput.value) || 0;
+            const price = parseFloat(priceInput?.value) || 0;
+
+            console.log(`  Implant type ${index}: ${typeName}, qty=${qty}, price=${price}, id=${typeId}`);
+
+            if (qty > 0 && typeName) {
                 const total = qty * price;
                 const implantData = {
-                    item: implantTypeName.textContent.trim(),
+                    item: typeName,
                     qty: qty,
                     price: price,
                     total: total,
-                    rowIndex: -1, // Special index for implant type
+                    rowIndex: -1 - index, // Special negative indexes for implant types
                     isImplantType: true // Flag to identify implant type
                 };
-                console.log('Adding implant type to disposablesData:', implantData);
+                console.log('  ✅ Adding implant type to disposablesData:', implantData);
                 disposablesData.push(implantData);
+            } else {
+                console.log(`  ⏭️ Skipping implant type (qty=${qty}, name="${typeName}")`);
             }
-        }
+        });
 
         // Get all disposable rows with quantities > 0, preserving their row index
         document.querySelectorAll('.consumable-qty').forEach((qtyInput) => {
@@ -2013,12 +2168,24 @@ export class CasesManager {
             rowHeightMap[idx] = doubleHeightItems.includes(partNum) ? lineHeight * 2 : lineHeight;
         });
 
-        // Separate implant type from disposables
-        const implantTypeItem = disposablesData.items.find(item => item.isImplantType);
+        // Separate implant types from disposables
+        const implantTypeItems = disposablesData.items.filter(item => item.isImplantType);
         const disposableItems = disposablesData.items.filter(item => !item.isImplantType);
 
-        console.log('Implant type item found:', implantTypeItem);
+        // Calculate disposables-only total (excluding implant types)
+        const disposablesOnlyTotal = disposableItems.reduce((sum, item) => sum + item.total, 0);
+
+        // Calculate implant types total
+        const implantTypesTotal = implantTypeItems.reduce((sum, item) => sum + item.total, 0);
+
+        // Calculate grand total (disposables + implant types)
+        const grandTotal = disposablesOnlyTotal + implantTypesTotal;
+
+        console.log('Implant type items found:', implantTypeItems.length, implantTypeItems);
         console.log('Disposable items:', disposableItems.length);
+        console.log('Disposables-only total:', disposablesOnlyTotal.toFixed(2));
+        console.log('Implant types total:', implantTypesTotal.toFixed(2));
+        console.log('Grand total:', grandTotal.toFixed(2));
 
         // Draw disposable items (not including implant type)
         if (disposableItems.length > 0) {
@@ -2064,40 +2231,62 @@ export class CasesManager {
         // Disposable Total - moved up by 7px, then down by 3px
         const disposableTotalY = 354;
 
-        // Draw Implant Type if present (above disposable total)
-        if (implantTypeItem) {
-            const implantTypeNameQtyPriceY = disposableTotalY + 80 + 20 - 7 + 4; // Name, qty, price up by 20 then down by 7 then up by 4
+        // Draw Implant Types if present (above disposable total)
+        // Multiple implant types are stacked vertically with 30px spacing
+        // Maximum of 2 implant types displayed, but only one total is shown
+        if (implantTypeItems.length > 0) {
+            const maxImplantTypes = 2; // Only display first 2 implant types
+            const implantTypeSpacing = 30; // Vertical spacing between implant types (30px down)
+            const baseImplantTypeNameQtyPriceY = disposableTotalY + 80 + 20 - 7 + 4; // Name, qty, price up by 20 then down by 7 then up by 4
             const implantTypeTotalY = disposableTotalY + 80 - 10 - 10 + 5 - 2; // Total down by 10 then down by 10 then up by 5 then down by 2
 
-            // Draw implant type name
-            page.drawText(sanitizeText(implantTypeItem.item), {
-                x: 775,
-                y: implantTypeNameQtyPriceY,
-                size: fontSize,
-                font: fontBold,
-                color: rgb(0, 0, 0),
+            // Only process first 2 implant types
+            const displayItems = implantTypeItems.slice(0, maxImplantTypes);
+
+            if (implantTypeItems.length > maxImplantTypes) {
+                console.log(`⚠️ Warning: ${implantTypeItems.length} implant types found, only displaying first ${maxImplantTypes}`);
+            }
+
+            console.log(`Total implant types: ${implantTypeItems.length}, displaying: ${displayItems.length}, combined total: $${implantTypesTotal.toFixed(2)}`);
+
+            displayItems.forEach((implantTypeItem, index) => {
+                // Calculate Y position for this implant type (stack vertically, 30px down for each subsequent item)
+                const yOffset = index * implantTypeSpacing;
+                const implantTypeNameQtyPriceY = baseImplantTypeNameQtyPriceY - yOffset;
+
+                console.log(`Drawing implant type ${index + 1}: ${implantTypeItem.item} at Y=${implantTypeNameQtyPriceY} (offset: ${yOffset}px)`);
+
+                // Draw implant type name
+                page.drawText(sanitizeText(implantTypeItem.item), {
+                    x: 775,
+                    y: implantTypeNameQtyPriceY,
+                    size: fontSize,
+                    font: fontBold,
+                    color: rgb(0, 0, 0),
+                });
+
+                // Draw quantity
+                page.drawText(sanitizeText(implantTypeItem.qty.toString()), {
+                    x: 965,
+                    y: implantTypeNameQtyPriceY,
+                    size: fontSize,
+                    font: font,
+                    color: rgb(0, 0, 0),
+                });
+
+                // Draw price (no $ sign)
+                page.drawText(sanitizeText(`${implantTypeItem.price.toFixed(2)}`), {
+                    x: 1025,
+                    y: implantTypeNameQtyPriceY,
+                    size: fontSize,
+                    font: font,
+                    color: rgb(0, 0, 0),
+                });
             });
 
-            // Draw quantity
-            page.drawText(sanitizeText(implantTypeItem.qty.toString()), {
-                x: 965,
-                y: implantTypeNameQtyPriceY,
-                size: fontSize,
-                font: font,
-                color: rgb(0, 0, 0),
-            });
-
-            // Draw price (no $ sign)
-            page.drawText(sanitizeText(`${implantTypeItem.price.toFixed(2)}`), {
-                x: 1025,
-                y: implantTypeNameQtyPriceY,
-                size: fontSize,
-                font: font,
-                color: rgb(0, 0, 0),
-            });
-
-            // Draw total (no $ sign)
-            page.drawText(sanitizeText(`${implantTypeItem.total.toFixed(2)}`), {
+            // Draw single total for all implant types (at the first position)
+            console.log(`Drawing combined implant type total: $${implantTypesTotal.toFixed(2)} at Y=${implantTypeTotalY}`);
+            page.drawText(sanitizeText(`${implantTypesTotal.toFixed(2)}`), {
                 x: totalX,
                 y: implantTypeTotalY,
                 size: fontSize,
@@ -2105,6 +2294,7 @@ export class CasesManager {
                 color: rgb(0, 0, 0),
             });
         }
+        // Draw Disposable Total (disposables only, excluding implant types)
         page.drawText(sanitizeText('Disposable Total:'), {
             x: 950,
             y: disposableTotalY,
@@ -2112,7 +2302,7 @@ export class CasesManager {
             font: fontBold,
             color: rgb(0, 0, 0),
         });
-        page.drawText(sanitizeText(disposablesData.grandTotal.toFixed(2)), {
+        page.drawText(sanitizeText(disposablesOnlyTotal.toFixed(2)), {
             x: 1085,
             y: disposableTotalY,
             size: 9,
@@ -2120,7 +2310,7 @@ export class CasesManager {
             color: rgb(0, 0, 0),
         });
 
-        // Grand Total (30px below disposable total, same value) - moved 10px right and 10px down
+        // Grand Total (30px below disposable total) - includes disposables + implant types
         const grandTotalY = disposableTotalY - 30;
         page.drawText(sanitizeText('Grand Total:'), {
             x: 970,
@@ -2129,7 +2319,7 @@ export class CasesManager {
             font: fontBold,
             color: rgb(0, 0, 0),
         });
-        page.drawText(sanitizeText(disposablesData.grandTotal.toFixed(2)), {
+        page.drawText(sanitizeText(grandTotal.toFixed(2)), {
             x: 1085,
             y: grandTotalY,
             size: 9,
@@ -2463,6 +2653,56 @@ export class CasesManager {
         };
         container.addEventListener('wheel', wheelZoomHandler, { passive: false });
 
+        // Add panning functionality
+        let isPanning = false;
+        let startX = 0;
+        let startY = 0;
+        let scrollLeft = 0;
+        let scrollTop = 0;
+
+        const startPan = (e) => {
+            // Only pan if clicking on the container itself or canvas, not on buttons
+            if (e.target.closest('button')) return;
+
+            isPanning = true;
+            container.style.cursor = 'grabbing';
+            container.style.userSelect = 'none';
+            startX = e.clientX;
+            startY = e.clientY;
+            scrollLeft = container.scrollLeft;
+            scrollTop = container.scrollTop;
+
+            console.log('📍 Pan started:', {
+                startX, startY, scrollLeft, scrollTop,
+                canvasSize: { w: canvas.width, h: canvas.height },
+                containerSize: { w: container.clientWidth, h: container.clientHeight },
+                scrollable: { w: canvas.width > container.clientWidth, h: canvas.height > container.clientHeight }
+            });
+        };
+
+        const stopPan = () => {
+            if (!isPanning) return;
+            isPanning = false;
+            container.style.cursor = 'grab';
+            container.style.userSelect = '';
+            console.log('📍 Pan stopped');
+        };
+
+        const pan = (e) => {
+            if (!isPanning) return;
+            e.preventDefault();
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            container.scrollLeft = scrollLeft - dx;
+            container.scrollTop = scrollTop - dy;
+        };
+
+        container.style.cursor = 'grab';
+        container.addEventListener('mousedown', startPan);
+        container.addEventListener('mouseleave', stopPan);
+        container.addEventListener('mouseup', stopPan);
+        container.addEventListener('mousemove', pan);
+
         // Set up download button
         const downloadBtn = document.getElementById('downloadPdfBtn');
         downloadBtn.onclick = () => {
@@ -2473,6 +2713,11 @@ export class CasesManager {
         document.getElementById('pdfPreviewModal').addEventListener('hidden.bs.modal', () => {
             URL.revokeObjectURL(url);
             container.removeEventListener('wheel', wheelZoomHandler);
+            container.removeEventListener('mousedown', startPan);
+            container.removeEventListener('mouseleave', stopPan);
+            container.removeEventListener('mouseup', stopPan);
+            container.removeEventListener('mousemove', pan);
+            container.style.cursor = '';
         }, { once: true });
     }
 
@@ -2616,6 +2861,34 @@ export class CasesManager {
         const facility = this.dataManager.getFacilities().find(f => f && f.id === caseData.facility_id);
         const caseType = this.dataManager.getCaseTypes().find(ct => ct && ct.id === caseData.caseTypeId);
 
+        // Get implant type names (handle multiple implant types)
+        let implantTypeNames = [];
+        const implantTypeIds = caseData.implant_type_ids || (caseData.implant_type_id ? [caseData.implant_type_id] : []);
+
+        console.log('🔍 Case Details Modal - Implant Type Debug:');
+        console.log('  Case ID:', caseData.id);
+        console.log('  implant_type_ids:', caseData.implant_type_ids);
+        console.log('  implant_type_id (legacy):', caseData.implant_type_id);
+        console.log('  Combined implantTypeIds array:', implantTypeIds);
+
+        if (implantTypeIds.length > 0 && window.app?.implantTypeManager) {
+            const implantTypes = window.app.implantTypeManager.getActiveImplantTypes?.() || [];
+            console.log('  Available implant types:', implantTypes.length, implantTypes);
+
+            implantTypeNames = implantTypeIds
+                .map(id => {
+                    const found = implantTypes.find(it => it && it.id === id);
+                    console.log(`  Looking for ID "${id}":`, found ? `Found - ${found.name || found.implant_type_name}` : 'NOT FOUND');
+                    return found;
+                })
+                .filter(it => it)
+                .map(it => it.name || it.implant_type_name || 'Unknown');
+
+            console.log('  Final implantTypeNames:', implantTypeNames);
+        } else {
+            console.log('  ⚠️ No implant types to display - implantTypeIds.length:', implantTypeIds.length, 'implantTypeManager available:', !!window.app?.implantTypeManager);
+        }
+
         // Format date without timezone conversion
         const formatDateOnly = (dateStr) => {
             if (!dateStr) return 'N/A';
@@ -2644,6 +2917,7 @@ export class CasesManager {
                             <strong>Time:</strong> ${caseData.scheduledTime || 'N/A'}<br>
                             <strong>Duration:</strong> ${caseData.estimatedDuration || 'N/A'} mins<br>
                             <strong>Status:</strong> <span class="badge bg-${getCaseStatusColor(caseData.status)}">${getCaseStatusLabel(caseData.status)}</span>
+                            ${implantTypeNames.length > 0 ? `<br><div style="margin-top: 30px;"><strong>Implant Types:</strong> ${implantTypeNames.join(', ')}</div>` : ''}
                         </div>
                     </div>
                     ${this.getTrayRequirements(caseData).length > 0 ? `
