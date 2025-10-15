@@ -336,26 +336,34 @@
                             <i class="fas fa-calendar-alt"></i>
                             Upcoming Cases
                         </h3>
-                        <div class="dashboard-filters">
-                            <div class="d-flex gap-2 align-items-center">
-                                <span class="filter-label"><i class="fas fa-filter"></i> Filter by:</span>
-                                <select class="filter-select" id="dashboardCasesDateFilter">
-                                    <option value="all">View All Cases</option>
-                                    <option value="today">Today</option>
-                                    <option value="tomorrow">Tomorrow</option>
-                                    <option value="week">This Week</option>
-                                    <option value="upcoming" selected>Upcoming Cases</option>
-                                    <option value="month">This Month</option>
-                                    <option value="recent">Recent (Last 7 Days)</option>
-                                    <option value="past">All Past Cases</option>
-                                </select>
-                                <select class="filter-select" id="dashboardCasesStatusFilter">
-                                    <!-- Case status options populated dynamically by CaseStatus.populateCaseStatusDropdown() -->
-                                </select>
-                            </div>
+                    </div>
+
+                    <!-- Add Case Button -->
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-primary" onclick="window.app.modalManager.showAddCaseModal()">
+                            <i class="fas fa-plus"></i> Add Case
+                        </button>
+                    </div>
+
+                    <div class="dashboard-filters">
+                        <div class="d-flex gap-2 align-items-center">
+                            <span class="filter-label"><i class="fas fa-filter"></i> Filter by:</span>
+                            <select class="filter-select" id="dashboardCasesDateFilter">
+                                <option value="all">View All Cases</option>
+                                <option value="today">Today</option>
+                                <option value="tomorrow">Tomorrow</option>
+                                <option value="week">This Week</option>
+                                <option value="upcoming" selected>Upcoming Cases</option>
+                                <option value="month">This Month</option>
+                                <option value="recent">Recent (Last 7 Days)</option>
+                                <option value="past">All Past Cases</option>
+                            </select>
+                            <select class="filter-select" id="dashboardCasesStatusFilter">
+                                <!-- Case status options populated dynamically by CaseStatus.populateCaseStatusDropdown() -->
+                            </select>
                         </div>
                     </div>
-                    
+
                     <!-- Cases Cards Container -->
                     <div id="dashboardCasesContent" class="cases-cards-grid">
                         <div class="loading-state">
@@ -2542,8 +2550,8 @@
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="addCaseImplantType" class="form-label">Implant Types <small class="text-muted">(Hold Ctrl/Cmd to select multiple)</small></label>
-                                <select class="form-select" id="addCaseImplantType" multiple size="4">
+                                <label for="addCaseImplantType" class="form-label">Implant Types <span class="text-danger">*</span> <small class="text-muted">(Hold Ctrl/Cmd to select multiple)</small></label>
+                                <select class="form-select" id="addCaseImplantType" multiple size="4" required>
                                     <!-- Options will be populated dynamically -->
                                 </select>
                             </div>
@@ -2664,8 +2672,8 @@
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="editCaseImplantType" class="form-label">Implant Types <small class="text-muted">(Hold Ctrl/Cmd to select multiple)</small></label>
-                                <select class="form-select" id="editCaseImplantType" multiple size="4">
+                                <label for="editCaseImplantType" class="form-label">Implant Types <span class="text-danger">*</span> <small class="text-muted">(Hold Ctrl/Cmd to select multiple)</small></label>
+                                <select class="form-select" id="editCaseImplantType" multiple size="4" required>
                                     <!-- Options will be populated dynamically -->
                                 </select>
                             </div>

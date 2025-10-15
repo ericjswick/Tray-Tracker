@@ -207,8 +207,8 @@ export class ModalManager {
 
             console.log('✅ [DEBUG] Found tray implant type select element:', implantTypeSelect.id);
 
-            // Clear existing options
-            implantTypeSelect.innerHTML = '<option value="">Select Implant Type (Optional)</option>';
+            // Clear existing options (no default option for multi-select)
+            implantTypeSelect.innerHTML = '';
 
             // Get active implant types
             let implantTypes = [];
@@ -1684,8 +1684,8 @@ export class ModalManager {
                         return hasId && hasName;
                     });
 
-                    const implantTypeOptions = '<option value="">Select Implant Type (Optional)</option>' +
-                        validImplantTypes.map(implantType => `<option value="${implantType.id}">${implantType.name}</option>`).join('');
+                    // No default option for multi-select (implant types are required)
+                    const implantTypeOptions = validImplantTypes.map(implantType => `<option value="${implantType.id}">${implantType.name}</option>`).join('');
 
                     if (implantTypeSelect) {
                         implantTypeSelect.innerHTML = implantTypeOptions;

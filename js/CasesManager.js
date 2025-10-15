@@ -181,6 +181,25 @@ export class CasesManager {
 
             const caseTypeId = document.getElementById('addCaseCaseType').value;
             const physician_id = document.getElementById('addCasePhysician').value;
+            const facility_id = document.getElementById('addCaseFacility').value;
+            const implantTypeSelect = document.getElementById('addCaseImplantType');
+            const selectedImplantTypes = Array.from(implantTypeSelect.selectedOptions).map(opt => opt.value);
+
+            // Validate required fields
+            if (!facility_id) {
+                this.showErrorNotification('Please select a facility');
+                return;
+            }
+
+            if (!caseTypeId) {
+                this.showErrorNotification('Please select a case type');
+                return;
+            }
+
+            if (selectedImplantTypes.length === 0) {
+                this.showErrorNotification('Please select at least one implant type');
+                return;
+            }
             
             // Get case type name for tray requirements lookup
             const caseType = this.dataManager.caseTypes.find(ct => ct.id === caseTypeId);
@@ -192,10 +211,10 @@ export class CasesManager {
             const caseData = {
                 patientName: document.getElementById('patientName').value,
                 physician_id: physician_id,
-                facility_id: document.getElementById('addCaseFacility').value,
+                facility_id: facility_id,
                 caseTypeId: caseTypeId,
-                implant_type_id: document.getElementById('addCaseImplantType').value || '', // Keep for legacy compatibility
-                implant_type_ids: Array.from(document.getElementById('addCaseImplantType').selectedOptions).map(opt => opt.value), // Store as array
+                implant_type_id: selectedImplantTypes[0] || '', // Keep for legacy compatibility (first selected)
+                implant_type_ids: selectedImplantTypes, // Store as array
                 case_type: caseTypeName, // MyRepData compatibility
                 scheduledDate: scheduledDate, // Store date (assume CDT)
                 scheduledTime: scheduledTime, // Store time (assume CDT)
@@ -719,12 +738,71 @@ export class CasesManager {
         } catch (error) {
             console.error('Error loading case for edit:', error);
             if (window.is_enable_api_logging && window.frontendLogger) {
-                window.frontendLogger.error('Error in editCase', { 
-                    caseId: caseId, 
-                    error: error.message 
+                window.frontendLogger.error('Error in editCase', {
+                    caseId: caseId,
+                    error: error.message
                 }, 'case-edit-flow');
             }
             this.showErrorNotification('Error loading case details');
+        }
+    }
+
+    async cloneCase(caseId) {
+        try {
+            console.log('📋 Cloning case:', caseId);
+
+            // Get the original case data
+            const originalCase = await this.dataManager.getCase(caseId);
+
+            if (!originalCase) {
+                this.showErrorNotification('Case not found');
+                return;
+            }
+
+            console.log('Original case data:', originalCase);
+
+            // Create a new case object with all the same data except id and status
+            const clonedCase = {
+                patientName: `${originalCase.patientName || ''} - Copy`,
+                physician_id: originalCase.physician_id || '',
+                facility_id: originalCase.facility_id || '',
+                caseTypeId: originalCase.caseTypeId || '',
+                implant_type_id: originalCase.implant_type_id || '',
+                implant_type_ids: originalCase.implant_type_ids || [],
+                scheduledDate: originalCase.scheduledDate || '',
+                scheduledTime: originalCase.scheduledTime || '',
+                estimatedDuration: originalCase.estimatedDuration || '',
+                priority: originalCase.priority || '',
+                notes: originalCase.notes ? `Cloned from case: ${originalCase.patientName}\n\n${originalCase.notes}` : `Cloned from case: ${originalCase.patientName}`,
+                tray_requirements: originalCase.tray_requirements || [],
+                status: CASE_STATUS.SCHEDULED, // New cloned case starts as scheduled
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            };
+
+            console.log('Cloned case data:', clonedCase);
+
+            // Add the cloned case to the database
+            const savedCase = await this.dataManager.saveCase(clonedCase);
+
+            if (savedCase && savedCase.id) {
+                this.showSuccessNotification(`Case cloned successfully! Patient: ${clonedCase.patientName}`);
+                console.log('✅ Case cloned successfully with ID:', savedCase.id);
+
+                // Refresh the cases list to show the new cloned case
+                if (window.app.dashboardManager) {
+                    await window.app.dashboardManager.loadUpcomingCases();
+                }
+
+                // Also refresh the main cases view if it's visible
+                this.loadCases();
+            } else {
+                this.showErrorNotification('Failed to clone case');
+            }
+
+        } catch (error) {
+            console.error('Error cloning case:', error);
+            this.showErrorNotification('Error cloning case: ' + error.message);
         }
     }
 

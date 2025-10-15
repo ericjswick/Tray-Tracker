@@ -266,6 +266,9 @@ export class DashboardManager {
                     <button class="btn btn-sm btn-outline-info" onclick="window.app.casesManager.viewCaseDetails('${caseItem.id}')" title="View Details">
                         <i class="fas fa-eye"></i>
                     </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="window.app.casesManager.cloneCase('${caseItem.id}')" title="Clone Case">
+                        <i class="fas fa-copy"></i>
+                    </button>
                     <button class="btn btn-sm btn-outline-success" onclick="window.app.dashboardManager.showCalendarModal('${caseItem.id}')" title="Add to Calendar">
                         <i class="fas fa-calendar-plus"></i>
                     </button>
