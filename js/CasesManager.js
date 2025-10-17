@@ -2015,16 +2015,15 @@ export class CasesManager {
             }
 
             // Get case date from scheduledDate and format as mm/dd/yyyy
+            // Parse date manually to avoid timezone issues
             let caseDate = '';
             const rawDate = caseObj.scheduledDate || caseObj.scheduled_date || caseObj.case_date || caseObj.surgery_date || caseObj.date;
 
             if (rawDate) {
                 try {
-                    const dateObj = new Date(rawDate);
-                    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-                    const day = String(dateObj.getDate()).padStart(2, '0');
-                    const year = dateObj.getFullYear();
-                    caseDate = `${month}/${day}/${year}`;
+                    // Parse date string (YYYY-MM-DD) manually to avoid timezone conversion
+                    const [year, month, day] = rawDate.split('-').map(Number);
+                    caseDate = `${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`;
                 } catch (e) {
                     console.error('Error formatting date:', e);
                     caseDate = rawDate;
